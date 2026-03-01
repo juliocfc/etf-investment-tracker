@@ -1,0 +1,45 @@
+# ETF Investment Tracker - TODO
+
+Core web app completed with cyberpunk design. Remaining: static results webpage.
+
+## Backend Infrastructure
+- [x] Database schema: ETF holdings, price history, dividend history, cash balance
+- [x] API integration with financial data provider (Alpha Vantage)
+- [x] tRPC procedures for ETF CRUD operations
+- [x] tRPC procedures for price fetching and caching
+- [x] tRPC procedures for dividend data fetching
+- [x] Performance calculation procedures (daily, monthly, 1Y, 3Y returns)
+- [x] Balance tracking and historical data procedures
+- [x] Vitest unit tests for backend logic
+
+## Frontend Design System
+- [x] Cyberpunk color palette (neon pink, electric cyan, deep black)
+- [x] Global CSS with neon glow effects and geometric styling
+- [x] HUD-style UI components with corner brackets and technical lines
+- [x] Dashboard layout with sidebar navigation
+
+## Portfolio Management UI
+- [x] ETF holdings list with add/edit/delete functionality
+- [x] Cash balance management (add/edit cash available)
+- [x] Portfolio summary cards (total value, allocation breakdown)
+- [x] Real-time price updates display
+
+## Performance Charts
+- [x] Price change chart (1 month, 1 year, 3 years)
+- [x] Balance change chart over time
+- [x] Daily and monthly performance metrics display
+- [x] Interactive chart controls and time period selection
+
+## Dividend Tracking
+- [x] Dividend history display
+- [x] Estimated future dividend income calculation
+- [x] Dividend tracking dashboard
+
+## Static Interactive Webpage
+- [x] Create static HTML/CSS/JS webpage for results presentation
+- [x] Interactive charts and visualizations
+- [x] Data export/share functionality
+
+## Deployment & Testing
+- [ ] End-to-end testing of all features
+- [ ] Checkpoint and deployment

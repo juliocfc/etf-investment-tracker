@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ETF Investment Tracker - Results Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=IBM+Plex+Mono:wght@400;600;700&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --neon-pink: #ff006e;
+            --neon-cyan: #00d9ff;
+            --deep-black: #0a0a1a;
+            --dark-bg: #1a1a3a;
+            --font-sans: 'IBM Plex Mono', monospace;
+            --font-display: 'Orbitron', sans-serif;
+        }
+
+        body {
+            background: linear-gradient(135deg, var(--deep-black) 0%, #1a0a2e 100%);
+            color: var(--neon-cyan);
+            font-family: var(--font-sans);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: repeating-linear-gradient(
+                0deg,
+                rgba(0, 217, 255, 0.03) 0px,
+                rgba(0, 217, 255, 0.03) 1px,
+                transparent 1px,
+                transparent 2px
+            );
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+            position: relative;
+            z-index: 2;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 3rem;
+            border-bottom: 2px solid;
+            border-image: linear-gradient(90deg, transparent, var(--neon-cyan), transparent) 1;
+            padding-bottom: 2rem;
+        }
+
+        h1 {
+            font-family: var(--font-display);
+            font-size: 3.5rem;
+            font-weight: 900;
+            margin-bottom: 0.5rem;
+            text-shadow: 0 0 20px var(--neon-cyan), 0 0 40px var(--neon-cyan);
+            letter-spacing: 0.1em;
+            color: var(--neon-cyan);
+        }
+
+        .subtitle {
+            color: var(--neon-pink);
+            font-size: 1.1rem;
+            text-shadow: 0 0 10px var(--neon-pink);
+            letter-spacing: 0.05em;
+        }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 3rem;
+        }
+
+        .metric-card {
+            background: linear-gradient(135deg, rgba(0, 217, 255, 0.1) 0%, rgba(255, 0, 110, 0.1) 100%);
+            border: 2px solid var(--neon-cyan);
+            border-radius: 4px;
+            padding: 1.5rem;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .metric-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, var(--neon-cyan), transparent);
+        }
+
+        .metric-label {
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: rgba(0, 217, 255, 0.6);
+            margin-bottom: 0.5rem;
+        }
+
+        .metric-value {
+            font-size: 2rem;
+            font-weight: bold;
+            color: var(--neon-cyan);
+            text-shadow: 0 0 10px var(--neon-cyan), 0 0 20px var(--neon-cyan);
+            font-family: var(--font-sans);
+        }
+
+        .metric-subtitle {
+            font-size: 0.9rem;
+            color: rgba(0, 217, 255, 0.5);
+            margin-top: 0.5rem;
+        }
+
+        .metric-card.pink {
+            border-color: var(--neon-pink);
+        }
+
+        .metric-card.pink .metric-label {
+            color: rgba(255, 0, 110, 0.6);
+        }
+
+        .metric-card.pink .metric-value {
+            color: var(--neon-pink);
+            text-shadow: 0 0 10px var(--neon-pink), 0 0 20px var(--neon-pink);
+        }
+
+        .metric-card.pink .metric-subtitle {
+            color: rgba(255, 0, 110, 0.5);
+        }
+
+        .charts-section {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+            gap: 2rem;
+            margin-bottom: 3rem;
+        }
+
+        .chart-container {
+            background: linear-gradient(135deg, rgba(0, 217, 255, 0.05) 0%, rgba(255, 0, 110, 0.05) 100%);
+            border: 2px solid var(--neon-cyan);
+            border-radius: 4px;
+            padding: 1.5rem;
+            position: relative;
+        }
+
+        .chart-container::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, var(--neon-cyan), transparent);
+        }
+
+        .chart-title {
+            font-family: var(--font-display);
+            font-size: 1.3rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--neon-cyan);
+        }
+
+        .chart-wrapper {
+            position: relative;
+            height: 300px;
+        }
+
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 2rem;
+            background: linear-gradient(135deg, rgba(0, 217, 255, 0.05) 0%, rgba(255, 0, 110, 0.05) 100%);
+            border: 2px solid var(--neon-cyan);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .data-table::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, var(--neon-cyan), transparent);
+        }
+
+        .data-table thead {
+            background: rgba(0, 217, 255, 0.1);
+            border-bottom: 2px solid var(--neon-cyan);
+        }
+
+        .data-table th {
+            padding: 1rem;
+            text-align: left;
+            font-weight: 700;
+            text-transform: uppercase;
+            font-size: 0.85rem;
+            letter-spacing: 0.1em;
+            color: var(--neon-cyan);
+        }
+
+        .data-table td {
+            padding: 0.8rem 1rem;
+            border-bottom: 1px solid rgba(0, 217, 255, 0.2);
+        }
+
+        .data-table tbody tr:hover {
+            background: rgba(0, 217, 255, 0.05);
+        }
+
+        .symbol {
+            color: var(--neon-pink);
+            font-weight: bold;
+            text-shadow: 0 0 5px var(--neon-pink);
+        }
+
+        .positive {
+            color: #00ff00;
+        }
+
+        .negative {
+            color: #ff3333;
+        }
+
+        .actions {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            margin-top: 3rem;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 0.8rem 1.5rem;
+            border: 2px solid currentColor;
+            background: transparent;
+            color: var(--neon-pink);
+            font-family: var(--font-sans);
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border-radius: 2px;
+        }
+
+        .btn:hover {
+            text-shadow: 0 0 10px var(--neon-pink), 0 0 20px var(--neon-pink);
+            box-shadow: 0 0 20px rgba(255, 0, 110, 0.6), inset 0 0 20px rgba(255, 0, 110, 0.1);
+        }
+
+        .btn-cyan {
+            color: var(--neon-cyan);
+        }
+
+        .btn-cyan:hover {
+            text-shadow: 0 0 10px var(--neon-cyan), 0 0 20px var(--neon-cyan);
+            box-shadow: 0 0 20px rgba(0, 217, 255, 0.6), inset 0 0 20px rgba(0, 217, 255, 0.1);
+        }
+
+        footer {
+            text-align: center;
+            margin-top: 3rem;
+            padding-top: 2rem;
+            border-top: 2px solid;
+            border-image: linear-gradient(90deg, transparent, var(--neon-cyan), transparent) 1;
+            color: rgba(0, 217, 255, 0.5);
+            font-size: 0.9rem;
+        }
+
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 2rem;
+            }
+
+            .charts-section {
+                grid-template-columns: 1fr;
+            }
+
+            .metrics-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .container {
+                padding: 1rem;
+            }
+        }
+
+        canvas {
+            filter: drop-shadow(0 0 10px rgba(0, 217, 255, 0.3));
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>ETF TRACKER</h1>
+            <p class="subtitle">REAL-TIME INVESTMENT ANALYTICS & PERFORMANCE DASHBOARD</p>
+        </header>
+
+        <!-- Key Metrics -->
+        <div class="metrics-grid">
+            <div class="metric-card">
+                <div class="metric-label">Total Portfolio Value</div>
+                <div class="metric-value">$0.00</div>
+                <div class="metric-subtitle">Current worth</div>
+            </div>
+
+            <div class="metric-card pink">
+                <div class="metric-label">Total Return</div>
+                <div class="metric-value">+0.00%</div>
+                <div class="metric-subtitle">All time</div>
+            </div>
+
+            <div class="metric-card">
+                <div class="metric-label">Investment Value</div>
+                <div class="metric-value">$0.00</div>
+                <div class="metric-subtitle">ETF holdings</div>
+            </div>
+
+            <div class="metric-card pink">
+                <div class="metric-label">Cash Available</div>
+                <div class="metric-value">$0.00</div>
+                <div class="metric-subtitle">Trading capital</div>
+            </div>
+
+            <div class="metric-card">
+                <div class="metric-label">Dividend Income</div>
+                <div class="metric-value">$0.00</div>
+                <div class="metric-subtitle">Earned</div>
+            </div>
+
+            <div class="metric-card pink">
+                <div class="metric-label">Holdings Count</div>
+                <div class="metric-value">0</div>
+                <div class="metric-subtitle">Active ETFs</div>
+            </div>
+        </div>
+
+        <!-- Charts Section -->
+        <div class="charts-section">
+            <div class="chart-container">
+                <div class="chart-title">Portfolio Balance Trend</div>
+                <div class="chart-wrapper">
+                    <canvas id="balanceChart"></canvas>
+                </div>
+            </div>
+
+            <div class="chart-container">
+                <div class="chart-title">Performance Distribution</div>
+                <div class="chart-wrapper">
+                    <canvas id="performanceChart"></canvas>
+                </div>
+            </div>
+
+            <div class="chart-container">
+                <div class="chart-title">Asset Allocation</div>
+                <div class="chart-wrapper">
+                    <canvas id="allocationChart"></canvas>
+                </div>
+            </div>
+
+            <div class="chart-container">
+                <div class="chart-title">Dividend History</div>
+                <div class="chart-wrapper">
+                    <canvas id="dividendChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Holdings Table -->
+        <div style="margin-top: 3rem;">
+            <h2 style="font-family: var(--font-display); font-size: 1.5rem; margin-bottom: 1.5rem; color: var(--neon-cyan); text-transform: uppercase; letter-spacing: 0.05em;">Current Holdings</h2>
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Symbol</th>
+                        <th>Name</th>
+                        <th>Quantity</th>
+                        <th>Current Price</th>
+                        <th>Value</th>
+                        <th>Gain/Loss</th>
+                        <th>Return %</th>
+                    </tr>
+                </thead>
+                <tbody id="holdingsBody">
+                    <tr>
+                        <td colspan="7" style="text-align: center; color: rgba(0, 217, 255, 0.5);">No holdings yet. Add ETFs to get started.</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Actions -->
+        <div class="actions">
+            <button class="btn btn-cyan" onclick="downloadReport()">📥 Download Report</button>
+            <button class="btn btn-cyan" onclick="shareResults()">🔗 Share Results</button>
+            <button class="btn" onclick="printPage()">🖨️ Print Dashboard</button>
+        </div>
+
+        <footer>
+            <p>ETF Investment Tracker v1.0 | Real-time market data powered by Alpha Vantage</p>
+            <p style="margin-top: 0.5rem; font-size: 0.85rem;">Last updated: <span id="lastUpdate">Never</span></p>
+        </footer>
+    </div>
+
+    <script>
+        // Sample data for demonstration
+        const sampleData = {
+            totalValue: 15250.50,
+            totalReturn: 12.45,
+            investmentValue: 14000.00,
+            cashBalance: 1250.50,
+            dividendIncome: 325.00,
+            holdings: 3,
+            balanceHistory: [
+                { date: 'Jan 1', value: 10000 },
+                { date: 'Feb 1', value: 11200 },
+                { date: 'Mar 1', value: 12500 },
+                { date: 'Apr 1', value: 13800 },
+                { date: 'May 1', value: 14500 },
+                { date: 'Jun 1', value: 15250 }
+            ],
+            holdings: [
+                { symbol: 'SPY', name: 'S&P 500 ETF', quantity: 50, price: 450.25, value: 22512.50, gain: 2512.50, returnPct: 12.5 },
+                { symbol: 'QQQ', name: 'Nasdaq 100 ETF', quantity: 30, price: 380.75, value: 11422.50, gain: 1422.50, returnPct: 14.2 },
+                { symbol: 'IWM', name: 'Russell 2000 ETF', quantity: 25, price: 190.50, value: 4762.50, gain: 262.50, returnPct: 5.8 }
+            ]
+        };
+
+        // Initialize charts
+        function initCharts() {
+            // Balance Chart
+            const balanceCtx = document.getElementById('balanceChart').getContext('2d');
+            new Chart(balanceCtx, {
+                type: 'line',
+                data: {
+                    labels: sampleData.balanceHistory.map(d => d.date),
+                    datasets: [{
+                        label: 'Portfolio Value',
+                        data: sampleData.balanceHistory.map(d => d.value),
+                        borderColor: '#00d9ff',
+                        backgroundColor: 'rgba(0, 217, 255, 0.1)',
+                        borderWidth: 3,
+                        fill: true,
+                        tension: 0.4,
+                        pointBackgroundColor: '#ff006e',
+                        pointBorderColor: '#00d9ff',
+                        pointRadius: 6,
+                        pointHoverRadius: 8
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: false,
+                            grid: { color: 'rgba(0, 217, 255, 0.1)' },
+                            ticks: { color: '#00d9ff' }
+                        },
+                        x: {
+                            grid: { color: 'rgba(0, 217, 255, 0.1)' },
+                            ticks: { color: '#00d9ff' }
+                        }
+                    }
+                }
+            });
+
+            // Performance Chart
+            const perfCtx = document.getElementById('performanceChart').getContext('2d');
+            new Chart(perfCtx, {
+                type: 'bar',
+                data: {
+                    labels: ['1M', '3M', '6M', '1Y'],
+                    datasets: [{
+                        label: 'Return %',
+                        data: [2.5, 5.8, 9.2, 12.45],
+                        backgroundColor: ['#ff006e', '#00d9ff', '#ff006e', '#00d9ff'],
+                        borderColor: ['#ff006e', '#00d9ff', '#ff006e', '#00d9ff'],
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        y: {
+                            grid: { color: 'rgba(0, 217, 255, 0.1)' },
+                            ticks: { color: '#00d9ff' }
+                        },
+                        x: {
+                            grid: { display: false },
+                            ticks: { color: '#00d9ff' }
+                        }
+                    }
+                }
+            });
+
+            // Allocation Chart
+            const allocCtx = document.getElementById('allocationChart').getContext('2d');
+            new Chart(allocCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['SPY', 'QQQ', 'IWM', 'Cash'],
+                    datasets: [{
+                        data: [45, 35, 15, 5],
+                        backgroundColor: ['#00d9ff', '#ff006e', '#a0a0ff', '#00ff00'],
+                        borderColor: '#0a0a1a',
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            labels: { color: '#00d9ff' }
+                        }
+                    }
+                }
+            });
+
+            // Dividend Chart
+            const divCtx = document.getElementById('dividendChart').getContext('2d');
+            new Chart(divCtx, {
+                type: 'bar',
+                data: {
+                    labels: ['Q1', 'Q2', 'Q3', 'Q4'],
+                    datasets: [{
+                        label: 'Dividend Income',
+                        data: [75, 85, 80, 85],
+                        backgroundColor: '#00ff00',
+                        borderColor: '#00ff00',
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        y: {
+                            grid: { color: 'rgba(0, 217, 255, 0.1)' },
+                            ticks: { color: '#00d9ff' }
+                        },
+                        x: {
+                            grid: { display: false },
+                            ticks: { color: '#00d9ff' }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Populate holdings table
+        function populateHoldings() {
+            const tbody = document.getElementById('holdingsBody');
+            tbody.innerHTML = sampleData.holdings.map(h => `
+                <tr>
+                    <td><span class="symbol">${h.symbol}</span></td>
+                    <td>${h.name}</td>
+                    <td>${h.quantity}</td>
+                    <td>$${h.price.toFixed(2)}</td>
+                    <td>$${h.value.toFixed(2)}</td>
+                    <td class="${h.gain >= 0 ? 'positive' : 'negative'}">$${h.gain.toFixed(2)}</td>
+                    <td class="${h.returnPct >= 0 ? 'positive' : 'negative'}">${h.returnPct.toFixed(2)}%</td>
+                </tr>
+            `).join('');
+        }
+
+        // Update metrics
+        function updateMetrics() {
+            document.querySelectorAll('.metric-value').forEach((el, idx) => {
+                const values = [
+                    `$${sampleData.totalValue.toFixed(2)}`,
+                    `+${sampleData.totalReturn.toFixed(2)}%`,
+                    `$${sampleData.investmentValue.toFixed(2)}`,
+                    `$${sampleData.cashBalance.toFixed(2)}`,
+                    `$${sampleData.dividendIncome.toFixed(2)}`,
+                    sampleData.holdings
+                ];
+                el.textContent = values[idx];
+            });
+            document.getElementById('lastUpdate').textContent = new Date().toLocaleString();
+        }
+
+        // Download report
+        function downloadReport() {
+            const content = `ETF Investment Tracker Report\n\n` +
+                `Total Portfolio Value: $${sampleData.totalValue.toFixed(2)}\n` +
+                `Total Return: ${sampleData.totalReturn.toFixed(2)}%\n` +
+                `Investment Value: $${sampleData.investmentValue.toFixed(2)}\n` +
+                `Cash Balance: $${sampleData.cashBalance.toFixed(2)}\n` +
+                `Dividend Income: $${sampleData.dividendIncome.toFixed(2)}\n\n` +
+                `Holdings:\n` +
+                sampleData.holdings.map(h => `${h.symbol}: ${h.quantity} @ $${h.price.toFixed(2)} = $${h.value.toFixed(2)}`).join('\n');
+            
+            const blob = new Blob([content], { type: 'text/plain' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'etf-report.txt';
+            a.click();
+        }
+
+        // Share results
+        function shareResults() {
+            const text = `Check out my ETF portfolio: $${sampleData.totalValue.toFixed(2)} with ${sampleData.totalReturn.toFixed(2)}% return!`;
+            if (navigator.share) {
+                navigator.share({ title: 'ETF Tracker', text });
+            } else {
+                alert('Share: ' + text);
+            }
+        }
+
+        // Print page
+        function printPage() {
+            window.print();
+        }
+
+        // Initialize on load
+        window.addEventListener('load', () => {
+            updateMetrics();
+            populateHoldings();
+            initCharts();
+        });
+    </script>
+</body>
+</html>
