@@ -256,9 +256,9 @@
 
   .data-card-value {
     @apply text-2xl font-bold;
-    color: var(--neon-cyan);
-    text-shadow: 0 0 10px #00d9ff, 0 0 20px #00d9ff, 0 0 30px #00d9ff;
-    filter: drop-shadow(0 0 8px #00d9ff);
+    color: #ffffff;  /* Bright white for maximum readability */
+    text-shadow: 0 0 10px rgba(0, 217, 255, 0.5), 0 0 20px rgba(0, 217, 255, 0.3);  /* Subtle cyan glow */
+    filter: drop-shadow(0 0 4px rgba(0, 217, 255, 0.4));
   }
 
   .data-card-subtitle {

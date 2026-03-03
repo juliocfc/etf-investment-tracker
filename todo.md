@@ -48,3 +48,7 @@ Core web app completed with cyberpunk design. Remaining: static results webpage.
 - [x] Auto-fetch ETF name when symbol is entered
 - [x] Show total gain calculation (position size × (current price - purchase price))
 - [x] Improve color readability - adjust neon cyan contrast
+
+## Bug Fixes
+- [x] Fix ETF name fetching error when entering symbol (SCHD, SPY)
+- [x] Improve summary card text readability - blue neon still hard to read
