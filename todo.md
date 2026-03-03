@@ -52,3 +52,9 @@ Core web app completed with cyberpunk design. Remaining: static results webpage.
 ## Bug Fixes
 - [x] Fix ETF name fetching error when entering symbol (SCHD, SPY)
 - [x] Improve summary card text readability - blue neon still hard to read
+
+## Additional Bug Fixes
+- [x] Auto-fetch current ETF price when adding or updating
+- [x] Update total value in real-time when ETF holdings change
+- [x] Use 3 decimal places for quantity and current price
+- [x] Fix ETF name auto-fetch (still not working after symbol entry)

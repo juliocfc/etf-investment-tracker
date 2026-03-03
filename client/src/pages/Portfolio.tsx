@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,10 +21,11 @@ export default function Portfolio() {
   const [cashAmount, setCashAmount] = useState("");
   const [isEditingCash, setIsEditingCash] = useState(false);
   const [isLookingUpName, setIsLookingUpName] = useState(false);
+  const [lookupTimeout, setLookupTimeout] = useState<NodeJS.Timeout | null>(null);
 
   // Queries
   const { data: holdings, refetch: refetchHoldings } = trpc.etf.getHoldings.useQuery();
-  const { data: summary } = trpc.etf.getPortfolioSummary.useQuery();
+  const { data: summary, refetch: refetchSummary } = trpc.etf.getPortfolioSummary.useQuery();
   const { data: cashBalance } = trpc.etf.getCashBalance.useQuery();
 
   // Mutations
@@ -32,6 +33,7 @@ export default function Portfolio() {
     onSuccess: () => {
       toast.success("ETF added successfully!");
       refetchHoldings();
+      refetchSummary();
       setFormData({
         symbol: "",
         name: "",
@@ -50,6 +52,7 @@ export default function Portfolio() {
     onSuccess: () => {
       toast.success("ETF updated successfully!");
       refetchHoldings();
+      refetchSummary();
       setEditingId(null);
       setFormData({
         symbol: "",
@@ -68,6 +71,7 @@ export default function Portfolio() {
     onSuccess: () => {
       toast.success("ETF deleted successfully!");
       refetchHoldings();
+      refetchSummary();
     },
     onError: () => {
       toast.error("Failed to delete ETF");
@@ -78,6 +82,7 @@ export default function Portfolio() {
     onSuccess: () => {
       toast.success("Prices updated!");
       refetchHoldings();
+      refetchSummary();
     },
     onError: () => {
       toast.error("Failed to update prices");
@@ -89,52 +94,61 @@ export default function Portfolio() {
       toast.success("Cash balance updated!");
       setCashAmount("");
       setIsEditingCash(false);
+      refetchSummary();
     },
     onError: () => {
       toast.error("Failed to update cash balance");
     },
   });
 
-  // Auto-fetch ETF name when symbol changes
-  useEffect(() => {
-    if (formData.symbol && formData.symbol.length >= 2 && !formData.name) {
-      setIsLookingUpName(true);
-      const fetchName = async () => {
-        try {
-          const encodedInput = encodeURIComponent(JSON.stringify({ symbol: formData.symbol }));
-          const response = await fetch(`/api/trpc/etf.lookupETFName?input=${encodedInput}`);
-          
-          if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
-          }
-          
-          const data = await response.json();
-          console.log("ETF lookup response:", data);
-          
-          // Handle tRPC response format
-          let name = null;
-          if (Array.isArray(data) && data[0]?.result?.data) {
-            name = data[0].result.data;
-          } else if (data?.result?.data) {
-            name = data.result.data;
-          }
-          
-          if (name && typeof name === 'string') {
-            setFormData(prev => ({ ...prev, name }));
-            toast.success(`Found: ${name}`);
-          } else {
-            console.log("No name found in response");
-          }
-        } catch (error) {
-          console.error("Error fetching ETF name:", error);
-        } finally {
-          setIsLookingUpName(false);
-        }
-      };
+  // Fetch ETF name using tRPC query
+  const lookupNameQuery = trpc.etf.lookupETFName.useQuery(
+    { symbol: formData.symbol },
+    { enabled: false }
+  );
+
+  const fetchETFName = useCallback(async (symbol: string) => {
+    if (!symbol || symbol.length < 2) return;
+    
+    setIsLookingUpName(true);
+    try {
+      const result = await lookupNameQuery.refetch();
+      const name = result.data;
       
-      fetchName();
+      if (name && typeof name === 'string' && name.length > 0) {
+        setFormData(prev => ({ ...prev, name }));
+        toast.success(`Found: ${name}`);
+      } else {
+        console.log("No name found for symbol:", symbol);
+      }
+    } catch (error) {
+      console.error("Error fetching ETF name:", error);
+      toast.error("Failed to fetch ETF name");
+    } finally {
+      setIsLookingUpName(false);
     }
-  }, [formData.symbol]);
+  }, [lookupNameQuery]);
+
+  // Auto-fetch ETF name when symbol changes (with debouncing)
+  useEffect(() => {
+    if (lookupTimeout) {
+      clearTimeout(lookupTimeout);
+    }
+    
+    if (formData.symbol && formData.symbol.length >= 2 && !formData.name) {
+      const timeout = setTimeout(() => {
+        fetchETFName(formData.symbol);
+      }, 500); // Debounce for 500ms
+      
+      setLookupTimeout(timeout);
+    }
+    
+    return () => {
+      if (lookupTimeout) clearTimeout(lookupTimeout);
+    };
+  }, [formData.symbol, formData.name, fetchETFName]);
+
+
 
   const handleAddOrUpdate = async () => {
     if (!formData.symbol || !formData.name || !formData.quantity || !formData.purchasePrice) {
@@ -180,19 +194,19 @@ export default function Portfolio() {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="data-card">
           <div className="data-card-title">Total Value</div>
-          <div className="data-card-value">${summary?.totalValue || "0.00"}</div>
+          <div className="data-card-value">${(parseFloat(summary?.totalValue || "0")).toFixed(2)}</div>
           <div className="data-card-subtitle">Portfolio worth</div>
         </div>
 
         <div className="data-card">
           <div className="data-card-title">Investment Value</div>
-          <div className="data-card-value">${summary?.investmentValue || "0.00"}</div>
+          <div className="data-card-value">${(parseFloat(summary?.investmentValue || "0")).toFixed(2)}</div>
           <div className="data-card-subtitle">ETF holdings</div>
         </div>
 
         <div className="data-card">
           <div className="data-card-title">Cash Balance</div>
-          <div className="data-card-value">${summary?.cashBalance || "0.00"}</div>
+          <div className="data-card-value">${(parseFloat(summary?.cashBalance || "0")).toFixed(2)}</div>
           <div className="data-card-subtitle">Available cash</div>
         </div>
 
@@ -211,7 +225,7 @@ export default function Portfolio() {
               Cash Available
             </h3>
             <div className="text-2xl font-bold" style={{ color: '#00ff00' }}>
-              ${cashBalance || "0.00"}
+              ${(parseFloat(cashBalance || "0")).toFixed(2)}
             </div>
           </div>
           <button
@@ -304,7 +318,8 @@ export default function Portfolio() {
                       <label className="text-sm font-medium text-muted-foreground">Quantity</label>
                       <Input
                         type="number"
-                        placeholder="e.g., 100"
+                        step="0.001"
+                        placeholder="e.g., 100.000"
                         value={formData.quantity}
                         onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
                       />
@@ -313,7 +328,8 @@ export default function Portfolio() {
                       <label className="text-sm font-medium text-muted-foreground">Purchase Price</label>
                       <Input
                         type="number"
-                        placeholder="e.g., 150.50"
+                        step="0.001"
+                        placeholder="e.g., 150.500"
                         value={formData.purchasePrice}
                         onChange={(e) => setFormData({ ...formData, purchasePrice: e.target.value })}
                       />
@@ -351,36 +367,45 @@ export default function Portfolio() {
                 </tr>
               </thead>
               <tbody>
-                {holdings.map((holding) => (
-                  <tr key={holding.id} className="border-b border-border/50 hover:bg-card/50">
-                    <td className="p-3 font-bold ">{holding.symbol}</td>
-                    <td className="p-3 text-sm">{holding.name}</td>
-                    <td className="p-3 text-right">{holding.quantity.toString()}</td>
-                    <td className="p-3 text-right">${holding.currentPrice?.toString() || "N/A"}</td>
-                    <td className="p-3 text-right" style={{ color: '#00ff00' }}>
-                      ${(parseFloat(holding.quantity.toString()) * (parseFloat(holding.currentPrice?.toString() || "0"))).toFixed(2)}
-                    </td>
-                    <td className={`p-3 text-right font-bold ${(parseFloat(holding.quantity.toString()) * (parseFloat(holding.currentPrice?.toString() || "0") - parseFloat(holding.purchasePrice.toString()))) >= 0 ? "text-green-400" : "text-red-400"}`}>
-                      ${(parseFloat(holding.quantity.toString()) * (parseFloat(holding.currentPrice?.toString() || "0") - parseFloat(holding.purchasePrice.toString()))).toFixed(2)}
-                    </td>
-                    <td className="p-3 text-center space-x-2">
-                      <button
-                        onClick={() => handleEdit(holding)}
-                        className="p-1 hover:bg-card rounded inline-block"
-                        title="Edit"
-                      >
-                        <Edit2 className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => deleteHoldingMutation.mutate({ id: holding.id })}
-                        className="p-1 hover:bg-card rounded inline-block text-red-400"
-                        title="Delete"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                {holdings.map((holding) => {
+                  const quantity = parseFloat(holding.quantity.toString());
+                  const currentPrice = parseFloat(holding.currentPrice?.toString() || "0");
+                  const purchasePrice = parseFloat(holding.purchasePrice.toString());
+                  const value = quantity * currentPrice;
+                  const gain = quantity * (currentPrice - purchasePrice);
+                  const isGain = gain >= 0;
+
+                  return (
+                    <tr key={holding.id} className="border-b border-border/50 hover:bg-card/50">
+                      <td className="p-3 font-bold">{holding.symbol}</td>
+                      <td className="p-3 text-sm">{holding.name}</td>
+                      <td className="p-3 text-right">{quantity.toFixed(3)}</td>
+                      <td className="p-3 text-right">${currentPrice.toFixed(3)}</td>
+                      <td className="p-3 text-right" style={{ color: '#00ff00' }}>
+                        ${value.toFixed(2)}
+                      </td>
+                      <td className={`p-3 text-right font-bold ${isGain ? "text-green-400" : "text-red-400"}`}>
+                        ${gain.toFixed(2)}
+                      </td>
+                      <td className="p-3 text-center space-x-2">
+                        <button
+                          onClick={() => handleEdit(holding)}
+                          className="p-1 hover:bg-card rounded inline-block"
+                          title="Edit"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => deleteHoldingMutation.mutate({ id: holding.id })}
+                          className="p-1 hover:bg-card rounded inline-block text-red-400"
+                          title="Delete"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
