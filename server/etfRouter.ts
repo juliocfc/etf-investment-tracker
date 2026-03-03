@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { protectedProcedure, router } from "./_core/trpc";
+import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import {
   getUserEtfHoldings,
   createEtfHolding,
@@ -250,7 +250,7 @@ export const etfRouter = router({
     return totalDividends.toFixed(2);
   }),
 
-  lookupETFName: protectedProcedure
+  lookupETFName: publicProcedure
     .input(z.object({ symbol: z.string().min(1).max(20) }))
     .query(async ({ input }) => {
       const name = await fetchETFName(input.symbol.toUpperCase());

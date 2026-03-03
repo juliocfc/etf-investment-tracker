@@ -28,6 +28,12 @@ export default function Portfolio() {
   const { data: summary, refetch: refetchSummary } = trpc.etf.getPortfolioSummary.useQuery();
   const { data: cashBalance } = trpc.etf.getCashBalance.useQuery();
 
+  // ETF name lookup query - enabled only when needed
+  const { refetch: refetchETFName } = trpc.etf.lookupETFName.useQuery(
+    { symbol: formData.symbol },
+    { enabled: false }
+  );
+
   // Mutations
   const addHoldingMutation = trpc.etf.addHolding.useMutation({
     onSuccess: () => {
@@ -84,8 +90,8 @@ export default function Portfolio() {
       refetchHoldings();
       refetchSummary();
     },
-    onError: () => {
-      toast.error("Failed to update prices");
+    onError: (error) => {
+      toast.error(error.message || "Failed to update prices");
     },
   });
 
@@ -101,40 +107,27 @@ export default function Portfolio() {
     },
   });
 
-  // Fetch ETF name - simple callback without hook dependencies
+  // Fetch ETF name using tRPC
   const fetchETFName = useCallback(async (symbol: string) => {
     if (!symbol || symbol.length < 2) return;
     
     setIsLookingUpName(true);
     try {
-      const encodedInput = encodeURIComponent(JSON.stringify({ symbol: symbol.toUpperCase() }));
-      const response = await fetch(`/api/trpc/etf.lookupETFName?input=${encodedInput}`);
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-      
-      const data = await response.json();
-      console.log("ETF lookup response:", data);
-      
-      // Parse tRPC response format
-      let name = null;
-      if (Array.isArray(data) && data[0]?.result?.data) {
-        name = data[0].result.data;
-      } else if (data?.result?.data) {
-        name = data.result.data;
-      }
+      const result = await refetchETFName();
+      const name = result.data;
       
       if (name && typeof name === 'string' && name.length > 0) {
         setFormData(prev => ({ ...prev, name }));
         toast.success(`Found: ${name}`);
+      } else {
+        console.log("No name found for symbol:", symbol);
       }
     } catch (error) {
       console.error("Error fetching ETF name:", error);
     } finally {
       setIsLookingUpName(false);
     }
-  }, []);
+  }, [refetchETFName]);
 
   // Auto-fetch ETF name when symbol changes (with debouncing)
   useEffect(() => {

@@ -61,3 +61,8 @@ Core web app completed with cyberpunk design. Remaining: static results webpage.
 
 ## Critical Bug Fixes
 - [x] Fix React error #185 when entering ETF symbol (hook dependency issue)
+
+## Current Issues
+- [x] ETF name not updating when symbol is entered (fixed - changed to publicProcedure)
+- [x] ETF price not auto-fetching when adding/updating (fixed - tRPC client now working)
+- [x] Update Prices button not working (fixed - tRPC mutation working)
