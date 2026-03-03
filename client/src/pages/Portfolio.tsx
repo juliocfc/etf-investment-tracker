@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,11 +20,13 @@ export default function Portfolio() {
 
   const [cashAmount, setCashAmount] = useState("");
   const [isEditingCash, setIsEditingCash] = useState(false);
+  const [isLookingUpName, setIsLookingUpName] = useState(false);
 
   // Queries
   const { data: holdings, refetch: refetchHoldings } = trpc.etf.getHoldings.useQuery();
   const { data: summary } = trpc.etf.getPortfolioSummary.useQuery();
   const { data: cashBalance } = trpc.etf.getCashBalance.useQuery();
+  const lookupNameMutation = trpc.etf.lookupETFName.useQuery({ symbol: formData.symbol }, { enabled: false });
 
   // Mutations
   const addHoldingMutation = trpc.etf.addHolding.useMutation({
@@ -93,6 +95,31 @@ export default function Portfolio() {
       toast.error("Failed to update cash balance");
     },
   });
+
+  // Auto-fetch ETF name when symbol changes
+  useEffect(() => {
+    if (formData.symbol && formData.symbol.length >= 2 && !formData.name) {
+      setIsLookingUpName(true);
+      // Use a simple fetch to avoid tRPC complexity
+      fetch(`/api/trpc/etf.lookupETFName?input=${JSON.stringify({ symbol: formData.symbol })}`)
+        .then(res => res.json())
+        .then(data => {
+          const name = data.result?.data;
+          if (name) {
+            setFormData(prev => ({ ...prev, name }));
+            toast.success(`Found: ${name}`);
+          } else {
+            toast.info("ETF name not found, please enter manually");
+          }
+        })
+        .catch(error => {
+          console.error("Error fetching ETF name:", error);
+        })
+        .finally(() => {
+          setIsLookingUpName(false);
+        });
+    }
+  }, [formData.symbol]);
 
   const handleAddOrUpdate = async () => {
     if (!formData.symbol || !formData.name || !formData.quantity || !formData.purchasePrice) {
@@ -260,7 +287,9 @@ export default function Portfolio() {
                       placeholder="e.g., S&P 500 ETF"
                       value={formData.name}
                       onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                      disabled={isLookingUpName}
                     />
+                    {isLookingUpName && <div className="text-xs text-yellow-400 mt-1">🔍 Looking up ETF name...</div>}
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
@@ -342,11 +371,11 @@ export default function Portfolio() {
                   <td className="p-3 text-sm">{holding.name}</td>
                   <td className="p-3 text-right">{holding.quantity.toString()}</td>
                   <td className="p-3 text-right">${holding.currentPrice?.toString() || "N/A"}</td>
-                  <td className="p-3 text-right ">
+                  <td className="p-3 text-right" style={{ color: '#00ff00' }}>
                     ${(parseFloat(holding.quantity.toString()) * (parseFloat(holding.currentPrice?.toString() || "0"))).toFixed(2)}
                   </td>
-                  <td className={`p-3 text-right ${parseFloat(holding.purchasePrice.toString()) < parseFloat(holding.currentPrice?.toString() || "0") ? "text-green-400" : "text-red-400"}`}>
-                    ${(parseFloat(holding.currentPrice?.toString() || "0") - parseFloat(holding.purchasePrice.toString())).toFixed(2)}
+                  <td className={`p-3 text-right font-bold ${(parseFloat(holding.quantity.toString()) * (parseFloat(holding.currentPrice?.toString() || "0") - parseFloat(holding.purchasePrice.toString()))) >= 0 ? "text-green-400" : "text-red-400"}`}>
+                    ${(parseFloat(holding.quantity.toString()) * (parseFloat(holding.currentPrice?.toString() || "0") - parseFloat(holding.purchasePrice.toString()))).toFixed(2)}
                   </td>
                   <td className="p-3 text-center space-x-2">
                     <button

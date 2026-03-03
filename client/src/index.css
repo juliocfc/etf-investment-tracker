@@ -43,9 +43,10 @@
 }
 
 :root {
-  /* Cyberpunk Neon Colors */
+  /* Cyberpunk Neon Colors - Improved Readability */
   --neon-pink: oklch(0.65 0.25 330);
-  --neon-cyan: oklch(0.68 0.24 200);
+  --neon-cyan: oklch(0.75 0.22 180);  /* Brighter cyan for better contrast */
+  --neon-green: oklch(0.72 0.20 140);  /* Bright green-cyan alternative */
   --neon-purple: oklch(0.55 0.25 290);
   --deep-black: oklch(0.08 0 0);
   --dark-bg: oklch(0.12 0.01 290);
@@ -53,7 +54,7 @@
   /* Primary colors */
   --primary: var(--neon-pink);
   --primary-foreground: var(--deep-black);
-  --sidebar-primary: var(--neon-cyan);
+  --sidebar-primary: var(--neon-green);
   --sidebar-primary-foreground: var(--deep-black);
   
   /* Chart colors - neon palette */
@@ -65,11 +66,11 @@
   
   --radius: 0.25rem;
   --background: var(--deep-black);
-  --foreground: var(--neon-cyan);
+  --foreground: var(--neon-green);
   --card: var(--dark-bg);
-  --card-foreground: var(--neon-cyan);
+  --card-foreground: var(--neon-green);
   --popover: var(--dark-bg);
-  --popover-foreground: var(--neon-cyan);
+  --popover-foreground: var(--neon-green);
   --secondary: var(--neon-purple);
   --secondary-foreground: oklch(1 0 0);
   --muted: oklch(0.25 0.02 290);
@@ -82,24 +83,24 @@
   --input: oklch(0.15 0.01 290);
   --ring: var(--neon-cyan);
   --sidebar: var(--dark-bg);
-  --sidebar-foreground: var(--neon-cyan);
+  --sidebar-foreground: var(--neon-green);
   --sidebar-accent: var(--neon-pink);
   --sidebar-accent-foreground: var(--deep-black);
   --sidebar-border: oklch(0.20 0.02 290);
-  --sidebar-ring: var(--neon-cyan);
+  --sidebar-ring: var(--neon-green);
 }
 
 .dark {
   --primary: var(--neon-pink);
   --primary-foreground: var(--deep-black);
-  --sidebar-primary: var(--neon-cyan);
+  --sidebar-primary: var(--neon-green);
   --sidebar-primary-foreground: var(--deep-black);
   --background: var(--deep-black);
-  --foreground: var(--neon-cyan);
+  --foreground: var(--neon-green);
   --card: var(--dark-bg);
-  --card-foreground: var(--neon-cyan);
+  --card-foreground: var(--neon-green);
   --popover: var(--dark-bg);
-  --popover-foreground: var(--neon-cyan);
+  --popover-foreground: var(--neon-green);
   --secondary: var(--neon-purple);
   --secondary-foreground: oklch(1 0 0);
   --muted: oklch(0.25 0.02 290);
@@ -110,7 +111,7 @@
   --destructive-foreground: oklch(1 0 0);
   --border: oklch(0.20 0.02 290);
   --input: oklch(0.15 0.01 290);
-  --ring: var(--neon-cyan);
+  --ring: var(--neon-green);
   --chart-1: oklch(0.65 0.25 330);
   --chart-2: oklch(0.68 0.24 200);
   --chart-3: oklch(0.70 0.20 280);

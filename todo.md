@@ -43,3 +43,8 @@ Core web app completed with cyberpunk design. Remaining: static results webpage.
 ## Deployment & Testing
 - [ ] End-to-end testing of all features
 - [ ] Checkpoint and deployment
+
+## User-Requested Improvements
+- [x] Auto-fetch ETF name when symbol is entered
+- [x] Show total gain calculation (position size × (current price - purchase price))
+- [x] Improve color readability - adjust neon cyan contrast

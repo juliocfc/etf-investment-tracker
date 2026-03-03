@@ -19,6 +19,7 @@ import {
   fetchHistoricalPrices,
   validateEtfSymbol,
 } from "./financialApi";
+import { fetchETFName } from "./etfLookup";
 
 export const etfRouter = router({
   getHoldings: protectedProcedure.query(async ({ ctx }) => {
@@ -248,6 +249,13 @@ export const etfRouter = router({
 
     return totalDividends.toFixed(2);
   }),
+
+  lookupETFName: protectedProcedure
+    .input(z.object({ symbol: z.string().min(1).max(20) }))
+    .query(async ({ input }) => {
+      const name = await fetchETFName(input.symbol.toUpperCase());
+      return name || null;
+    }),
 
   getPortfolioSummary: protectedProcedure.query(async ({ ctx }) => {
     const holdings = await getUserEtfHoldings(ctx.user.id);
