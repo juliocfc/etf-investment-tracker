@@ -85,15 +85,25 @@ export default function Portfolio() {
   });
 
   const updatePricesMutation = trpc.etf.updatePrices.useMutation({
-    onSuccess: () => {
+    onSuccess: (data) => {
+      console.log("Prices updated successfully:", data);
       toast.success("Prices updated!");
       refetchHoldings();
       refetchSummary();
     },
     onError: (error) => {
+      console.error("Error updating prices:", error);
       toast.error(error.message || "Failed to update prices");
     },
   });
+
+  // Auto-fetch prices on page load
+  useEffect(() => {
+    console.log("Portfolio page loaded, auto-fetching prices");
+    updatePricesMutation.mutate();
+  }, []);
+
+
 
   const updateCashMutation = trpc.etf.updateCashBalance.useMutation({
     onSuccess: () => {
@@ -263,11 +273,25 @@ export default function Portfolio() {
           <h2 className="text-lg font-bold" style={{ color: '#00ff00' }}>ETF Holdings</h2>
           <div className="flex gap-2">
             <button
-              onClick={() => updatePricesMutation.mutate()}
-              className="px-3 py-2 rounded text-sm flex items-center gap-2"
-              style={{ color: '#00d9ff', border: '1px solid #00d9ff' }}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                console.log("Update Prices mousedown, calling mutation");
+                updatePricesMutation.mutate();
+              }}
+              disabled={updatePricesMutation.isPending}
+              style={{
+                padding: '8px 16px',
+                border: '1px solid #00d9ff',
+                background: 'transparent',
+                color: '#00d9ff',
+                cursor: updatePricesMutation.isPending ? 'not-allowed' : 'pointer',
+                opacity: updatePricesMutation.isPending ? 0.5 : 1,
+                borderRadius: '4px',
+                zIndex: 50
+              }}
+              title="Prices auto-update on page load"
             >
-              <RefreshCw className="w-4 h-4" /> Update Prices
+              {updatePricesMutation.isPending ? "Updating..." : "Update Prices (Auto)"}
             </button>
             <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
               <DialogTrigger asChild>
