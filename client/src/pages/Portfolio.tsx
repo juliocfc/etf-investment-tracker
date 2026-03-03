@@ -101,33 +101,40 @@ export default function Portfolio() {
     },
   });
 
-  // Fetch ETF name using tRPC query
-  const lookupNameQuery = trpc.etf.lookupETFName.useQuery(
-    { symbol: formData.symbol },
-    { enabled: false }
-  );
-
+  // Fetch ETF name - simple callback without hook dependencies
   const fetchETFName = useCallback(async (symbol: string) => {
     if (!symbol || symbol.length < 2) return;
     
     setIsLookingUpName(true);
     try {
-      const result = await lookupNameQuery.refetch();
-      const name = result.data;
+      const encodedInput = encodeURIComponent(JSON.stringify({ symbol: symbol.toUpperCase() }));
+      const response = await fetch(`/api/trpc/etf.lookupETFName?input=${encodedInput}`);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      
+      const data = await response.json();
+      console.log("ETF lookup response:", data);
+      
+      // Parse tRPC response format
+      let name = null;
+      if (Array.isArray(data) && data[0]?.result?.data) {
+        name = data[0].result.data;
+      } else if (data?.result?.data) {
+        name = data.result.data;
+      }
       
       if (name && typeof name === 'string' && name.length > 0) {
         setFormData(prev => ({ ...prev, name }));
         toast.success(`Found: ${name}`);
-      } else {
-        console.log("No name found for symbol:", symbol);
       }
     } catch (error) {
       console.error("Error fetching ETF name:", error);
-      toast.error("Failed to fetch ETF name");
     } finally {
       setIsLookingUpName(false);
     }
-  }, [lookupNameQuery]);
+  }, []);
 
   // Auto-fetch ETF name when symbol changes (with debouncing)
   useEffect(() => {
@@ -147,8 +154,6 @@ export default function Portfolio() {
       if (lookupTimeout) clearTimeout(lookupTimeout);
     };
   }, [formData.symbol, formData.name, fetchETFName]);
-
-
 
   const handleAddOrUpdate = async () => {
     if (!formData.symbol || !formData.name || !formData.quantity || !formData.purchasePrice) {

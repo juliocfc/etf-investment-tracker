@@ -58,3 +58,6 @@ Core web app completed with cyberpunk design. Remaining: static results webpage.
 - [x] Update total value in real-time when ETF holdings change
 - [x] Use 3 decimal places for quantity and current price
 - [x] Fix ETF name auto-fetch (still not working after symbol entry)
+
+## Critical Bug Fixes
+- [x] Fix React error #185 when entering ETF symbol (hook dependency issue)
