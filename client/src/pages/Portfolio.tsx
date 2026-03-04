@@ -1,20 +1,27 @@
-import React, { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, Trash2, Edit2, RefreshCw } from "lucide-react";
+import { Plus, Trash2, Edit2, RefreshCw, ShoppingCart } from "lucide-react";
 import { toast } from "sonner";
 
 export default function Portfolio() {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [isBuyDialogOpen, setIsBuyDialogOpen] = useState<number | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [formData, setFormData] = useState({
     symbol: "",
     name: "",
     quantity: "",
     purchasePrice: "",
+    purchaseDate: new Date().toISOString().split("T")[0],
+  });
+
+  const [buyData, setBuyData] = useState({
+    quantity: "",
+    price: "",
     purchaseDate: new Date().toISOString().split("T")[0],
   });
 
@@ -84,6 +91,23 @@ export default function Portfolio() {
     },
   });
 
+  const buyMoreSharesMutation = trpc.etf.buyMoreShares.useMutation({
+    onSuccess: () => {
+      toast.success("Shares purchased successfully!");
+      refetchHoldings();
+      refetchSummary();
+      setBuyData({
+        quantity: "",
+        price: "",
+        purchaseDate: new Date().toISOString().split("T")[0],
+      });
+      setIsBuyDialogOpen(null);
+    },
+    onError: (error) => {
+      toast.error(error.message || "Failed to purchase shares");
+    },
+  });
+
   const updatePricesMutation = trpc.etf.updatePrices.useMutation({
     onSuccess: (data) => {
       console.log("Prices updated successfully:", data);
@@ -99,16 +123,100 @@ export default function Portfolio() {
 
   // Auto-fetch prices on page load
   useEffect(() => {
-    console.log("Portfolio page loaded, auto-fetching prices");
     updatePricesMutation.mutate();
   }, []);
 
+  // Handle symbol input change with auto-lookup
+  const handleSymbolChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newSymbol = e.target.value.toUpperCase();
+    setFormData((prev) => ({ ...prev, symbol: newSymbol }));
 
+    if (lookupTimeout) clearTimeout(lookupTimeout);
+
+    if (newSymbol.length > 0) {
+      setIsLookingUpName(true);
+      const timeout = setTimeout(async () => {
+        try {
+          const result = await refetchETFName();
+          if (result.data) {
+            setFormData((prev) => ({ ...prev, name: result.data || "" }));
+          }
+        } catch (error) {
+          console.error("Failed to lookup ETF name:", error);
+        } finally {
+          setIsLookingUpName(false);
+        }
+      }, 500);
+
+      setLookupTimeout(timeout);
+    }
+  };
+
+  const handleAddHolding = async () => {
+    if (!formData.symbol || !formData.name || !formData.quantity || !formData.purchasePrice) {
+      toast.error("Please fill in all fields");
+      return;
+    }
+
+    addHoldingMutation.mutate({
+      symbol: formData.symbol,
+      name: formData.name,
+      quantity: formData.quantity,
+      purchasePrice: formData.purchasePrice,
+      purchaseDate: new Date(formData.purchaseDate),
+    });
+  };
+
+  const handleUpdateHolding = async () => {
+    if (!editingId || !formData.symbol || !formData.quantity || !formData.purchasePrice) {
+      toast.error("Please fill in all fields");
+      return;
+    }
+
+    updateHoldingMutation.mutate({
+      id: editingId,
+      symbol: formData.symbol,
+      name: formData.name,
+      quantity: formData.quantity,
+      purchasePrice: formData.purchasePrice,
+      purchaseDate: new Date(formData.purchaseDate),
+    });
+  };
+
+  const handleBuyMoreShares = async (holdingId: number) => {
+    if (!buyData.quantity || !buyData.price) {
+      toast.error("Please fill in quantity and price");
+      return;
+    }
+
+    buyMoreSharesMutation.mutate({
+      holdingId,
+      quantity: buyData.quantity,
+      price: buyData.price,
+      purchaseDate: new Date(buyData.purchaseDate),
+    });
+  };
+
+  const handleEditHolding = (holding: any) => {
+    setEditingId(holding.id);
+    setFormData({
+      symbol: holding.symbol,
+      name: holding.name,
+      quantity: holding.quantity.toString(),
+      purchasePrice: holding.purchasePrice.toString(),
+      purchaseDate: new Date(holding.purchaseDate).toISOString().split("T")[0],
+    });
+  };
+
+  const handleDeleteHolding = (id: number) => {
+    if (confirm("Are you sure you want to delete this ETF?")) {
+      deleteHoldingMutation.mutate({ id });
+    }
+  };
 
   const updateCashMutation = trpc.etf.updateCashBalance.useMutation({
     onSuccess: () => {
       toast.success("Cash balance updated!");
-      setCashAmount("");
       setIsEditingCash(false);
       refetchSummary();
     },
@@ -117,256 +225,168 @@ export default function Portfolio() {
     },
   });
 
-  // Fetch ETF name using tRPC
-  const fetchETFName = useCallback(async (symbol: string) => {
-    if (!symbol || symbol.length < 2) return;
-    
-    setIsLookingUpName(true);
-    try {
-      const result = await refetchETFName();
-      const name = result.data;
-      
-      if (name && typeof name === 'string' && name.length > 0) {
-        setFormData(prev => ({ ...prev, name }));
-        toast.success(`Found: ${name}`);
-      } else {
-        console.log("No name found for symbol:", symbol);
-      }
-    } catch (error) {
-      console.error("Error fetching ETF name:", error);
-    } finally {
-      setIsLookingUpName(false);
-    }
-  }, [refetchETFName]);
-
-  // Auto-fetch ETF name when symbol changes (with debouncing)
-  useEffect(() => {
-    if (lookupTimeout) {
-      clearTimeout(lookupTimeout);
-    }
-    
-    if (formData.symbol && formData.symbol.length >= 2 && !formData.name) {
-      const timeout = setTimeout(() => {
-        fetchETFName(formData.symbol);
-      }, 500); // Debounce for 500ms
-      
-      setLookupTimeout(timeout);
-    }
-    
-    return () => {
-      if (lookupTimeout) clearTimeout(lookupTimeout);
-    };
-  }, [formData.symbol, formData.name, fetchETFName]);
-
-  const handleAddOrUpdate = async () => {
-    if (!formData.symbol || !formData.name || !formData.quantity || !formData.purchasePrice) {
-      toast.error("Please fill in all fields");
+  const handleCashUpdate = async () => {
+    if (!cashAmount) {
+      toast.error("Please enter an amount");
       return;
     }
 
-    if (editingId) {
-      updateHoldingMutation.mutate({
-        id: editingId,
-        symbol: formData.symbol,
-        name: formData.name,
-        quantity: formData.quantity,
-        purchasePrice: formData.purchasePrice,
-        purchaseDate: new Date(formData.purchaseDate),
-      });
-    } else {
-      addHoldingMutation.mutate({
-        symbol: formData.symbol,
-        name: formData.name,
-        quantity: formData.quantity,
-        purchasePrice: formData.purchasePrice,
-        purchaseDate: new Date(formData.purchaseDate),
-      });
-    }
-  };
-
-  const handleEdit = (holding: any) => {
-    setFormData({
-      symbol: holding.symbol,
-      name: holding.name,
-      quantity: holding.quantity.toString(),
-      purchasePrice: holding.purchasePrice.toString(),
-      purchaseDate: new Date(holding.purchaseDate).toISOString().split("T")[0],
-    });
-    setEditingId(holding.id);
-    setIsAddDialogOpen(true);
+    updateCashMutation.mutate({ amount: cashAmount });
   };
 
   return (
-    <div className="space-y-6">
-      {/* Portfolio Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="data-card">
-          <div className="data-card-title">Total Value</div>
-          <div className="data-card-value">${(parseFloat(summary?.totalValue || "0")).toFixed(2)}</div>
-          <div className="data-card-subtitle">Portfolio worth</div>
-        </div>
-
-        <div className="data-card">
-          <div className="data-card-title">Investment Value</div>
-          <div className="data-card-value">${(parseFloat(summary?.investmentValue || "0")).toFixed(2)}</div>
-          <div className="data-card-subtitle">ETF holdings</div>
-        </div>
-
-        <div className="data-card">
-          <div className="data-card-title">Cash Balance</div>
-          <div className="data-card-value">${(parseFloat(summary?.cashBalance || "0")).toFixed(2)}</div>
-          <div className="data-card-subtitle">Available cash</div>
-        </div>
-
-        <div className="data-card">
-          <div className="data-card-title">Allocation</div>
-          <div className="data-card-value">{summary?.allocationBreakdown?.length || 0}</div>
-          <div className="data-card-subtitle">Holdings count</div>
-        </div>
+    <div className="space-y-6 p-6">
+      {/* Summary Cards */}
+      <div className="grid grid-cols-4 gap-4">
+        <Card className="p-4 border-2 border-cyan-500/50 bg-black/50">
+          <div className="text-xs text-cyan-400 mb-2">TOTAL VALUE</div>
+          <div className="text-2xl font-bold text-white">${summary?.totalValue || "0.00"}</div>
+          <div className="text-xs text-gray-400 mt-1">Portfolio worth</div>
+        </Card>
+        <Card className="p-4 border-2 border-cyan-500/50 bg-black/50">
+          <div className="text-xs text-cyan-400 mb-2">INVESTMENT VALUE</div>
+          <div className="text-2xl font-bold text-white">${summary?.investmentValue || "0.00"}</div>
+          <div className="text-xs text-gray-400 mt-1">ETF holdings</div>
+        </Card>
+        <Card className="p-4 border-2 border-cyan-500/50 bg-black/50">
+          <div className="text-xs text-cyan-400 mb-2">CASH BALANCE</div>
+          <div className="text-2xl font-bold text-white">${summary?.cashBalance || "0.00"}</div>
+          <div className="text-xs text-gray-400 mt-1">Available cash</div>
+        </Card>
+        <Card className="p-4 border-2 border-cyan-500/50 bg-black/50">
+          <div className="text-xs text-cyan-400 mb-2">ALLOCATION</div>
+          <div className="text-2xl font-bold text-white">{summary?.holdings?.length || 0}</div>
+          <div className="text-xs text-gray-400 mt-1">Holdings count</div>
+        </Card>
       </div>
 
-      {/* Cash Balance Management */}
-      <Card className="p-4" style={{ background: 'linear-gradient(135deg, rgba(0, 217, 255, 0.05) 0%, rgba(255, 0, 110, 0.05) 100%)', border: '1px solid rgba(0, 217, 255, 0.2)' }}>
-        <div className="flex justify-between items-center">
-          <div>
-            <h3 className="text-sm font-bold uppercase tracking-wider text-muted-foreground mb-2">
-              Cash Available
-            </h3>
-            <div className="text-2xl font-bold" style={{ color: '#00ff00' }}>
-              ${(parseFloat(cashBalance || "0")).toFixed(2)}
-            </div>
-          </div>
-          <button
-            onClick={() => setIsEditingCash(!isEditingCash)}
-            className="px-4 py-2 rounded text-sm font-bold uppercase"
-            style={{ color: '#00d9ff', border: '2px solid #00d9ff' }}
-          >
-            {isEditingCash ? "Cancel" : "Update"}
-          </button>
-        </div>
-
-        {isEditingCash && (
-          <div className="mt-4 flex gap-2">
-            <Input
-              type="number"
-              placeholder="Enter cash amount"
-              value={cashAmount}
-              onChange={(e) => setCashAmount(e.target.value)}
-              className="flex-1"
-            />
+      {/* Cash Balance Section */}
+      <Card className="p-6 border-2 border-cyan-500/30 bg-black/30">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-bold text-cyan-400">CASH AVAILABLE</h3>
+          {!isEditingCash && (
             <Button
               onClick={() => {
-                if (cashAmount) {
-                  updateCashMutation.mutate({ amount: cashAmount });
-                }
+                setIsEditingCash(true);
+                setCashAmount(summary?.cashBalance || "");
               }}
+              className="bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300"
+              size="sm"
             >
+              UPDATE
+            </Button>
+          )}
+        </div>
+        {isEditingCash ? (
+          <div className="flex gap-2">
+            <Input
+              type="number"
+              step="0.001"
+              value={cashAmount}
+              onChange={(e) => setCashAmount(e.target.value)}
+              placeholder="Enter amount"
+              className="bg-black/50 border-cyan-500/30 text-white"
+            />
+            <Button onClick={handleCashUpdate} className="bg-cyan-500 hover:bg-cyan-600 text-black">
               Save
             </Button>
+            <Button
+              onClick={() => setIsEditingCash(false)}
+              className="bg-gray-600 hover:bg-gray-700 text-white"
+            >
+              Cancel
+            </Button>
           </div>
+        ) : (
+          <div className="text-3xl font-bold text-cyan-300">${summary?.cashBalance || "0.00"}</div>
         )}
       </Card>
 
-      {/* ETF Holdings */}
-      <Card className="p-4" style={{ background: 'linear-gradient(135deg, rgba(0, 217, 255, 0.05) 0%, rgba(255, 0, 110, 0.05) 100%)', border: '1px solid rgba(0, 217, 255, 0.2)' }}>
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-lg font-bold" style={{ color: '#00ff00' }}>ETF Holdings</h2>
+      {/* ETF Holdings Section */}
+      <Card className="p-6 border-2 border-cyan-500/30 bg-black/30">
+        <div className="flex items-center justify-between mb-6">
+          <h3 className="text-lg font-bold text-cyan-400">ETF HOLDINGS</h3>
           <div className="flex gap-2">
             <button
-              onMouseDown={(e) => {
-                e.preventDefault();
-                console.log("Update Prices mousedown, calling mutation");
-                updatePricesMutation.mutate();
-              }}
-              disabled={updatePricesMutation.isPending}
-              style={{
-                padding: '8px 16px',
-                border: '1px solid #00d9ff',
-                background: 'transparent',
-                color: '#00d9ff',
-                cursor: updatePricesMutation.isPending ? 'not-allowed' : 'pointer',
-                opacity: updatePricesMutation.isPending ? 0.5 : 1,
-                borderRadius: '4px',
-                zIndex: 50
-              }}
-              title="Prices auto-update on page load"
+              onClick={() => updatePricesMutation.mutate()}
+              className="px-4 py-2 border-2 border-cyan-500 text-cyan-400 hover:bg-cyan-500/10 font-mono text-sm"
             >
-              {updatePricesMutation.isPending ? "Updating..." : "Update Prices (Auto)"}
+              Update Prices (Auto)
             </button>
             <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
               <DialogTrigger asChild>
-                <button
-                  onClick={() => {
-                    setEditingId(null);
-                    setFormData({
-                      symbol: "",
-                      name: "",
-                      quantity: "",
-                      purchasePrice: "",
-                      purchaseDate: new Date().toISOString().split("T")[0],
-                    });
-                  }}
-                  className="px-4 py-2 rounded text-sm font-bold uppercase"
-                  style={{ background: '#ff006e', color: '#000' }}
-                >
-                  <Plus className="w-4 h-4 inline mr-2" /> ADD ETF
-                </button>
+                <Button className="bg-pink-600 hover:bg-pink-700 text-white" onClick={() => setFormData({
+                  symbol: "",
+                  name: "",
+                  quantity: "",
+                  purchasePrice: "",
+                  purchaseDate: new Date().toISOString().split("T")[0],
+                })}>
+                  <Plus className="w-4 h-4 mr-2" />
+                  ADD ETF
+                </Button>
               </DialogTrigger>
-              <DialogContent>
+              <DialogContent className="bg-black border-2 border-cyan-500/50">
                 <DialogHeader>
-                  <DialogTitle>{editingId ? "Edit ETF" : "Add New ETF"}</DialogTitle>
+                  <DialogTitle className="text-cyan-400">ADD NEW ETF</DialogTitle>
                 </DialogHeader>
                 <div className="space-y-4">
                   <div>
-                    <label className="text-sm font-medium text-muted-foreground">Symbol</label>
+                    <label className="text-cyan-400 text-sm">Symbol</label>
                     <Input
-                      placeholder="e.g., SPY"
                       value={formData.symbol}
-                      onChange={(e) => setFormData({ ...formData, symbol: e.target.value.toUpperCase() })}
+                      onChange={handleSymbolChange}
+                      placeholder="e.g., SPY"
+                      className="bg-black/50 border-cyan-500/30 text-white mt-1"
                     />
                   </div>
                   <div>
-                    <label className="text-sm font-medium text-muted-foreground">Name</label>
+                    <label className="text-cyan-400 text-sm">
+                      Name {isLookingUpName && <span className="text-gray-400">(looking up...)</span>}
+                    </label>
                     <Input
-                      placeholder="e.g., S&P 500 ETF"
                       value={formData.name}
-                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                      disabled={isLookingUpName}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
+                      placeholder="ETF Name"
+                      className="bg-black/50 border-cyan-500/30 text-white mt-1"
                     />
-                    {isLookingUpName && <div className="text-xs text-yellow-400 mt-1">🔍 Looking up ETF name...</div>}
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="text-sm font-medium text-muted-foreground">Quantity</label>
-                      <Input
-                        type="number"
-                        step="0.001"
-                        placeholder="e.g., 100.000"
-                        value={formData.quantity}
-                        onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
-                      />
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium text-muted-foreground">Purchase Price</label>
-                      <Input
-                        type="number"
-                        step="0.001"
-                        placeholder="e.g., 150.500"
-                        value={formData.purchasePrice}
-                        onChange={(e) => setFormData({ ...formData, purchasePrice: e.target.value })}
-                      />
-                    </div>
                   </div>
                   <div>
-                    <label className="text-sm font-medium text-muted-foreground">Purchase Date</label>
+                    <label className="text-cyan-400 text-sm">Quantity</label>
+                    <Input
+                      type="number"
+                      step="0.001"
+                      value={formData.quantity}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, quantity: e.target.value }))}
+                      placeholder="0.000"
+                      className="bg-black/50 border-cyan-500/30 text-white mt-1"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-cyan-400 text-sm">Purchase Price</label>
+                    <Input
+                      type="number"
+                      step="0.001"
+                      value={formData.purchasePrice}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, purchasePrice: e.target.value }))}
+                      placeholder="0.000"
+                      className="bg-black/50 border-cyan-500/30 text-white mt-1"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-cyan-400 text-sm">Purchase Date</label>
                     <Input
                       type="date"
                       value={formData.purchaseDate}
-                      onChange={(e) => setFormData({ ...formData, purchaseDate: e.target.value })}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, purchaseDate: e.target.value }))}
+                      className="bg-black/50 border-cyan-500/30 text-white mt-1"
                     />
                   </div>
-                  <Button onClick={handleAddOrUpdate} className="w-full">
-                    {editingId ? "Update" : "Add"} ETF
+                  <Button
+                    onClick={handleAddHolding}
+                    className="w-full bg-cyan-500 hover:bg-cyan-600 text-black font-bold"
+                  >
+                    Add ETF
                   </Button>
                 </div>
               </DialogContent>
@@ -374,69 +394,172 @@ export default function Portfolio() {
           </div>
         </div>
 
-        {holdings && holdings.length > 0 ? (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border/50">
-                  <th className="p-3 text-left font-bold uppercase text-muted-foreground">Symbol</th>
-                  <th className="p-3 text-left font-bold uppercase text-muted-foreground">Name</th>
-                  <th className="p-3 text-right font-bold uppercase text-muted-foreground">Quantity</th>
-                  <th className="p-3 text-right font-bold uppercase text-muted-foreground">Current Price</th>
-                  <th className="p-3 text-right font-bold uppercase text-muted-foreground">Value</th>
-                  <th className="p-3 text-right font-bold uppercase text-muted-foreground">Gain/Loss</th>
-                  <th className="p-3 text-center font-bold uppercase text-muted-foreground">Actions</th>
+        {/* Holdings Table */}
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-cyan-500/30">
+                <th className="text-left py-3 px-4 text-cyan-400 font-mono">SYMBOL</th>
+                <th className="text-left py-3 px-4 text-cyan-400 font-mono">NAME</th>
+                <th className="text-right py-3 px-4 text-cyan-400 font-mono">QUANTITY</th>
+                <th className="text-right py-3 px-4 text-cyan-400 font-mono">AVG COST</th>
+                <th className="text-right py-3 px-4 text-cyan-400 font-mono">CURRENT PRICE</th>
+                <th className="text-right py-3 px-4 text-cyan-400 font-mono">VALUE</th>
+                <th className="text-right py-3 px-4 text-cyan-400 font-mono">GAIN/LOSS</th>
+                <th className="text-center py-3 px-4 text-cyan-400 font-mono">ACTIONS</th>
+              </tr>
+            </thead>
+            <tbody>
+              {summary?.holdings?.map((holding: any) => (
+                <tr key={holding.id} className="border-b border-cyan-500/20 hover:bg-cyan-500/5">
+                  <td className="py-3 px-4 text-green-400 font-bold">{holding.symbol}</td>
+                  <td className="py-3 px-4 text-gray-300">{holding.name}</td>
+                  <td className="py-3 px-4 text-right text-white">{parseFloat(holding.quantity).toFixed(3)}</td>
+                  <td className="py-3 px-4 text-right text-cyan-300">${holding.averageCost}</td>
+                  <td className="py-3 px-4 text-right text-white">${holding.currentPrice}</td>
+                  <td className="py-3 px-4 text-right text-white">${holding.currentValue}</td>
+                  <td
+                    className={`py-3 px-4 text-right font-bold ${
+                      parseFloat(holding.gain) >= 0 ? "text-green-400" : "text-red-400"
+                    }`}
+                  >
+                    ${holding.gain}
+                  </td>
+                  <td className="py-3 px-4 text-center space-x-2 flex justify-center">
+                    <Dialog open={isBuyDialogOpen === holding.id} onOpenChange={(open) => setIsBuyDialogOpen(open ? holding.id : null)}>
+                      <DialogTrigger asChild>
+                        <button className="p-2 hover:bg-cyan-500/20 rounded">
+                          <ShoppingCart className="w-4 h-4 text-cyan-400" />
+                        </button>
+                      </DialogTrigger>
+                      <DialogContent className="bg-black border-2 border-cyan-500/50">
+                        <DialogHeader>
+                          <DialogTitle className="text-cyan-400">BUY MORE {holding.symbol}</DialogTitle>
+                        </DialogHeader>
+                        <div className="space-y-4">
+                          <div>
+                            <label className="text-cyan-400 text-sm">Quantity</label>
+                            <Input
+                              type="number"
+                              step="0.001"
+                              value={buyData.quantity}
+                              onChange={(e) => setBuyData((prev) => ({ ...prev, quantity: e.target.value }))}
+                              placeholder="0.000"
+                              className="bg-black/50 border-cyan-500/30 text-white mt-1"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-cyan-400 text-sm">Purchase Price</label>
+                            <Input
+                              type="number"
+                              step="0.001"
+                              value={buyData.price}
+                              onChange={(e) => setBuyData((prev) => ({ ...prev, price: e.target.value }))}
+                              placeholder="0.000"
+                              className="bg-black/50 border-cyan-500/30 text-white mt-1"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-cyan-400 text-sm">Purchase Date</label>
+                            <Input
+                              type="date"
+                              value={buyData.purchaseDate}
+                              onChange={(e) => setBuyData((prev) => ({ ...prev, purchaseDate: e.target.value }))}
+                              className="bg-black/50 border-cyan-500/30 text-white mt-1"
+                            />
+                          </div>
+                          <Button
+                            onClick={() => handleBuyMoreShares(holding.id)}
+                            className="w-full bg-cyan-500 hover:bg-cyan-600 text-black font-bold"
+                          >
+                            Confirm Purchase
+                          </Button>
+                        </div>
+                      </DialogContent>
+                    </Dialog>
+                    <button
+                      onClick={() => handleEditHolding(holding)}
+                      className="p-2 hover:bg-cyan-500/20 rounded"
+                    >
+                      <Edit2 className="w-4 h-4 text-cyan-400" />
+                    </button>
+                    <button
+                      onClick={() => handleDeleteHolding(holding.id)}
+                      className="p-2 hover:bg-red-500/20 rounded"
+                    >
+                      <Trash2 className="w-4 h-4 text-red-400" />
+                    </button>
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {holdings.map((holding) => {
-                  const quantity = parseFloat(holding.quantity.toString());
-                  const currentPrice = parseFloat(holding.currentPrice?.toString() || "0");
-                  const purchasePrice = parseFloat(holding.purchasePrice.toString());
-                  const value = quantity * currentPrice;
-                  const gain = quantity * (currentPrice - purchasePrice);
-                  const isGain = gain >= 0;
-
-                  return (
-                    <tr key={holding.id} className="border-b border-border/50 hover:bg-card/50">
-                      <td className="p-3 font-bold">{holding.symbol}</td>
-                      <td className="p-3 text-sm">{holding.name}</td>
-                      <td className="p-3 text-right">{quantity.toFixed(3)}</td>
-                      <td className="p-3 text-right">${currentPrice.toFixed(3)}</td>
-                      <td className="p-3 text-right" style={{ color: '#00ff00' }}>
-                        ${value.toFixed(2)}
-                      </td>
-                      <td className={`p-3 text-right font-bold ${isGain ? "text-green-400" : "text-red-400"}`}>
-                        ${gain.toFixed(2)}
-                      </td>
-                      <td className="p-3 text-center space-x-2">
-                        <button
-                          onClick={() => handleEdit(holding)}
-                          className="p-1 hover:bg-card rounded inline-block"
-                          title="Edit"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => deleteHoldingMutation.mutate({ id: holding.id })}
-                          className="p-1 hover:bg-card rounded inline-block text-red-400"
-                          title="Delete"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <div className="text-center py-8 text-muted-foreground">
-            No ETF holdings yet. Click "ADD ETF" to get started!
-          </div>
-        )}
+              ))}
+            </tbody>
+          </table>
+        </div>
       </Card>
+
+      {/* Edit Dialog */}
+      {editingId && (
+        <Dialog open={!!editingId} onOpenChange={(open) => !open && setEditingId(null)}>
+          <DialogContent className="bg-black border-2 border-cyan-500/50">
+            <DialogHeader>
+              <DialogTitle className="text-cyan-400">EDIT ETF</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <label className="text-cyan-400 text-sm">Symbol</label>
+                <Input
+                  value={formData.symbol}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, symbol: e.target.value }))}
+                  className="bg-black/50 border-cyan-500/30 text-white mt-1"
+                />
+              </div>
+              <div>
+                <label className="text-cyan-400 text-sm">Name</label>
+                <Input
+                  value={formData.name}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
+                  className="bg-black/50 border-cyan-500/30 text-white mt-1"
+                />
+              </div>
+              <div>
+                <label className="text-cyan-400 text-sm">Quantity</label>
+                <Input
+                  type="number"
+                  step="0.001"
+                  value={formData.quantity}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, quantity: e.target.value }))}
+                  className="bg-black/50 border-cyan-500/30 text-white mt-1"
+                />
+              </div>
+              <div>
+                <label className="text-cyan-400 text-sm">Purchase Price</label>
+                <Input
+                  type="number"
+                  step="0.001"
+                  value={formData.purchasePrice}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, purchasePrice: e.target.value }))}
+                  className="bg-black/50 border-cyan-500/30 text-white mt-1"
+                />
+              </div>
+              <div>
+                <label className="text-cyan-400 text-sm">Purchase Date</label>
+                <Input
+                  type="date"
+                  value={formData.purchaseDate}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, purchaseDate: e.target.value }))}
+                  className="bg-black/50 border-cyan-500/30 text-white mt-1"
+                />
+              </div>
+              <Button
+                onClick={handleUpdateHolding}
+                className="w-full bg-cyan-500 hover:bg-cyan-600 text-black font-bold"
+              >
+                Update ETF
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }

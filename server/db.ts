@@ -241,3 +241,42 @@ export async function getBalanceHistory(userId: number, days: number = 365) {
     )
     .orderBy(balanceHistory.date);
 }
+
+// Purchase queries
+export async function addPurchase(userId: number, holdingId: number, symbol: string, quantity: string, price: string, purchaseDate: Date) {
+  const db = await getDb();
+  if (!db) return null;
+  const { purchases } = await import("../drizzle/schema");
+  return db.insert(purchases).values({
+    userId,
+    holdingId,
+    symbol,
+    quantity,
+    price,
+    purchaseDate,
+  });
+}
+
+export async function getPurchases(holdingId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const { purchases } = await import("../drizzle/schema");
+  return db.select().from(purchases).where(eq(purchases.holdingId, holdingId)).orderBy(purchases.purchaseDate);
+}
+
+export async function calculateAverageCost(holdingId: number): Promise<number | null> {
+  const purchases = await getPurchases(holdingId);
+  if (purchases.length === 0) return null;
+  
+  let totalCost = 0;
+  let totalQuantity = 0;
+  
+  for (const purchase of purchases) {
+    const qty = parseFloat(purchase.quantity.toString());
+    const price = parseFloat(purchase.price.toString());
+    totalCost += qty * price;
+    totalQuantity += qty;
+  }
+  
+  return totalQuantity > 0 ? totalCost / totalQuantity : null;
+}

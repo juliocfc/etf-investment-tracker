@@ -15,6 +15,13 @@
       "when": 1772387556562,
       "tag": "0001_superb_hairball",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1772590787538,
+      "tag": "0002_mean_microchip",
+      "breakpoints": true
     }
   ]
 }

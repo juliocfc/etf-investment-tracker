@@ -146,3 +146,33 @@ export const balanceHistory = mysqlTable(
 
 export type BalanceHistory = typeof balanceHistory.$inferSelect;
 export type InsertBalanceHistory = typeof balanceHistory.$inferInsert;
+
+// Purchases table (tracks individual buy transactions for average cost calculation)
+export const purchases = mysqlTable(
+  "purchases",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    userId: int("userId").notNull(),
+    holdingId: int("holdingId").notNull(),
+    symbol: varchar("symbol", { length: 20 }).notNull(),
+    quantity: decimal("quantity", { precision: 18, scale: 8 }).notNull(),
+    price: decimal("price", { precision: 18, scale: 8 }).notNull(),
+    purchaseDate: timestamp("purchaseDate").notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  (table) => ([
+    index("idx_userId_holdingId").on(table.userId, table.holdingId),
+    index("idx_symbol").on(table.symbol),
+    foreignKey({
+      columns: [table.userId],
+      foreignColumns: [users.id],
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [table.holdingId],
+      foreignColumns: [etfHoldings.id],
+    }).onDelete("cascade"),
+  ])
+);
+
+export type Purchase = typeof purchases.$inferSelect;
+export type InsertPurchase = typeof purchases.$inferInsert;

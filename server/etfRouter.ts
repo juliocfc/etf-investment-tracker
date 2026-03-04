@@ -13,6 +13,8 @@ import {
   getBalanceHistory,
   getDividendHistory,
   addDividendHistory,
+  addPurchase,
+  calculateAverageCost,
 } from "./db";
 import {
   fetchEtfPrice,
@@ -262,6 +264,47 @@ export const etfRouter = router({
     .query(async ({ input }) => {
       const name = await fetchETFName(input.symbol.toUpperCase());
       return name || null;
+    }),
+
+  buyMoreShares: protectedProcedure
+    .input(
+      z.object({
+        holdingId: z.number(),
+        quantity: z.string(),
+        price: z.string(),
+        purchaseDate: z.date(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const holdings = await getUserEtfHoldings(ctx.user.id);
+      const holding = holdings.find((h) => h.id === input.holdingId);
+      
+      if (!holding) {
+        throw new Error("Holding not found");
+      }
+
+      await addPurchase(
+        ctx.user.id,
+        input.holdingId,
+        holding.symbol,
+        input.quantity,
+        input.price,
+        input.purchaseDate
+      );
+
+      const newQuantity = parseFloat(holding.quantity.toString()) + parseFloat(input.quantity);
+      const averageCost = await calculateAverageCost(input.holdingId);
+
+      await updateEtfHolding(input.holdingId, {
+        quantity: newQuantity.toString(),
+        purchasePrice: averageCost?.toString() || input.price,
+      });
+
+      return {
+        success: true,
+        newQuantity: newQuantity.toFixed(3),
+        averageCost: averageCost?.toFixed(3) || input.price,
+      };
     }),
 
   getPortfolioSummary: protectedProcedure.query(async ({ ctx }) => {

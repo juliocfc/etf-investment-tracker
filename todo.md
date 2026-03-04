@@ -66,3 +66,11 @@ Core web app completed with cyberpunk design. Remaining: static results webpage.
 - [x] ETF name not updating when symbol is entered (fixed - changed to publicProcedure)
 - [x] ETF price not auto-fetching when adding/updating (fixed - tRPC client now working)
 - [x] Update Prices button not working (fixed - tRPC mutation working)
+
+
+## Buy Button Feature
+- [x] Add Buy button next to each ETF holding
+- [x] Create purchase dialog for adding more shares
+- [x] Implement average cost calculation based on all purchases
+- [x] Add average cost column to holdings table
+- [x] Update holding when buying more shares
