@@ -96,7 +96,14 @@ export const etfRouter = router({
     const holdings = await getUserEtfHoldings(ctx.user.id);
     const results = [];
 
-    for (const holding of holdings) {
+    for (let i = 0; i < holdings.length; i++) {
+      const holding = holdings[i];
+      
+      // Add 1.2 second delay between requests to respect Alpha Vantage rate limit
+      if (i > 0) {
+        await new Promise((resolve) => setTimeout(resolve, 1200));
+      }
+      
       const priceData = await fetchEtfPrice(holding.symbol);
       if (priceData) {
         await updateEtfHolding(holding.id, {

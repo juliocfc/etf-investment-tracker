@@ -32,12 +32,18 @@ export async function fetchEtfPrice(symbol: string): Promise<PriceData | null> {
       apikey: ALPHA_VANTAGE_API_KEY,
     });
 
-    const response = await fetch(`${ALPHA_VANTAGE_BASE_URL}?${params}`);
+    const url = `${ALPHA_VANTAGE_BASE_URL}?${params}`;
+    console.log(`[FinancialApi] Fetching price for ${symbol} from ${url}`);
+    
+    const response = await fetch(url);
     const data = await response.json();
+    
+    console.log(`[FinancialApi] API Response for ${symbol}:`, JSON.stringify(data).substring(0, 200));
 
     if (data["Global Quote"] && data["Global Quote"]["05. price"]) {
       const price = parseFloat(data["Global Quote"]["05. price"]);
       if (!isNaN(price)) {
+        console.log(`[FinancialApi] Successfully fetched price for ${symbol}: $${price}`);
         return {
           symbol: symbol.toUpperCase(),
           price,
@@ -46,7 +52,7 @@ export async function fetchEtfPrice(symbol: string): Promise<PriceData | null> {
       }
     }
 
-    console.warn(`[FinancialApi] No price data for ${symbol}`);
+    console.warn(`[FinancialApi] No price data for ${symbol}. Response keys: ${Object.keys(data).join(', ')}`);
     return null;
   } catch (error) {
     console.error(`[FinancialApi] Error fetching price for ${symbol}:`, error);
