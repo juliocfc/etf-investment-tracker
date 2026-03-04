@@ -1,4 +1,4 @@
-import { eq, and, gte } from "drizzle-orm";
+import { eq, and, gte, desc } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import { InsertUser, users } from "../drizzle/schema";
 import { ENV } from './_core/env';
@@ -116,8 +116,10 @@ export async function createEtfHolding(holding: any) {
   const db = await getDb();
   if (!db) return null;
   const { etfHoldings } = await import("../drizzle/schema");
-  const result = await db.insert(etfHoldings).values(holding);
-  return result;
+  await db.insert(etfHoldings).values(holding);
+  // Return the inserted holding with ID
+  const insertedHolding = await db.select().from(etfHoldings).where(eq(etfHoldings.userId, holding.userId)).orderBy(desc(etfHoldings.id)).limit(1);
+  return insertedHolding[0];
 }
 
 export async function updateEtfHolding(id: number, updates: any) {

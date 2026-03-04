@@ -74,3 +74,7 @@ Core web app completed with cyberpunk design. Remaining: static results webpage.
 - [x] Implement average cost calculation based on all purchases
 - [x] Add average cost column to holdings table
 - [x] Update holding when buying more shares
+
+
+## Average Cost Display Bug
+- [x] Fix average cost not displaying in holdings table (fixed - added purchase record creation on addHolding and average cost calculation in getPortfolioSummary)

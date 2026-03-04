@@ -415,7 +415,7 @@ export default function Portfolio() {
                   <td className="py-3 px-4 text-green-400 font-bold">{holding.symbol}</td>
                   <td className="py-3 px-4 text-gray-300">{holding.name}</td>
                   <td className="py-3 px-4 text-right text-white">{parseFloat(holding.quantity).toFixed(3)}</td>
-                  <td className="py-3 px-4 text-right text-cyan-300">${holding.averageCost}</td>
+                  <td className="py-3 px-4 text-right text-cyan-300">${parseFloat(holding.averageCost || 0).toFixed(3)}</td>
                   <td className="py-3 px-4 text-right text-white">${holding.currentPrice}</td>
                   <td className="py-3 px-4 text-right text-white">${holding.currentValue}</td>
                   <td

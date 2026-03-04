@@ -1,0 +1,18 @@
+{
+  "query": "SELECT h.id, h.symbol, h.name, h.quantity, h.purchasePrice, COUNT(p.id) as purchase_count FROM `etf_holdings` h LEFT JOIN `purchases` p ON h.id = p.holdingId GROUP BY h.id, h.symbol, h.name, h.quantity, h.purchasePrice LIMIT 10;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 3zDyqJ1Hn4Pu9ei.root --database iDgEdd3uke8yQDqrD5oayo --execute SELECT h.id, h.symbol, h.name, h.quantity, h.purchasePrice, COUNT(p.id) as purchase_count FROM `etf_holdings` h LEFT JOIN `purchases` p ON h.id = p.holdingId GROUP BY h.id, h.symbol, h.name, h.quantity, h.purchasePrice LIMIT 10;",
+  "rows": [
+    {
+      "id": "30004",
+      "symbol": "QQQM",
+      "name": "INVESCO NASDAQ 100 ETF ",
+      "quantity": "350.00000000",
+      "purchasePrice": "311.48666667",
+      "purchase_count": "2"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tsymbol\tname\tquantity\tpurchasePrice\tpurchase_count\n30004\tQQQM\tINVESCO NASDAQ 100 ETF \t350.00000000\t311.48666667\t2\n",
+  "stderr": "",
+  "execution_time_ms": 59
+}

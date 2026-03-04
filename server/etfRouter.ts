@@ -14,6 +14,7 @@ import {
   getDividendHistory,
   addDividendHistory,
   addPurchase,
+  getPurchases,
   calculateAverageCost,
 } from "./db";
 import {
@@ -26,7 +27,14 @@ import { fetchETFName } from "./etfLookup";
 export const etfRouter = router({
   getHoldings: protectedProcedure.query(async ({ ctx }) => {
     const holdings = await getUserEtfHoldings(ctx.user.id);
-    return holdings || [];
+    if (!holdings || holdings.length === 0) return [];
+    const holdingsWithAvgCost = await Promise.all(
+      holdings.map(async (holding) => {
+        const avgCost = await calculateAverageCost(holding.id);
+        return { ...holding, averageCost: avgCost };
+      })
+    );
+    return holdingsWithAvgCost;
   }),
 
   addHolding: protectedProcedure
@@ -58,6 +66,18 @@ export const etfRouter = router({
         currentPrice,
         lastPriceUpdate: new Date(),
       });
+
+      // Create a purchase record for the initial holding
+      if (result && result.id) {
+        await addPurchase(
+          ctx.user.id,
+          result.id,
+          input.symbol.toUpperCase(),
+          input.quantity,
+          input.purchasePrice,
+          input.purchaseDate
+        );
+      }
 
       return result;
     }),
@@ -307,31 +327,49 @@ export const etfRouter = router({
       };
     }),
 
+  getPurchases: protectedProcedure
+    .input(z.object({ holdingId: z.number() }))
+    .query(async ({ input }) => {
+      return getPurchases(input.holdingId);
+    }),
+
+  calculateAverageCost: protectedProcedure
+    .input(z.object({ holdingId: z.number() }))
+    .query(async ({ input }) => {
+      return calculateAverageCost(input.holdingId);
+    }),
+
   getPortfolioSummary: protectedProcedure.query(async ({ ctx }) => {
     const holdings = await getUserEtfHoldings(ctx.user.id);
     const cashBalance = await getCashBalance(ctx.user.id);
 
     let totalInvestmentValue = 0;
-    const holdingsWithValues = holdings.map((holding) => {
-      const currentPrice = holding.currentPrice
-        ? parseFloat(holding.currentPrice.toString())
-        : 0;
-      const quantity = parseFloat(holding.quantity.toString());
-      const value = currentPrice * quantity;
-      const purchasePrice = parseFloat(holding.purchasePrice.toString());
-      const purchaseValue = purchasePrice * quantity;
-      const gain = value - purchaseValue;
-      const gainPercent = purchaseValue > 0 ? (gain / purchaseValue) * 100 : 0;
+    const holdingsWithValues = await Promise.all(
+      holdings.map(async (holding) => {
+        const currentPrice = holding.currentPrice
+          ? parseFloat(holding.currentPrice.toString())
+          : 0;
+        const quantity = parseFloat(holding.quantity.toString());
+        const value = currentPrice * quantity;
+        
+        // Calculate average cost from purchases
+        const avgCost = await calculateAverageCost(holding.id);
+        const avgCostValue = avgCost || parseFloat(holding.purchasePrice.toString());
+        const purchaseValue = avgCostValue * quantity;
+        const gain = value - purchaseValue;
+        const gainPercent = purchaseValue > 0 ? (gain / purchaseValue) * 100 : 0;
 
-      totalInvestmentValue += value;
+        totalInvestmentValue += value;
 
-      return {
-        ...holding,
-        currentValue: value.toFixed(2),
-        gain: gain.toFixed(2),
-        gainPercent: gainPercent.toFixed(2),
-      };
-    });
+        return {
+          ...holding,
+          averageCost: avgCost,
+          currentValue: value.toFixed(2),
+          gain: gain.toFixed(2),
+          gainPercent: gainPercent.toFixed(2),
+        };
+      })
+    );
 
     const cashAmount = cashBalance
       ? parseFloat(cashBalance.amount.toString())

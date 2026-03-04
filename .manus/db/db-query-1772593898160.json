@@ -1,0 +1,17 @@
+{
+  "query": "SELECT id, symbol, name, quantity, purchasePrice FROM `etf_holdings` LIMIT 10;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 3zDyqJ1Hn4Pu9ei.root --database iDgEdd3uke8yQDqrD5oayo --execute SELECT id, symbol, name, quantity, purchasePrice FROM `etf_holdings` LIMIT 10;",
+  "rows": [
+    {
+      "id": "30004",
+      "symbol": "QQQM",
+      "name": "INVESCO NASDAQ 100 ETF ",
+      "quantity": "350.00000000",
+      "purchasePrice": "311.48666667"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tsymbol\tname\tquantity\tpurchasePrice\n30004\tQQQM\tINVESCO NASDAQ 100 ETF \t350.00000000\t311.48666667\n",
+  "stderr": "",
+  "execution_time_ms": 60
+}
