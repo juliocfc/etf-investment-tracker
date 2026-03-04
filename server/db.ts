@@ -49,33 +49,16 @@ export async function upsertUser(user: InsertUser): Promise<void> {
       updateSet[field] = normalized;
     };
 
-    textFields.forEach(assignNullable);
+    assignNullable("name");
+    assignNullable("email");
+    assignNullable("loginMethod");
 
-    if (user.lastSignedIn !== undefined) {
-      values.lastSignedIn = user.lastSignedIn;
-      updateSet.lastSignedIn = user.lastSignedIn;
-    }
-    if (user.role !== undefined) {
-      values.role = user.role;
-      updateSet.role = user.role;
-    } else if (user.openId === ENV.ownerOpenId) {
-      values.role = 'admin';
-      updateSet.role = 'admin';
-    }
-
-    if (!values.lastSignedIn) {
-      values.lastSignedIn = new Date();
-    }
-
-    if (Object.keys(updateSet).length === 0) {
-      updateSet.lastSignedIn = new Date();
-    }
-
-    await db.insert(users).values(values).onDuplicateKeyUpdate({
-      set: updateSet,
-    });
+    await db
+      .insert(users)
+      .values(values)
+      .onDuplicateKeyUpdate({ set: updateSet });
   } catch (error) {
-    console.error("[Database] Failed to upsert user:", error);
+    console.error("[Database] Upsert failed:", error);
     throw error;
   }
 }
@@ -83,25 +66,22 @@ export async function upsertUser(user: InsertUser): Promise<void> {
 export async function getUserByOpenId(openId: string) {
   const db = await getDb();
   if (!db) {
-    console.warn("[Database] Cannot get user: database not available");
-    return undefined;
+    console.warn("[Database] Cannot query user: database not available");
+    return null;
   }
 
-  const result = await db.select().from(users).where(eq(users.openId, openId)).limit(1);
+  try {
+    const result = await db
+      .select()
+      .from(users)
+      .where(eq(users.openId, openId))
+      .limit(1);
 
-  return result.length > 0 ? result[0] : undefined;
-}
-
-export async function getUserById(id: number) {
-  const db = await getDb();
-  if (!db) {
-    console.warn("[Database] Cannot get user: database not available");
-    return undefined;
+    return result.length > 0 ? result[0] : undefined;
+  } catch (error) {
+    console.error("[Database] Query failed:", error);
+    return null;
   }
-
-  const result = await db.select().from(users).where(eq(users.id, id)).limit(1);
-
-  return result.length > 0 ? result[0] : undefined;
 }
 
 // ETF Holdings queries
@@ -144,50 +124,19 @@ export async function addPriceHistory(userId: number, symbol: string, price: str
   return db.insert(priceHistory).values({ userId, symbol, price, date });
 }
 
-export async function getPriceHistory(userId: number, symbol: string, days: number = 365) {
+export async function getPriceHistory(userId: number, symbol: string, days?: number) {
   const db = await getDb();
   if (!db) return [];
   const { priceHistory } = await import("../drizzle/schema");
-  const { gte } = await import("drizzle-orm");
-  const cutoffDate = new Date();
-  cutoffDate.setDate(cutoffDate.getDate() - days);
-  return db
-    .select()
-    .from(priceHistory)
-    .where(
-      and(
-        eq(priceHistory.userId, userId),
-        eq(priceHistory.symbol, symbol),
-        gte(priceHistory.date, cutoffDate)
-      )
-    )
-    .orderBy(priceHistory.date);
-}
-
-// Dividend History queries
-export async function addDividendHistory(userId: number, symbol: string, dividendPerShare: string, exDate: Date, paymentDate?: Date, totalDividend?: string) {
-  const db = await getDb();
-  if (!db) return null;
-  const { dividendHistory } = await import("../drizzle/schema");
-  return db.insert(dividendHistory).values({
-    userId,
-    symbol,
-    dividendPerShare,
-    exDate,
-    paymentDate,
-    totalDividend,
-  });
-}
-
-export async function getDividendHistory(userId: number, symbol: string) {
-  const db = await getDb();
-  if (!db) return [];
-  const { dividendHistory } = await import("../drizzle/schema");
-  return db
-    .select()
-    .from(dividendHistory)
-    .where(eq(dividendHistory.userId, userId) && eq(dividendHistory.symbol, symbol))
-    .orderBy(dividendHistory.exDate);
+  
+  const conditions = [eq(priceHistory.userId, userId), eq(priceHistory.symbol, symbol)];
+  if (days) {
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
+    conditions.push(gte(priceHistory.date, startDate));
+  }
+  
+  return db.select().from(priceHistory).where(and(...conditions)).orderBy(desc(priceHistory.date));
 }
 
 // Cash Balance queries
@@ -203,12 +152,15 @@ export async function updateCashBalance(userId: number, amount: string) {
   const db = await getDb();
   if (!db) return null;
   const { cashBalance } = await import("../drizzle/schema");
+  
   const existing = await getCashBalance(userId);
   if (existing) {
-    return db.update(cashBalance).set({ amount }).where(eq(cashBalance.userId, userId));
+    await db.update(cashBalance).set({ amount }).where(eq(cashBalance.userId, userId));
   } else {
-    return db.insert(cashBalance).values({ userId, amount });
+    await db.insert(cashBalance).values({ userId, amount });
   }
+  
+  return getCashBalance(userId);
 }
 
 // Balance History queries
@@ -216,32 +168,37 @@ export async function addBalanceHistory(userId: number, totalValue: string, cash
   const db = await getDb();
   if (!db) return null;
   const { balanceHistory } = await import("../drizzle/schema");
-  return db.insert(balanceHistory).values({
-    userId,
-    totalValue,
-    cashValue,
-    investmentValue,
-    date,
-  });
+  return db.insert(balanceHistory).values({ userId, totalValue, cashValue, investmentValue, date });
 }
 
-export async function getBalanceHistory(userId: number, days: number = 365) {
+export async function getBalanceHistory(userId: number, days?: number) {
   const db = await getDb();
   if (!db) return [];
   const { balanceHistory } = await import("../drizzle/schema");
-  const { gte } = await import("drizzle-orm");
-  const cutoffDate = new Date();
-  cutoffDate.setDate(cutoffDate.getDate() - days);
-  return db
-    .select()
-    .from(balanceHistory)
-    .where(
-      and(
-        eq(balanceHistory.userId, userId),
-        gte(balanceHistory.date, cutoffDate)
-      )
-    )
-    .orderBy(balanceHistory.date);
+  
+  const conditions = [eq(balanceHistory.userId, userId)];
+  if (days) {
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
+    conditions.push(gte(balanceHistory.date, startDate));
+  }
+  
+  return db.select().from(balanceHistory).where(and(...conditions)).orderBy(desc(balanceHistory.date));
+}
+
+// Dividend History queries
+export async function getDividendHistory(userId: number, symbol: string) {
+  const db = await getDb();
+  if (!db) return [];
+  const { dividendHistory } = await import("../drizzle/schema");
+  return db.select().from(dividendHistory).where(and(eq(dividendHistory.userId, userId), eq(dividendHistory.symbol, symbol))).orderBy(desc(dividendHistory.exDate));
+}
+
+export async function addDividendHistory(userId: number, symbol: string, dividendPerShare: string, exDate: Date, paymentDate?: Date, totalDividend?: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const { dividendHistory } = await import("../drizzle/schema");
+  return db.insert(dividendHistory).values({ userId, symbol, dividendPerShare, exDate, paymentDate, totalDividend });
 }
 
 // Purchase queries
@@ -249,44 +206,74 @@ export async function addPurchase(userId: number, holdingId: number, symbol: str
   const db = await getDb();
   if (!db) return null;
   const { purchases } = await import("../drizzle/schema");
-  return db.insert(purchases).values({
-    userId,
-    holdingId,
-    symbol,
-    quantity,
-    price,
-    purchaseDate,
-  });
+  await db.insert(purchases).values({ userId, holdingId, symbol, quantity, price, purchaseDate });
+  const insertedPurchase = await db.select().from(purchases).where(eq(purchases.userId, userId)).orderBy(desc(purchases.id)).limit(1);
+  return insertedPurchase[0];
 }
 
 export async function getPurchases(holdingId: number) {
   const db = await getDb();
   if (!db) return [];
   const { purchases } = await import("../drizzle/schema");
-  return db.select().from(purchases).where(eq(purchases.holdingId, holdingId)).orderBy(purchases.purchaseDate);
+  return db.select().from(purchases).where(eq(purchases.holdingId, holdingId)).orderBy(desc(purchases.purchaseDate));
 }
 
 export async function calculateAverageCost(holdingId: number): Promise<number | null> {
-  const purchases = await getPurchases(holdingId);
-  if (purchases.length === 0) return null;
+  const db = await getDb();
+  if (!db) return null;
+  const { purchases } = await import("../drizzle/schema");
+  
+  const purchaseList = await db.select().from(purchases).where(eq(purchases.holdingId, holdingId));
+  
+  if (purchaseList.length === 0) return null;
   
   let totalCost = 0;
   let totalQuantity = 0;
   
-  for (const purchase of purchases) {
-    const qty = parseFloat(purchase.quantity.toString());
+  for (const purchase of purchaseList) {
+    const quantity = parseFloat(purchase.quantity.toString());
     const price = parseFloat(purchase.price.toString());
-    totalCost += qty * price;
-    totalQuantity += qty;
+    totalCost += quantity * price;
+    totalQuantity += quantity;
   }
   
   return totalQuantity > 0 ? totalCost / totalQuantity : null;
 }
 
-
 export async function deletePurchase(purchaseId: number) {
   const db = await getDb();
   if (!db) return null;
-  const { purchases } = await import("../drizzle/schema");
-  return db.delete(purchases).where(eq(purchases.id, purchaseId));
+  
+  const { purchases, etfHoldings } = await import("../drizzle/schema");
+  
+  // Get the purchase details
+  const purchaseResult = await db.select().from(purchases).where(eq(purchases.id, purchaseId)).limit(1);
+  const purchase = purchaseResult.length > 0 ? purchaseResult[0] : null;
+  
+  if (!purchase) return null;
+  
+  // Delete the purchase
+  await db.delete(purchases).where(eq(purchases.id, purchaseId));
+  
+  // Get the holding
+  const holdingResult = await db.select().from(etfHoldings).where(eq(etfHoldings.id, purchase.holdingId)).limit(1);
+  const holding = holdingResult.length > 0 ? holdingResult[0] : null;
+  
+  if (holding) {
+    const currentQty = parseFloat(holding.quantity.toString());
+    const purchaseQty = parseFloat(purchase.quantity.toString());
+    const newQuantity = currentQty - purchaseQty;
+    
+    if (newQuantity <= 0) {
+      // Delete holding if quantity becomes 0 or negative
+      await db.delete(etfHoldings).where(eq(etfHoldings.id, holding.id));
+    } else {
+      // Update holding with new quantity
+      await db.update(etfHoldings)
+        .set({ quantity: newQuantity.toString() })
+        .where(eq(etfHoldings.id, holding.id));
+    }
+  }
+  
+  return purchase;
 }

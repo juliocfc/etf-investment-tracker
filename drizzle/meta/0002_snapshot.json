@@ -1,7 +1,7 @@
 {
   "version": "5",
   "dialect": "mysql",
-  "id": "e25afce2-62cf-4edb-91c4-6a1136ee31b5",
+  "id": "66a76bbd-9634-4dfe-a675-2cf963a5f5f0",
   "prevId": "94732139-c708-4b3f-a5c9-72d56c995256",
   "tables": {
     "balance_history": {

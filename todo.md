@@ -93,3 +93,7 @@ Core web app completed with cyberpunk design. Remaining: static results webpage.
 - [x] Add allocation percentage calculation in Portfolio component
 - [x] Add percentage column to holdings table
 - [x] Display percentage with one decimal place
+
+
+## Purchase Deletion Bug Fix
+- [x] Fix: Deleting a purchase should decrement the holding quantity (FIXED - verified with vitest tests showing quantity correctly decrements and holding is deleted when quantity becomes 0)
