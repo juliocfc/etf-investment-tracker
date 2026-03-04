@@ -97,3 +97,14 @@ Core web app completed with cyberpunk design. Remaining: static results webpage.
 
 ## Purchase Deletion Bug Fix
 - [x] Fix: Deleting a purchase should decrement the holding quantity (FIXED - verified with vitest tests showing quantity correctly decrements and holding is deleted when quantity becomes 0)
+
+
+## CSV Import Feature
+- [x] Create backend procedure to parse CSV file with date, quantity, cost columns
+- [x] Validate CSV data (date format, numeric values, required fields)
+- [x] Create bulk import procedure to add multiple purchases at once
+- [x] Build frontend CSV import modal with file upload
+- [x] Add preview table showing parsed CSV data before import
+- [x] Handle import errors and show user feedback
+- [x] Update holding quantity and average cost after bulk import
+- [x] Write vitest tests for CSV parsing and bulk import

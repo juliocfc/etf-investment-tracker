@@ -17,6 +17,8 @@ import {
   getPurchases,
   calculateAverageCost,
   deletePurchase,
+  parseCSVContent,
+  bulkImportPurchases,
 } from "./db";
 import {
   fetchEtfPrice,
@@ -415,6 +417,43 @@ export const etfRouter = router({
           : "0",
     };
   }),
+
+  importPurchasesFromCSV: protectedProcedure
+    .input(
+      z.object({
+        holdingId: z.number(),
+        csvContent: z.string(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const holdings = await getUserEtfHoldings(ctx.user.id);
+      const holding = holdings.find((h) => h.id === input.holdingId);
+      
+      if (!holding) {
+        throw new Error("Holding not found");
+      }
+
+      const records = parseCSVContent(input.csvContent);
+      const validRecords = records.filter((r) => !r.error);
+      const invalidRecords = records.filter((r) => r.error);
+
+      const result = await bulkImportPurchases(
+        ctx.user.id,
+        input.holdingId,
+        holding.symbol,
+        validRecords
+      );
+
+      const newAvgCost = await calculateAverageCost(input.holdingId);
+
+      return {
+        success: result.success > 0,
+        imported: result.success,
+        failed: result.failed,
+        errors: [...result.errors, ...invalidRecords.map((r) => r.error || "")],
+        newAvgCost,
+      };
+    }),
 });
 
 function calculateDailyReturn(

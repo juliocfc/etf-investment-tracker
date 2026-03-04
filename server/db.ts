@@ -277,3 +277,173 @@ export async function deletePurchase(purchaseId: number) {
   
   return purchase;
 }
+
+
+// CSV Import helper
+export interface ParsedPurchaseRecord {
+  date: Date;
+  quantity: string;
+  cost: string;
+  error?: string;
+}
+
+export function parseCSVContent(csvContent: string): ParsedPurchaseRecord[] {
+  const lines = csvContent.trim().split('\n');
+  const records: ParsedPurchaseRecord[] = [];
+
+  // Skip header if present
+  let startIndex = 0;
+  if (lines.length > 0 && lines[0].toLowerCase().includes('date')) {
+    startIndex = 1;
+  }
+
+  for (let i = startIndex; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue; // Skip empty lines
+
+    const parts = line.split(',').map(p => p.trim());
+    
+    if (parts.length < 3) {
+      records.push({
+        date: new Date(),
+        quantity: '',
+        cost: '',
+        error: `Row ${i + 1}: Expected 3 columns (date, quantity, cost), got ${parts.length}`,
+      });
+      continue;
+    }
+
+    const dateStr = parts[0];
+    const quantityStr = parts[1];
+    const costStr = parts[2].replace('$', '').trim();
+
+    // Parse date - support multiple formats
+    let parsedDate: Date | null = null;
+    const dateFormats = [
+      /^(\w+)-(\d{1,2})-(\d{4})$/, // Dec-24-2025
+      /^(\d{1,2})-(\w+)-(\d{4})$/, // 24-Dec-2025
+      /^(\d{4})-(\d{1,2})-(\d{1,2})$/, // 2025-12-24
+      /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/, // 12/24/2025
+    ];
+
+    for (const format of dateFormats) {
+      const match = dateStr.match(format);
+      if (match) {
+        try {
+          // Try to parse the date
+          const testDate = new Date(dateStr);
+          if (!isNaN(testDate.getTime())) {
+            parsedDate = testDate;
+            break;
+          }
+        } catch (e) {
+          // Continue to next format
+        }
+      }
+    }
+
+    // Validate quantity
+    const quantity = parseFloat(quantityStr);
+    if (isNaN(quantity) || quantity <= 0) {
+      records.push({
+        date: parsedDate || new Date(),
+        quantity: quantityStr,
+        cost: costStr,
+        error: `Row ${i + 1}: Invalid quantity "${quantityStr}" - must be a positive number`,
+      });
+      continue;
+    }
+
+    // Validate cost
+    const cost = parseFloat(costStr);
+    if (isNaN(cost) || cost < 0) {
+      records.push({
+        date: parsedDate || new Date(),
+        quantity: quantityStr,
+        cost: costStr,
+        error: `Row ${i + 1}: Invalid cost "${costStr}" - must be a non-negative number`,
+      });
+      continue;
+    }
+
+    // Validate date
+    if (!parsedDate || isNaN(parsedDate.getTime())) {
+      records.push({
+        date: new Date(),
+        quantity: quantityStr,
+        cost: costStr,
+        error: `Row ${i + 1}: Invalid date format "${dateStr}" - use formats like Dec-24-2025, 2025-12-24, or 12/24/2025`,
+      });
+      continue;
+    }
+
+    records.push({
+      date: parsedDate,
+      quantity: quantity.toString(),
+      cost: cost.toString(),
+    });
+  }
+
+  return records;
+}
+
+export async function bulkImportPurchases(
+  userId: number,
+  holdingId: number,
+  symbol: string,
+  records: ParsedPurchaseRecord[]
+) {
+  const db = await getDb();
+  if (!db) return { success: 0, failed: 0, errors: [] };
+
+  const { purchases, etfHoldings } = await import("../drizzle/schema");
+  const errors: string[] = [];
+  let successCount = 0;
+  let totalQuantity = 0;
+
+  try {
+    // Add all valid purchases
+    for (const record of records) {
+      if (record.error) {
+        errors.push(record.error);
+        continue;
+      }
+
+      try {
+        await db.insert(purchases).values({
+          userId,
+          holdingId,
+          symbol,
+          quantity: record.quantity,
+          price: record.cost,
+          purchaseDate: record.date,
+        });
+
+        successCount++;
+        totalQuantity += parseFloat(record.quantity);
+      } catch (e) {
+        errors.push(`Failed to import record: ${record.date.toLocaleDateString()} - ${(e as Error).message}`);
+      }
+    }
+
+    // Update holding quantity
+    if (successCount > 0) {
+      const holding = await db.select().from(etfHoldings).where(eq(etfHoldings.id, holdingId)).limit(1);
+      if (holding.length > 0) {
+        const currentQty = parseFloat(holding[0].quantity.toString());
+        const newQty = currentQty + totalQuantity;
+        await db.update(etfHoldings)
+          .set({ quantity: newQty.toString() })
+          .where(eq(etfHoldings.id, holdingId));
+      }
+    }
+
+    return { success: successCount, failed: errors.length, errors };
+  } catch (error) {
+    return {
+      success: 0,
+      failed: records.length,
+      errors: [`Bulk import failed: ${(error as Error).message}`],
+    };
+  }
+}

@@ -30,6 +30,9 @@ export default function Portfolio() {
   const [isEditingCash, setIsEditingCash] = useState(false);
   const [isLookingUpName, setIsLookingUpName] = useState(false);
   const [lookupTimeout, setLookupTimeout] = useState<NodeJS.Timeout | null>(null);
+  const [isCSVImportOpen, setIsCSVImportOpen] = useState<number | null>(null);
+  const [csvFile, setCSVFile] = useState<File | null>(null);
+  const [csvPreview, setCSVPreview] = useState<any[]>([]);
 
   // Queries
   const { data: holdings, refetch: refetchHoldings } = trpc.etf.getHoldings.useQuery();
@@ -133,6 +136,20 @@ export default function Portfolio() {
     },
   });
 
+  const importCSVMutation = trpc.etf.importPurchasesFromCSV.useMutation({
+    onSuccess: (data) => {
+      toast.success(`Imported ${data.imported} purchases!`);
+      refetchHoldings();
+      refetchSummary();
+      setIsCSVImportOpen(null);
+      setCSVFile(null);
+      setCSVPreview([]);
+    },
+    onError: (error) => {
+      toast.error(error.message || "Failed to import CSV");
+    },
+  });
+
   // Auto-fetch prices on page load
   useEffect(() => {
     updatePricesMutation.mutate();
@@ -230,6 +247,10 @@ export default function Portfolio() {
     if (confirm("Are you sure you want to delete this purchase?")) {
       deletePurchaseMutation.mutate({ purchaseId, holdingId });
     }
+  };
+
+  const handleCSVImport = (holdingId: number, csvContent: string) => {
+    importCSVMutation.mutate({ holdingId, csvContent });
   };
 
   const updateCashMutation = trpc.etf.updateCashBalance.useMutation({
@@ -512,6 +533,19 @@ export default function Portfolio() {
                         <PurchaseHistoryContent holdingId={holding.id} onDeletePurchase={(purchaseId: number) => handleDeletePurchase(purchaseId, holding.id)} />
                       </DialogContent>
                     </Dialog>
+                    <Dialog open={isCSVImportOpen === holding.id} onOpenChange={(open) => setIsCSVImportOpen(open ? holding.id : null)}>
+                      <DialogTrigger asChild>
+                        <button className="p-2 hover:bg-cyan-500/20 rounded" title="Import CSV">
+                          <Plus className="w-4 h-4 text-cyan-400" />
+                        </button>
+                      </DialogTrigger>
+                      <DialogContent className="bg-black border-2 border-cyan-500/50">
+                        <DialogHeader>
+                          <DialogTitle className="text-cyan-400">IMPORT PURCHASES - {holding.symbol}</DialogTitle>
+                        </DialogHeader>
+                        <CSVImportContent holdingId={holding.id} onImport={handleCSVImport} />
+                      </DialogContent>
+                    </Dialog>
                     <button
                       onClick={() => handleEditHolding(holding)}
                       className="p-2 hover:bg-cyan-500/20 rounded"
@@ -636,6 +670,106 @@ function PurchaseHistoryContent({
           </button>
         </div>
       ))}
+    </div>
+  );
+}
+
+
+function CSVImportContent({ holdingId, onImport }: { holdingId: number; onImport: (holdingId: number, csvContent: string) => void }) {
+  const [csvContent, setCSVContent] = useState("");
+  const [preview, setPreview] = useState<any[]>([]);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const content = event.target?.result as string;
+      setCSVContent(content);
+      parseCSVPreview(content);
+    };
+    reader.readAsText(file);
+  };
+
+  const parseCSVPreview = (content: string) => {
+    const lines = content.trim().split('\n');
+    const records: any[] = [];
+
+    let startIndex = 0;
+    if (lines.length > 0 && lines[0].toLowerCase().includes('date')) {
+      startIndex = 1;
+    }
+
+    for (let i = startIndex; i < Math.min(startIndex + 10, lines.length); i++) {
+      const line = lines[i].trim();
+      if (!line) continue;
+
+      const parts = line.split(',').map(p => p.trim());
+      if (parts.length >= 3) {
+        records.push({
+          date: parts[0],
+          quantity: parts[1],
+          cost: parts[2].replace('$', ''),
+        });
+      }
+    }
+
+    setPreview(records);
+  };
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <label className="text-cyan-400 text-sm block mb-2">Upload CSV File</label>
+        <input
+          type="file"
+          accept=".csv"
+          onChange={handleFileChange}
+          className="w-full p-2 bg-black/50 border border-cyan-500/30 rounded text-white text-sm"
+        />
+        <p className="text-gray-400 text-xs mt-2">Format: date, quantity, cost (e.g., Dec-24-2025,0.52,$632.96)</p>
+      </div>
+
+      {preview.length > 0 && (
+        <div>
+          <label className="text-cyan-400 text-sm block mb-2">Preview ({preview.length} records)</label>
+          <div className="bg-black/50 border border-cyan-500/30 rounded max-h-48 overflow-y-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-cyan-500/30">
+                  <th className="text-left p-2 text-cyan-400">Date</th>
+                  <th className="text-right p-2 text-cyan-400">Quantity</th>
+                  <th className="text-right p-2 text-cyan-400">Cost</th>
+                </tr>
+              </thead>
+              <tbody>
+                {preview.map((record, idx) => (
+                  <tr key={idx} className="border-b border-cyan-500/20">
+                    <td className="p-2 text-white">{record.date}</td>
+                    <td className="text-right p-2 text-white">{record.quantity}</td>
+                    <td className="text-right p-2 text-white">${record.cost}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      <Button
+        onClick={() => {
+          if (!csvContent) {
+            toast.error("Please select a CSV file");
+            return;
+          }
+          onImport(holdingId, csvContent);
+        }}
+        className="w-full bg-cyan-500 hover:bg-cyan-600 text-black font-bold"
+        disabled={!csvContent}
+      >
+        Import Purchases
+      </Button>
     </div>
   );
 }
