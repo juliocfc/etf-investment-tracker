@@ -16,6 +16,7 @@ import {
   addPurchase,
   getPurchases,
   calculateAverageCost,
+  deletePurchase,
 } from "./db";
 import {
   fetchEtfPrice,
@@ -337,6 +338,25 @@ export const etfRouter = router({
     .input(z.object({ holdingId: z.number() }))
     .query(async ({ input }) => {
       return calculateAverageCost(input.holdingId);
+    }),
+
+  deletePurchase: protectedProcedure
+    .input(z.object({ purchaseId: z.number(), holdingId: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      const holdings = await getUserEtfHoldings(ctx.user.id);
+      const holding = holdings.find((h) => h.id === input.holdingId);
+      
+      if (!holding) {
+        throw new Error("Holding not found");
+      }
+
+      await deletePurchase(input.purchaseId);
+      const newAvgCost = await calculateAverageCost(input.holdingId);
+      
+      return {
+        success: true,
+        newAvgCost,
+      };
     }),
 
   getPortfolioSummary: protectedProcedure.query(async ({ ctx }) => {

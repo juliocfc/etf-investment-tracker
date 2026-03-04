@@ -4,12 +4,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, Trash2, Edit2, RefreshCw, ShoppingCart } from "lucide-react";
+import { Plus, Trash2, Edit2, RefreshCw, ShoppingCart, History } from "lucide-react";
 import { toast } from "sonner";
 
 export default function Portfolio() {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isBuyDialogOpen, setIsBuyDialogOpen] = useState<number | null>(null);
+  const [purchaseHistoryOpen, setPurchaseHistoryOpen] = useState<number | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [formData, setFormData] = useState({
     symbol: "",
@@ -105,6 +106,17 @@ export default function Portfolio() {
     },
     onError: (error) => {
       toast.error(error.message || "Failed to purchase shares");
+    },
+  });
+
+  const deletePurchaseMutation = trpc.etf.deletePurchase.useMutation({
+    onSuccess: () => {
+      toast.success("Purchase deleted successfully!");
+      refetchHoldings();
+      refetchSummary();
+    },
+    onError: (error) => {
+      toast.error(error.message || "Failed to delete purchase");
     },
   });
 
@@ -211,6 +223,12 @@ export default function Portfolio() {
   const handleDeleteHolding = (id: number) => {
     if (confirm("Are you sure you want to delete this ETF?")) {
       deleteHoldingMutation.mutate({ id });
+    }
+  };
+
+  const handleDeletePurchase = (purchaseId: number, holdingId: number) => {
+    if (confirm("Are you sure you want to delete this purchase?")) {
+      deletePurchaseMutation.mutate({ purchaseId, holdingId });
     }
   };
 
@@ -477,6 +495,19 @@ export default function Portfolio() {
                         </div>
                       </DialogContent>
                     </Dialog>
+                    <Dialog open={purchaseHistoryOpen === holding.id} onOpenChange={(open) => setPurchaseHistoryOpen(open ? holding.id : null)}>
+                      <DialogTrigger asChild>
+                        <button className="p-2 hover:bg-cyan-500/20 rounded">
+                          <History className="w-4 h-4 text-cyan-400" />
+                        </button>
+                      </DialogTrigger>
+                      <DialogContent className="bg-black border-2 border-cyan-500/50 max-h-96 overflow-y-auto">
+                        <DialogHeader>
+                          <DialogTitle className="text-cyan-400">PURCHASE HISTORY - {holding.symbol}</DialogTitle>
+                        </DialogHeader>
+                        <PurchaseHistoryContent holdingId={holding.id} onDeletePurchase={(purchaseId: number) => handleDeletePurchase(purchaseId, holding.id)} />
+                      </DialogContent>
+                    </Dialog>
                     <button
                       onClick={() => handleEditHolding(holding)}
                       className="p-2 hover:bg-cyan-500/20 rounded"
@@ -560,6 +591,47 @@ export default function Portfolio() {
           </DialogContent>
         </Dialog>
       )}
+    </div>
+  );
+}
+
+
+function PurchaseHistoryContent({
+  holdingId,
+  onDeletePurchase,
+}: {
+  holdingId: number;
+  onDeletePurchase: (purchaseId: number) => void;
+}) {
+  const { data: purchases } = trpc.etf.getPurchases.useQuery({ holdingId });
+
+  if (!purchases || purchases.length === 0) {
+    return <div className="text-gray-400 text-center py-4">No purchases found</div>;
+  }
+
+  return (
+    <div className="space-y-3">
+      {purchases.map((purchase) => (
+        <div
+          key={purchase.id}
+          className="flex justify-between items-center p-3 bg-cyan-500/10 border border-cyan-500/30 rounded"
+        >
+          <div className="flex-1">
+            <div className="text-cyan-400 text-sm">
+              {new Date(purchase.purchaseDate).toLocaleDateString()}
+            </div>
+            <div className="text-white text-sm">
+              {parseFloat(purchase.quantity.toString()).toFixed(3)} shares @ ${parseFloat(purchase.price.toString()).toFixed(3)}
+            </div>
+          </div>
+          <button
+            onClick={() => onDeletePurchase(purchase.id)}
+            className="p-2 hover:bg-red-500/20 rounded ml-2"
+          >
+            <Trash2 className="w-4 h-4 text-red-400" />
+          </button>
+        </div>
+      ))}
     </div>
   );
 }

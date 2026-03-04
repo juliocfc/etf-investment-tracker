@@ -282,3 +282,11 @@ export async function calculateAverageCost(holdingId: number): Promise<number | 
   
   return totalQuantity > 0 ? totalCost / totalQuantity : null;
 }
+
+
+export async function deletePurchase(purchaseId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const { purchases } = await import("../drizzle/schema");
+  return db.delete(purchases).where(eq(purchases.id, purchaseId));
+}

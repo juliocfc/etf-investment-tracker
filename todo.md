@@ -78,3 +78,12 @@ Core web app completed with cyberpunk design. Remaining: static results webpage.
 
 ## Average Cost Display Bug
 - [x] Fix average cost not displaying in holdings table (fixed - added purchase record creation on addHolding and average cost calculation in getPortfolioSummary)
+
+
+## Purchase History Feature
+- [x] Add deletePurchase procedure to backend
+- [x] Create purchase history modal in Portfolio component
+- [x] Display purchase date, quantity, and price in modal
+- [x] Add delete button for each purchase with confirmation
+- [x] Update average cost when purchases are deleted
+- [x] Write tests for delete purchase functionality
