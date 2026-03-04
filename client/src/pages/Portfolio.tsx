@@ -423,6 +423,7 @@ export default function Portfolio() {
                 <th className="text-right py-3 px-4 text-cyan-400 font-mono">AVG COST</th>
                 <th className="text-right py-3 px-4 text-cyan-400 font-mono">CURRENT PRICE</th>
                 <th className="text-right py-3 px-4 text-cyan-400 font-mono">VALUE</th>
+                <th className="text-right py-3 px-4 text-cyan-400 font-mono">ALLOCATION %</th>
                 <th className="text-right py-3 px-4 text-cyan-400 font-mono">GAIN/LOSS</th>
                 <th className="text-center py-3 px-4 text-cyan-400 font-mono">ACTIONS</th>
               </tr>
@@ -436,6 +437,9 @@ export default function Portfolio() {
                   <td className="py-3 px-4 text-right text-cyan-300">${parseFloat(holding.averageCost || 0).toFixed(3)}</td>
                   <td className="py-3 px-4 text-right text-white">${holding.currentPrice}</td>
                   <td className="py-3 px-4 text-right text-white">${holding.currentValue}</td>
+                  <td className="py-3 px-4 text-right text-cyan-300">
+                    {((parseFloat(holding.currentValue) / parseFloat(summary?.investmentValue || "1")) * 100).toFixed(1)}%
+                  </td>
                   <td
                     className={`py-3 px-4 text-right font-bold ${
                       parseFloat(holding.gain) >= 0 ? "text-green-400" : "text-red-400"

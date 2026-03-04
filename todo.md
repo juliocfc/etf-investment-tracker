@@ -87,3 +87,9 @@ Core web app completed with cyberpunk design. Remaining: static results webpage.
 - [x] Add delete button for each purchase with confirmation
 - [x] Update average cost when purchases are deleted
 - [x] Write tests for delete purchase functionality
+
+
+## Allocation Percentage Column
+- [x] Add allocation percentage calculation in Portfolio component
+- [x] Add percentage column to holdings table
+- [x] Display percentage with one decimal place
