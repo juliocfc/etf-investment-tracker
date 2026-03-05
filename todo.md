@@ -118,4 +118,4 @@ Core web app completed with cyberpunk design. Remaining: static results webpage.
 
 
 ## Login Issue
-- [x] Fix: Login redirects back to login page after account selection (FIXED - improved useAuth hook with better refetch strategy and storage event listeners)
+- [x] Fix: Login redirects back to login page after account selection (FIXED - Root cause was SameSite=None cookie not being stored due to missing Secure flag. Fixed by: 1) Adding app.set('trust proxy', 1) to detect HTTPS correctly, 2) Forcing secure:true in production environments, 3) Improved useAuth refetch strategy)
