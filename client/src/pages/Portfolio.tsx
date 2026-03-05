@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -446,6 +446,7 @@ export default function Portfolio() {
                 <th className="text-right py-3 px-4 text-cyan-400 font-mono">VALUE</th>
                 <th className="text-right py-3 px-4 text-cyan-400 font-mono">ALLOCATION %</th>
                 <th className="text-right py-3 px-4 text-cyan-400 font-mono">GAIN/LOSS</th>
+                <th className="text-right py-3 px-4 text-cyan-400 font-mono">GAIN/LOSS %</th>
                 <th className="text-center py-3 px-4 text-cyan-400 font-mono">ACTIONS</th>
               </tr>
             </thead>
@@ -467,6 +468,13 @@ export default function Portfolio() {
                     }`}
                   >
                     ${holding.gain}
+                  </td>
+                  <td
+                    className={`py-3 px-4 text-right font-bold ${
+                      parseFloat(holding.gainPercent) >= 0 ? "text-green-400" : "text-red-400"
+                    }`}
+                  >
+                    {holding.gainPercent}%
                   </td>
                   <td className="py-3 px-4 text-center space-x-2 flex justify-center">
                     <Dialog open={isBuyDialogOpen === holding.id} onOpenChange={(open) => setIsBuyDialogOpen(open ? holding.id : null)}>
@@ -564,6 +572,14 @@ export default function Portfolio() {
             </tbody>
           </table>
         </div>
+
+        {/* Allocation Pie Chart */}
+        {summary && (
+          <div className="mt-8">
+            <h3 className="text-cyan-400 font-mono text-lg mb-4">PORTFOLIO ALLOCATION</h3>
+            <PortfolioAllocationChart summary={summary} />
+          </div>
+        )}
       </Card>
 
       {/* Edit Dialog */}
@@ -770,6 +786,103 @@ function CSVImportContent({ holdingId, onImport }: { holdingId: number; onImport
       >
         Import Purchases
       </Button>
+    </div>
+  );
+}
+
+
+function PortfolioAllocationChart({ summary }: { summary: any }) {
+  const chartRef = useRef<HTMLCanvasElement>(null);
+
+  const labels: string[] = [];
+  const data: number[] = [];
+  const colors: string[] = [];
+
+  // Add ETF holdings
+  const holdingColors = [
+    "#00d9ff", // cyan
+    "#ff00ff", // magenta
+    "#00ff88", // green
+    "#ffaa00", // orange
+    "#ff0055", // pink
+    "#00aaff", // light blue
+    "#ffff00", // yellow
+    "#88ff00", // lime
+  ];
+
+  summary.holdings?.forEach((holding: any, index: number) => {
+    labels.push(holding.symbol);
+    data.push(parseFloat(holding.percentage));
+    colors.push(holdingColors[index % holdingColors.length]);
+  });
+
+  // Add cash allocation
+  if (parseFloat(summary.cashAllocationPercent) > 0) {
+    labels.push("CASH");
+    data.push(parseFloat(summary.cashAllocationPercent));
+    colors.push("#1a1a2e"); // dark gray for cash
+  }
+
+  const chartData = {
+    labels: labels,
+    datasets: [
+      {
+        data: data,
+        backgroundColor: colors,
+        borderColor: "#0a0e27",
+        borderWidth: 2,
+      },
+    ],
+  };
+
+  const chartOptions = {
+    responsive: true,
+    maintainAspectRatio: true,
+    plugins: {
+      legend: {
+        position: "bottom" as const,
+        labels: {
+          color: "#00d9ff",
+          font: {
+            family: "monospace",
+            size: 12,
+          },
+          padding: 15,
+        },
+      },
+      tooltip: {
+        callbacks: {
+          label: function (context: any) {
+            const label = context.label || "";
+            const value = context.parsed || 0;
+            return `${label}: ${value.toFixed(1)}%`;
+          },
+        },
+        backgroundColor: "#0a0e27",
+        titleColor: "#00d9ff",
+        bodyColor: "#00d9ff",
+        borderColor: "#00d9ff",
+        borderWidth: 1,
+      },
+    },
+  };
+
+  return (
+    <div className="bg-black/50 border border-cyan-500/30 rounded p-6 max-w-md mx-auto">
+      <canvas ref={chartRef} />
+      <div className="mt-4 grid grid-cols-2 gap-2">
+        {labels.map((label, index) => (
+          <div key={label} className="flex items-center gap-2 text-xs">
+            <div
+              className="w-3 h-3 rounded"
+              style={{ backgroundColor: colors[index] }}
+            ></div>
+            <span className="text-cyan-300">
+              {label}: {data[index].toFixed(1)}%
+            </span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

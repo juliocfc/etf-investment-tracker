@@ -108,3 +108,10 @@ Core web app completed with cyberpunk design. Remaining: static results webpage.
 - [x] Handle import errors and show user feedback
 - [x] Update holding quantity and average cost after bulk import
 - [x] Write vitest tests for CSV parsing and bulk import
+
+
+## Gain/Loss Percentage Column & Pie Chart
+- [x] Add percentage gain/loss column to holdings table
+- [x] Create pie chart component showing allocation percentages
+- [x] Display cash allocation in pie chart
+- [x] Add percentage labels to pie chart slices
