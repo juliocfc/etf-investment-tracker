@@ -115,3 +115,7 @@ Core web app completed with cyberpunk design. Remaining: static results webpage.
 - [x] Create pie chart component showing allocation percentages
 - [x] Display cash allocation in pie chart
 - [x] Add percentage labels to pie chart slices
+
+
+## Login Issue
+- [x] Fix: Login redirects back to login page after account selection (FIXED - improved useAuth hook with better refetch strategy and storage event listeners)

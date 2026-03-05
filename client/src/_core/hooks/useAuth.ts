@@ -14,8 +14,9 @@ export function useAuth(options?: UseAuthOptions) {
   const utils = trpc.useUtils();
 
   const meQuery = trpc.auth.me.useQuery(undefined, {
-    retry: false,
-    refetchOnWindowFocus: false,
+    retry: 1,
+    refetchOnWindowFocus: true,
+    refetchOnMount: true,
   });
 
   const logoutMutation = trpc.auth.logout.useMutation({
@@ -59,6 +60,24 @@ export function useAuth(options?: UseAuthOptions) {
     logoutMutation.error,
     logoutMutation.isPending,
   ]);
+
+  useEffect(() => {
+    // Refetch auth status when component mounts
+    // Add a small delay to ensure cookie is set after OAuth redirect
+    const timer = setTimeout(() => {
+      meQuery.refetch();
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [meQuery]);
+
+  // Listen for storage changes (OAuth callback might update from another tab)
+  useEffect(() => {
+    const handleStorageChange = () => {
+      meQuery.refetch();
+    };
+    window.addEventListener("storage", handleStorageChange);
+    return () => window.removeEventListener("storage", handleStorageChange);
+  }, [meQuery]);
 
   useEffect(() => {
     if (!redirectOnUnauthenticated) return;
