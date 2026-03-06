@@ -141,3 +141,6 @@ Core web app completed with cyberpunk design. Remaining: static results webpage.
 - [x] Calculate volatility (standard deviation) for each holding
 - [x] Add metrics to Portfolio table UI
 - [x] Test metrics calculation and display
+
+## Bug Fixes
+- [x] Fix React hooks error in performance metrics fetching (useUtils inside async)

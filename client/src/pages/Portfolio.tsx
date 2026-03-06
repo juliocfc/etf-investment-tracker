@@ -5,7 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Plus, Trash2, Edit2, RefreshCw, ShoppingCart, History } from "lucide-react";
 import { toast } from "sonner";
-import React, { useEffect, useRef, useState, useContext } from "react";
+import React, { useEffect, useRef, useState } from "react";
 
 export default function Portfolio() {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
@@ -158,6 +158,8 @@ export default function Portfolio() {
   }, []);
 
   // Fetch performance metrics for each holding
+  const utils = trpc.useUtils();
+  
   useEffect(() => {
     if (!summary?.holdings || summary.holdings.length === 0) return;
 
@@ -166,7 +168,6 @@ export default function Portfolio() {
         if (metrics[holding.symbol]) continue;
         
         try {
-          const utils = trpc.useUtils();
           const result = await utils.etf.getPerformanceMetrics.fetch({ symbol: holding.symbol });
           setMetrics(prev => ({
             ...prev,
@@ -183,7 +184,7 @@ export default function Portfolio() {
     };
 
     fetchMetrics();
-  }, [summary?.holdings]);
+  }, [summary?.holdings, utils]);
 
 
   // Handle symbol input change with auto-lookup
