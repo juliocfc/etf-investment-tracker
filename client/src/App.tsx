@@ -1,7 +1,7 @@
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAuth } from "@/_core/hooks/useAuth";
-import { getLoginUrl } from "./const";
+import { getGoogleLoginUrl } from "./const";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import CyberpunkDashboard from "./components/CyberpunkDashboard";
@@ -81,17 +81,17 @@ function Router() {
 
           <div className="space-y-4">
             <a
-              href={getLoginUrl()}
+              href={getGoogleLoginUrl()}
               className="inline-block px-8 py-3 btn-neon font-bold uppercase tracking-wider"
               style={{
                 textShadow: '0 0 10px #ff006e, 0 0 20px #ff006e, 0 0 30px #ff006e',
                 filter: 'drop-shadow(0 0 8px #ff006e)'
               }}
             >
-              Login to Start
+              Login with Google
             </a>
             <p className="text-xs text-muted-foreground">
-              Secure authentication powered by Manus
+              Secure authentication powered by Google OAuth
             </p>
           </div>
 

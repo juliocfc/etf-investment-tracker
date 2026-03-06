@@ -53,10 +53,22 @@ export async function upsertUser(user: InsertUser): Promise<void> {
     assignNullable("email");
     assignNullable("loginMethod");
 
-    await db
-      .insert(users)
-      .values(values)
-      .onDuplicateKeyUpdate({ set: updateSet });
+    // Always update lastSignedIn if provided
+    if (user.lastSignedIn !== undefined) {
+      values.lastSignedIn = user.lastSignedIn;
+      updateSet.lastSignedIn = user.lastSignedIn;
+    }
+
+    // Only perform update if there are fields to update
+    if (Object.keys(updateSet).length > 0) {
+      await db
+        .insert(users)
+        .values(values)
+        .onDuplicateKeyUpdate({ set: updateSet });
+    } else {
+      // If no fields to update, just insert (will be ignored if exists)
+      await db.insert(users).values(values).onDuplicateKeyUpdate({ set: {} });
+    }
   } catch (error) {
     console.error("[Database] Upsert failed:", error);
     throw error;

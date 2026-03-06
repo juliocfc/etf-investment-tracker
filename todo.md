@@ -119,3 +119,12 @@ Core web app completed with cyberpunk design. Remaining: static results webpage.
 
 ## Login Issue
 - [x] Fix: Login redirects back to login page after account selection (FIXED - Root cause was SameSite=None cookie not being stored due to missing Secure flag. Fixed by: 1) Adding app.set('trust proxy', 1) to detect HTTPS correctly, 2) Forcing secure:true in production environments, 3) Improved useAuth refetch strategy)
+
+## Google OAuth Implementation
+- [x] Create Google OAuth service with token exchange and user info retrieval
+- [x] Implement Google OAuth callback endpoint (/api/oauth/google/callback)
+- [x] Add Google OAuth environment variables (GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET)
+- [x] Update frontend login URL generator for Google OAuth
+- [x] Update login page to use "Login with Google" button
+- [x] Test Google OAuth credentials and service initialization
+- [x] Verify session cookie creation and authentication flow

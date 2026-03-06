@@ -34,9 +34,25 @@ async function startServer() {
   // Trust proxy so req.protocol reflects https when behind a proxy
   app.set('trust proxy', 1);
   
+  // Configure COOP header to allow postMessage from OAuth popup
+  app.use((req, res, next) => {
+    res.setHeader('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
+    res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
+    next();
+  });
+  
   // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
+  
+  // Log all requests for debugging
+  app.use((req, res, next) => {
+    if (req.method === "GET" && (req.path.includes("oauth") || req.path === "/")) {
+      console.log("[Request]", req.method, req.path, "Query:", req.query);
+    }
+    next();
+  });
+  
   // OAuth callback under /api/oauth/callback
   registerOAuthRoutes(app);
   // tRPC API

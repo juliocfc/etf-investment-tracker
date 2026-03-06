@@ -13,10 +13,23 @@ export async function createContext(
 ): Promise<TrpcContext> {
   let user: User | null = null;
 
+  // Log cookie information for debugging
+  const cookies = opts.req.headers.cookie || "no cookies";
+  console.log("[Context] Request cookies:", cookies);
+  console.log("[Context] Request URL:", opts.req.url);
+  console.log("[Context] Request protocol:", opts.req.protocol);
+  console.log("[Context] Request headers host:", opts.req.headers.host);
+
   try {
     user = await sdk.authenticateRequest(opts.req);
+    if (user) {
+      console.log("[Context] User authenticated:", user.openId);
+    } else {
+      console.log("[Context] User is null");
+    }
   } catch (error) {
     // Authentication is optional for public procedures.
+    console.log("[Context] Authentication error:", String(error));
     user = null;
   }
 
