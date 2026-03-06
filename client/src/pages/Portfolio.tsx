@@ -873,10 +873,11 @@ function PortfolioAllocationChart({ summary }: { summary: any }) {
     "#88ff00", // lime
   ];
 
-  summary.holdings?.forEach((holding: any, index: number) => {
-    const percentage = parseFloat(holding.percentage || 0);
+  // Use allocationBreakdown which has the correct percentages
+  summary.allocationBreakdown?.forEach((allocation: any, index: number) => {
+    const percentage = parseFloat(allocation.percentage || 0);
     if (percentage > 0) {
-      labels.push(holding.symbol);
+      labels.push(allocation.symbol);
       data.push(percentage);
       colors.push(holdingColors[index % holdingColors.length]);
     }

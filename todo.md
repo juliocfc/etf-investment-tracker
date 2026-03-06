@@ -144,3 +144,6 @@ Core web app completed with cyberpunk design. Remaining: static results webpage.
 
 ## Bug Fixes
 - [x] Fix React hooks error in performance metrics fetching (useUtils inside async)
+
+## Current Issues
+- [x] Pie chart only showing cash allocation, ETF holdings not visible
