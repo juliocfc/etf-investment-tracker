@@ -1,14 +1,26 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
 import { Card } from "@/components/ui/card";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 
 export default function History() {
   const [timePeriod, setTimePeriod] = useState<"1m" | "1y" | "3y">("1y");
+  const [selectedPortfolioId, setSelectedPortfolioId] = useState<number | null>(null);
 
-  const { data: balanceHistory } = trpc.etf.getBalanceHistory.useQuery({
-    days: timePeriod === "1m" ? 30 : timePeriod === "1y" ? 365 : 1095,
-  });
+  // Get portfolios
+  const { data: portfolios } = trpc.portfolio.getAll.useQuery();
+
+  // Initialize selected portfolio
+  useEffect(() => {
+    if (portfolios && portfolios.length > 0 && !selectedPortfolioId) {
+      setSelectedPortfolioId(portfolios[0].id);
+    }
+  }, [portfolios, selectedPortfolioId]);
+
+  const { data: balanceHistory } = trpc.etf.getBalanceHistory.useQuery(
+    selectedPortfolioId ? { portfolioId: selectedPortfolioId, days: timePeriod === "1m" ? 30 : timePeriod === "1y" ? 365 : 1095 } : { portfolioId: 0, days: 365 },
+    { enabled: selectedPortfolioId !== null }
+  );
 
   // Prepare data for chart
   const chartData = balanceHistory?.map((item) => ({
@@ -32,8 +44,32 @@ export default function History() {
   const change = stats ? stats.endValue - stats.startValue : 0;
   const changePercent = stats && stats.startValue > 0 ? ((change / stats.startValue) * 100).toFixed(2) : "0";
 
+  if (!selectedPortfolioId || !portfolios) {
+    return (
+      <div className="space-y-6 p-6">
+        <div className="text-center text-gray-400">Loading portfolios...</div>
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 p-6">
+      {/* Portfolio Selector */}
+      <div className="flex items-center gap-4 mb-6">
+        <label className="text-sm text-gray-400">Select Portfolio:</label>
+        <select
+          value={selectedPortfolioId || ""}
+          onChange={(e) => setSelectedPortfolioId(parseInt(e.target.value))}
+          className="px-4 py-2 bg-black border border-cyan-500/50 rounded text-white"
+        >
+          {portfolios.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </select>
+      </div>
+
       {/* Statistics */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="data-card">

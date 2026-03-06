@@ -25,7 +25,7 @@ export default function DebugPrices() {
         onClick={() => {
           console.log("Button clicked - calling updatePricesMutation.mutate()");
           console.log("Mutation object:", updatePricesMutation);
-          updatePricesMutation.mutate();
+          updatePricesMutation.mutate({ portfolioId: 1 });
         }}
         disabled={updatePricesMutation.isPending}
       >

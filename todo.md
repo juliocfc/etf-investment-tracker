@@ -147,3 +147,14 @@ Core web app completed with cyberpunk design. Remaining: static results webpage.
 
 ## Current Issues
 - [x] Pie chart only showing cash allocation, ETF holdings not visible
+
+
+## Portfolio Management Feature
+- [x] Create portfolio schema in database
+- [x] Add portfolio CRUD procedures (create, read, update, delete)
+- [x] Update ETF holdings to reference portfolio
+- [x] Update cash balance to reference portfolio
+- [x] Build portfolio selection UI
+- [x] Add portfolio management UI (rename, delete)
+- [x] Update all ETF operations to use selected portfolio
+- [x] Test portfolio switching and operations

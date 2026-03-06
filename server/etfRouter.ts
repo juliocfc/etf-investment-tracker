@@ -29,21 +29,24 @@ import { fetchETFName } from "./etfLookup";
 import { calculatePerformanceMetrics } from "./performanceMetrics";
 
 export const etfRouter = router({
-  getHoldings: protectedProcedure.query(async ({ ctx }) => {
-    const holdings = await getUserEtfHoldings(ctx.user.id);
-    if (!holdings || holdings.length === 0) return [];
-    const holdingsWithAvgCost = await Promise.all(
-      holdings.map(async (holding) => {
-        const avgCost = await calculateAverageCost(holding.id);
-        return { ...holding, averageCost: avgCost };
-      })
-    );
-    return holdingsWithAvgCost;
-  }),
+  getHoldings: protectedProcedure
+    .input(z.object({ portfolioId: z.number() }))
+    .query(async ({ ctx, input }) => {
+      const holdings = await getUserEtfHoldings(ctx.user.id, input.portfolioId);
+      if (!holdings || holdings.length === 0) return [];
+      const holdingsWithAvgCost = await Promise.all(
+        holdings.map(async (holding) => {
+          const avgCost = await calculateAverageCost(holding.id);
+          return { ...holding, averageCost: avgCost };
+        })
+      );
+      return holdingsWithAvgCost;
+    }),
 
   addHolding: protectedProcedure
     .input(
       z.object({
+        portfolioId: z.number(),
         symbol: z.string().min(1).max(20),
         name: z.string().min(1).max(255),
         quantity: z.string(),
@@ -62,6 +65,7 @@ export const etfRouter = router({
 
       const result = await createEtfHolding({
         userId: ctx.user.id,
+        portfolioId: input.portfolioId,
         symbol: input.symbol.toUpperCase(),
         name: input.name,
         quantity: input.quantity,
@@ -75,6 +79,7 @@ export const etfRouter = router({
       if (result && result.id) {
         await addPurchase(
           ctx.user.id,
+          input.portfolioId,
           result.id,
           input.symbol.toUpperCase(),
           input.quantity,
@@ -118,48 +123,50 @@ export const etfRouter = router({
       return deleteEtfHolding(input.id);
     }),
 
-  updatePrices: protectedProcedure.mutation(async ({ ctx }) => {
-    const holdings = await getUserEtfHoldings(ctx.user.id);
-    const results = [];
+  updatePrices: protectedProcedure
+    .input(z.object({ portfolioId: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      const holdings = await getUserEtfHoldings(ctx.user.id, input.portfolioId);
+      const results = [];
 
-    for (let i = 0; i < holdings.length; i++) {
-      const holding = holdings[i];
-      
-      // Add 1.2 second delay between requests to respect Alpha Vantage rate limit
-      if (i > 0) {
-        await new Promise((resolve) => setTimeout(resolve, 1200));
+      for (let i = 0; i < holdings.length; i++) {
+        const holding = holdings[i];
+        
+        // Add 1.2 second delay between requests to respect Alpha Vantage rate limit
+        if (i > 0) {
+          await new Promise((resolve) => setTimeout(resolve, 1200));
+        }
+        
+        const priceData = await fetchEtfPrice(holding.symbol);
+        if (priceData) {
+          await updateEtfHolding(holding.id, {
+            currentPrice: priceData.price.toString(),
+            lastPriceUpdate: new Date(),
+          });
+
+          await addPriceHistory(
+            ctx.user.id,
+            holding.symbol,
+            priceData.price.toString(),
+            new Date()
+          );
+
+          results.push({
+            symbol: holding.symbol,
+            price: priceData.price,
+            success: true,
+          });
+        } else {
+          results.push({
+            symbol: holding.symbol,
+            success: false,
+            error: "Failed to fetch price",
+          });
+        }
       }
-      
-      const priceData = await fetchEtfPrice(holding.symbol);
-      if (priceData) {
-        await updateEtfHolding(holding.id, {
-          currentPrice: priceData.price.toString(),
-          lastPriceUpdate: new Date(),
-        });
 
-        await addPriceHistory(
-          ctx.user.id,
-          holding.symbol,
-          priceData.price.toString(),
-          new Date()
-        );
-
-        results.push({
-          symbol: holding.symbol,
-          price: priceData.price,
-          success: true,
-        });
-      } else {
-        results.push({
-          symbol: holding.symbol,
-          success: false,
-          error: "Failed to fetch price",
-        });
-      }
-    }
-
-    return results;
-  }),
+      return results;
+    }),
 
   getPriceHistory: protectedProcedure
     .input(
@@ -189,26 +196,29 @@ export const etfRouter = router({
       return { count: prices.length, symbol: input.symbol };
     }),
 
-  getCashBalance: protectedProcedure.query(async ({ ctx }) => {
-    const balance = await getCashBalance(ctx.user.id);
-    return balance?.amount || "0";
-  }),
+  getCashBalance: protectedProcedure
+    .input(z.object({ portfolioId: z.number() }))
+    .query(async ({ ctx, input }) => {
+      const balance = await getCashBalance(ctx.user.id, input.portfolioId);
+      return balance?.amount || "0";
+    }),
 
   updateCashBalance: protectedProcedure
-    .input(z.object({ amount: z.string() }))
+    .input(z.object({ portfolioId: z.number(), amount: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      return updateCashBalance(ctx.user.id, input.amount);
+      return updateCashBalance(ctx.user.id, input.portfolioId, input.amount);
     }),
 
   getBalanceHistory: protectedProcedure
-    .input(z.object({ days: z.number().default(365) }))
+    .input(z.object({ portfolioId: z.number(), days: z.number().default(365) }))
     .query(async ({ ctx, input }) => {
-      return getBalanceHistory(ctx.user.id, input.days);
+      return getBalanceHistory(ctx.user.id, input.portfolioId, input.days);
     }),
 
   recordBalanceSnapshot: protectedProcedure
     .input(
       z.object({
+        portfolioId: z.number(),
         totalValue: z.string(),
         cashValue: z.string(),
         investmentValue: z.string(),
@@ -217,6 +227,7 @@ export const etfRouter = router({
     .mutation(async ({ ctx, input }) => {
       return addBalanceHistory(
         ctx.user.id,
+        input.portfolioId,
         input.totalValue,
         input.cashValue,
         input.investmentValue,
@@ -225,10 +236,10 @@ export const etfRouter = router({
     }),
 
   calculatePerformance: protectedProcedure
-    .input(z.object({ days: z.number().default(365) }))
+    .input(z.object({ portfolioId: z.number(), days: z.number().default(365) }))
     .query(async ({ ctx, input }) => {
-      const holdings = await getUserEtfHoldings(ctx.user.id);
-      const balanceHistory = await getBalanceHistory(ctx.user.id, input.days);
+      const holdings = await getUserEtfHoldings(ctx.user.id, input.portfolioId);
+      const balanceHistory = await getBalanceHistory(ctx.user.id, input.portfolioId, input.days);
 
       if (balanceHistory.length === 0) {
         return {
@@ -267,21 +278,23 @@ export const etfRouter = router({
       return getDividendHistory(ctx.user.id, input.symbol);
     }),
 
-  calculateTotalDividends: protectedProcedure.query(async ({ ctx }) => {
-    const holdings = await getUserEtfHoldings(ctx.user.id);
-    let totalDividends = 0;
+  calculateTotalDividends: protectedProcedure
+    .input(z.object({ portfolioId: z.number() }))
+    .query(async ({ ctx, input }) => {
+      const holdings = await getUserEtfHoldings(ctx.user.id, input.portfolioId);
+      let totalDividends = 0;
 
-    for (const holding of holdings) {
-      const dividends = await getDividendHistory(ctx.user.id, holding.symbol);
-      for (const div of dividends) {
-        if (div.totalDividend) {
-          totalDividends += parseFloat(div.totalDividend.toString());
+      for (const holding of holdings) {
+        const dividends = await getDividendHistory(ctx.user.id, holding.symbol);
+        for (const div of dividends) {
+          if (div.totalDividend) {
+            totalDividends += parseFloat(div.totalDividend.toString());
+          }
         }
       }
-    }
 
-    return totalDividends.toFixed(2);
-  }),
+      return totalDividends.toFixed(2);
+    }),
 
   lookupETFName: publicProcedure
     .input(z.object({ symbol: z.string().min(1).max(20) }))
@@ -293,6 +306,7 @@ export const etfRouter = router({
   buyMoreShares: protectedProcedure
     .input(
       z.object({
+        portfolioId: z.number(),
         holdingId: z.number(),
         quantity: z.string(),
         price: z.string(),
@@ -300,7 +314,7 @@ export const etfRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const holdings = await getUserEtfHoldings(ctx.user.id);
+      const holdings = await getUserEtfHoldings(ctx.user.id, input.portfolioId);
       const holding = holdings.find((h) => h.id === input.holdingId);
       
       if (!holding) {
@@ -309,6 +323,7 @@ export const etfRouter = router({
 
       await addPurchase(
         ctx.user.id,
+        input.portfolioId,
         input.holdingId,
         holding.symbol,
         input.quantity,
@@ -362,72 +377,75 @@ export const etfRouter = router({
       };
     }),
 
-  getPortfolioSummary: protectedProcedure.query(async ({ ctx }) => {
-    const holdings = await getUserEtfHoldings(ctx.user.id);
-    const cashBalance = await getCashBalance(ctx.user.id);
+  getPortfolioSummary: protectedProcedure
+    .input(z.object({ portfolioId: z.number() }))
+    .query(async ({ ctx, input }) => {
+      const holdings = await getUserEtfHoldings(ctx.user.id, input.portfolioId);
+      const cashBalance = await getCashBalance(ctx.user.id, input.portfolioId);
 
-    let totalInvestmentValue = 0;
-    const holdingsWithValues = await Promise.all(
-      holdings.map(async (holding) => {
-        const currentPrice = holding.currentPrice
-          ? parseFloat(holding.currentPrice.toString())
-          : 0;
-        const quantity = parseFloat(holding.quantity.toString());
-        const value = currentPrice * quantity;
-        
-        // Calculate average cost from purchases
-        const avgCost = await calculateAverageCost(holding.id);
-        const avgCostValue = avgCost || parseFloat(holding.purchasePrice.toString());
-        const purchaseValue = avgCostValue * quantity;
-        const gain = value - purchaseValue;
-        const gainPercent = purchaseValue > 0 ? (gain / purchaseValue) * 100 : 0;
+      let totalInvestmentValue = 0;
+      const holdingsWithValues = await Promise.all(
+        holdings.map(async (holding) => {
+          const currentPrice = holding.currentPrice
+            ? parseFloat(holding.currentPrice.toString())
+            : 0;
+          const quantity = parseFloat(holding.quantity.toString());
+          const value = currentPrice * quantity;
+          
+          // Calculate average cost from purchases
+          const avgCost = await calculateAverageCost(holding.id);
+          const avgCostValue = avgCost || parseFloat(holding.purchasePrice.toString());
+          const purchaseValue = avgCostValue * quantity;
+          const gain = value - purchaseValue;
+          const gainPercent = purchaseValue > 0 ? (gain / purchaseValue) * 100 : 0;
 
-        totalInvestmentValue += value;
+          totalInvestmentValue += value;
 
-        return {
-          ...holding,
-          averageCost: avgCost,
-          currentValue: value.toFixed(2),
-          gain: gain.toFixed(2),
-          gainPercent: gainPercent.toFixed(2),
-        };
-      })
-    );
+          return {
+            ...holding,
+            averageCost: avgCost,
+            currentValue: value.toFixed(2),
+            gain: gain.toFixed(2),
+            gainPercent: gainPercent.toFixed(2),
+          };
+        })
+      );
 
-    const cashAmount = cashBalance
-      ? parseFloat(cashBalance.amount.toString())
-      : 0;
-    const totalValue = totalInvestmentValue + cashAmount;
+      const cashAmount = cashBalance
+        ? parseFloat(cashBalance.amount.toString())
+        : 0;
+      const totalValue = totalInvestmentValue + cashAmount;
 
-    return {
-      holdings: holdingsWithValues,
-      cashBalance: cashAmount.toFixed(2),
-      investmentValue: totalInvestmentValue.toFixed(2),
-      totalValue: totalValue.toFixed(2),
-      allocationBreakdown: holdingsWithValues.map((h) => ({
-        symbol: h.symbol,
-        name: h.name,
-        percentage:
+      return {
+        holdings: holdingsWithValues,
+        cashBalance: cashAmount.toFixed(2),
+        investmentValue: totalInvestmentValue.toFixed(2),
+        totalValue: totalValue.toFixed(2),
+        allocationBreakdown: holdingsWithValues.map((h) => ({
+          symbol: h.symbol,
+          name: h.name,
+          percentage:
+            totalValue > 0
+              ? ((parseFloat(h.currentValue) / totalValue) * 100).toFixed(2)
+              : "0",
+        })),
+        cashAllocationPercent:
           totalValue > 0
-            ? ((parseFloat(h.currentValue) / totalValue) * 100).toFixed(2)
+            ? ((cashAmount / totalValue) * 100).toFixed(2)
             : "0",
-      })),
-      cashAllocationPercent:
-        totalValue > 0
-          ? ((cashAmount / totalValue) * 100).toFixed(2)
-          : "0",
-    };
-  }),
+      };
+    }),
 
   importPurchasesFromCSV: protectedProcedure
     .input(
       z.object({
+        portfolioId: z.number(),
         holdingId: z.number(),
         csvContent: z.string(),
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const holdings = await getUserEtfHoldings(ctx.user.id);
+      const holdings = await getUserEtfHoldings(ctx.user.id, input.portfolioId);
       const holding = holdings.find((h) => h.id === input.holdingId);
       
       if (!holding) {
@@ -440,6 +458,7 @@ export const etfRouter = router({
 
       const result = await bulkImportPurchases(
         ctx.user.id,
+        input.portfolioId,
         input.holdingId,
         holding.symbol,
         validRecords

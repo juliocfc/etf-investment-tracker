@@ -1,0 +1,9 @@
+{
+  "query": "CREATE TABLE `portfolios` (`id` int AUTO_INCREMENT PRIMARY KEY, `userId` int NOT NULL, `name` varchar(255) NOT NULL, `description` text, `createdAt` timestamp DEFAULT CURRENT_TIMESTAMP, `updatedAt` timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, INDEX `idx_userId` (`userId`), FOREIGN KEY (`userId`) REFERENCES `users`(`id`) ON DELETE CASCADE);",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 3zDyqJ1Hn4Pu9ei.root --database iDgEdd3uke8yQDqrD5oayo --execute CREATE TABLE `portfolios` (`id` int AUTO_INCREMENT PRIMARY KEY, `userId` int NOT NULL, `name` varchar(255) NOT NULL, `description` text, `createdAt` timestamp DEFAULT CURRENT_TIMESTAMP, `updatedAt` timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, INDEX `idx_userId` (`userId`), FOREIGN KEY (`userId`) REFERENCES `users`(`id`) ON DELETE CASCADE);",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 187
+}

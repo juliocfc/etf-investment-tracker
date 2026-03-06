@@ -1,0 +1,9 @@
+{
+  "query": "DROP TABLE IF EXISTS purchases; DROP TABLE IF EXISTS balance_history; DROP TABLE IF EXISTS cash_balance; DROP TABLE IF EXISTS etf_holdings; DROP TABLE IF EXISTS dividend_history; DROP TABLE IF EXISTS price_history; DROP TABLE IF EXISTS portfolios;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 3zDyqJ1Hn4Pu9ei.root --database iDgEdd3uke8yQDqrD5oayo --execute DROP TABLE IF EXISTS purchases; DROP TABLE IF EXISTS balance_history; DROP TABLE IF EXISTS cash_balance; DROP TABLE IF EXISTS etf_holdings; DROP TABLE IF EXISTS dividend_history; DROP TABLE IF EXISTS price_history; DROP TABLE IF EXISTS portfolios;",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 1363
+}

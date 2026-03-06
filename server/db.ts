@@ -97,11 +97,15 @@ export async function getUserByOpenId(openId: string) {
 }
 
 // ETF Holdings queries
-export async function getUserEtfHoldings(userId: number) {
+export async function getUserEtfHoldings(userId: number, portfolioId?: number) {
   const db = await getDb();
   if (!db) return [];
   const { etfHoldings } = await import("../drizzle/schema");
-  return db.select().from(etfHoldings).where(eq(etfHoldings.userId, userId));
+  const conditions = [eq(etfHoldings.userId, userId)];
+  if (portfolioId) {
+    conditions.push(eq(etfHoldings.portfolioId, portfolioId));
+  }
+  return db.select().from(etfHoldings).where(and(...conditions));
 }
 
 export async function createEtfHolding(holding: any) {
@@ -152,43 +156,43 @@ export async function getPriceHistory(userId: number, symbol: string, days?: num
 }
 
 // Cash Balance queries
-export async function getCashBalance(userId: number) {
+export async function getCashBalance(userId: number, portfolioId: number) {
   const db = await getDb();
   if (!db) return null;
   const { cashBalance } = await import("../drizzle/schema");
-  const result = await db.select().from(cashBalance).where(eq(cashBalance.userId, userId)).limit(1);
+  const result = await db.select().from(cashBalance).where(and(eq(cashBalance.userId, userId), eq(cashBalance.portfolioId, portfolioId))).limit(1);
   return result.length > 0 ? result[0] : null;
 }
 
-export async function updateCashBalance(userId: number, amount: string) {
+export async function updateCashBalance(userId: number, portfolioId: number, amount: string) {
   const db = await getDb();
   if (!db) return null;
   const { cashBalance } = await import("../drizzle/schema");
   
-  const existing = await getCashBalance(userId);
+  const existing = await getCashBalance(userId, portfolioId);
   if (existing) {
-    await db.update(cashBalance).set({ amount }).where(eq(cashBalance.userId, userId));
+    await db.update(cashBalance).set({ amount }).where(and(eq(cashBalance.userId, userId), eq(cashBalance.portfolioId, portfolioId)));
   } else {
-    await db.insert(cashBalance).values({ userId, amount });
+    await db.insert(cashBalance).values({ userId, portfolioId, amount });
   }
   
-  return getCashBalance(userId);
+  return getCashBalance(userId, portfolioId);
 }
 
 // Balance History queries
-export async function addBalanceHistory(userId: number, totalValue: string, cashValue: string, investmentValue: string, date: Date) {
+export async function addBalanceHistory(userId: number, portfolioId: number, totalValue: string, cashValue: string, investmentValue: string, date: Date) {
   const db = await getDb();
   if (!db) return null;
   const { balanceHistory } = await import("../drizzle/schema");
-  return db.insert(balanceHistory).values({ userId, totalValue, cashValue, investmentValue, date });
+  return db.insert(balanceHistory).values({ userId, portfolioId, totalValue, cashValue, investmentValue, date });
 }
 
-export async function getBalanceHistory(userId: number, days?: number) {
+export async function getBalanceHistory(userId: number, portfolioId: number, days?: number) {
   const db = await getDb();
   if (!db) return [];
   const { balanceHistory } = await import("../drizzle/schema");
   
-  const conditions = [eq(balanceHistory.userId, userId)];
+  const conditions = [eq(balanceHistory.userId, userId), eq(balanceHistory.portfolioId, portfolioId)];
   if (days) {
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
@@ -214,11 +218,11 @@ export async function addDividendHistory(userId: number, symbol: string, dividen
 }
 
 // Purchase queries
-export async function addPurchase(userId: number, holdingId: number, symbol: string, quantity: string, price: string, purchaseDate: Date) {
+export async function addPurchase(userId: number, portfolioId: number, holdingId: number, symbol: string, quantity: string, price: string, purchaseDate: Date) {
   const db = await getDb();
   if (!db) return null;
   const { purchases } = await import("../drizzle/schema");
-  await db.insert(purchases).values({ userId, holdingId, symbol, quantity, price, purchaseDate });
+  await db.insert(purchases).values({ userId, portfolioId, holdingId, symbol, quantity, price, purchaseDate });
   const insertedPurchase = await db.select().from(purchases).where(eq(purchases.userId, userId)).orderBy(desc(purchases.id)).limit(1);
   return insertedPurchase[0];
 }
@@ -401,6 +405,7 @@ export function parseCSVContent(csvContent: string): ParsedPurchaseRecord[] {
 
 export async function bulkImportPurchases(
   userId: number,
+  portfolioId: number,
   holdingId: number,
   symbol: string,
   records: ParsedPurchaseRecord[]
@@ -424,6 +429,7 @@ export async function bulkImportPurchases(
       try {
         await db.insert(purchases).values({
           userId,
+          portfolioId,
           holdingId,
           symbol,
           quantity: record.quantity,

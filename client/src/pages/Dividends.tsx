@@ -1,21 +1,69 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
 import { Card } from "@/components/ui/card";
 import { DollarSign } from "lucide-react";
 
 export default function Dividends() {
-  const { data: holdings } = trpc.etf.getHoldings.useQuery();
-  const { data: totalDividends } = trpc.etf.calculateTotalDividends.useQuery();
+  const [selectedPortfolioId, setSelectedPortfolioId] = useState<number | null>(null);
+
+  // Get portfolios
+  const { data: portfolios } = trpc.portfolio.getAll.useQuery();
+
+  // Initialize selected portfolio
+  useEffect(() => {
+    if (portfolios && portfolios.length > 0 && !selectedPortfolioId) {
+      setSelectedPortfolioId(portfolios[0].id);
+    }
+  }, [portfolios, selectedPortfolioId]);
+
+  const { data: holdings } = trpc.etf.getHoldings.useQuery(
+    selectedPortfolioId ? { portfolioId: selectedPortfolioId } : { portfolioId: 0 },
+    { enabled: selectedPortfolioId !== null }
+  );
+  const { data: totalDividends } = trpc.etf.calculateTotalDividends.useQuery(
+    selectedPortfolioId ? { portfolioId: selectedPortfolioId } : { portfolioId: 0 },
+    { enabled: selectedPortfolioId !== null }
+  );
   const [selectedSymbol, setSelectedSymbol] = useState<string>(
     holdings?.[0]?.symbol || ""
   );
+
+  useEffect(() => {
+    if (holdings && holdings.length > 0 && !selectedSymbol) {
+      setSelectedSymbol(holdings[0].symbol);
+    }
+  }, [holdings, selectedSymbol]);
 
   const { data: dividendHistory } = trpc.etf.getDividendHistory.useQuery({
     symbol: selectedSymbol,
   });
 
+  if (!selectedPortfolioId || !portfolios) {
+    return (
+      <div className="space-y-6 p-6">
+        <div className="text-center text-gray-400">Loading portfolios...</div>
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 p-6">
+      {/* Portfolio Selector */}
+      <div className="flex items-center gap-4 mb-6">
+        <label className="text-sm text-gray-400">Select Portfolio:</label>
+        <select
+          value={selectedPortfolioId || ""}
+          onChange={(e) => setSelectedPortfolioId(parseInt(e.target.value))}
+          className="px-4 py-2 bg-black border border-cyan-500/50 rounded text-white"
+        >
+          {portfolios.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </select>
+      </div>
+
       {/* Total Dividends Summary */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="data-card">

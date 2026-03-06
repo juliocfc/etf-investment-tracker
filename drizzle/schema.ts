@@ -25,12 +25,36 @@ export const users = mysqlTable("users", {
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 
+// Portfolio table (groups ETF holdings and cash)
+export const portfolios = mysqlTable(
+  "portfolios",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    userId: int("userId").notNull(),
+    name: varchar("name", { length: 255 }).notNull(),
+    description: text("description"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  (table) => ([
+    index("idx_userId").on(table.userId),
+    foreignKey({
+      columns: [table.userId],
+      foreignColumns: [users.id],
+    }).onDelete("cascade"),
+  ])
+);
+
+export type Portfolio = typeof portfolios.$inferSelect;
+export type InsertPortfolio = typeof portfolios.$inferInsert;
+
 // ETF Holdings table
 export const etfHoldings = mysqlTable(
   "etf_holdings",
   {
     id: int("id").autoincrement().primaryKey(),
     userId: int("userId").notNull(),
+    portfolioId: int("portfolioId").notNull(),
     symbol: varchar("symbol", { length: 20 }).notNull(),
     name: varchar("name", { length: 255 }).notNull(),
     quantity: decimal("quantity", { precision: 18, scale: 8 }).notNull(),
@@ -43,10 +67,15 @@ export const etfHoldings = mysqlTable(
   },
   (table) => ([
     index("idx_userId").on(table.userId),
+    index("idx_portfolioId").on(table.portfolioId),
     index("idx_symbol").on(table.symbol),
     foreignKey({
       columns: [table.userId],
       foreignColumns: [users.id],
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [table.portfolioId],
+      foreignColumns: [portfolios.id],
     }).onDelete("cascade"),
   ])
 );
@@ -102,20 +131,26 @@ export const dividendHistory = mysqlTable(
 export type DividendHistory = typeof dividendHistory.$inferSelect;
 export type InsertDividendHistory = typeof dividendHistory.$inferInsert;
 
-// Cash Balance table
+// Cash Balance table (per portfolio)
 export const cashBalance = mysqlTable(
   "cash_balance",
   {
     id: int("id").autoincrement().primaryKey(),
-    userId: int("userId").notNull().unique(),
+    userId: int("userId").notNull(),
+    portfolioId: int("portfolioId").notNull(),
     amount: decimal("amount", { precision: 18, scale: 8 }).notNull().default("0"),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
     updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   },
   (table) => ([
+    index("idx_userId_portfolioId").on(table.userId, table.portfolioId),
     foreignKey({
       columns: [table.userId],
       foreignColumns: [users.id],
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [table.portfolioId],
+      foreignColumns: [portfolios.id],
     }).onDelete("cascade"),
   ])
 );
@@ -129,6 +164,7 @@ export const balanceHistory = mysqlTable(
   {
     id: int("id").autoincrement().primaryKey(),
     userId: int("userId").notNull(),
+    portfolioId: int("portfolioId").notNull(),
     totalValue: decimal("totalValue", { precision: 18, scale: 8 }).notNull(),
     cashValue: decimal("cashValue", { precision: 18, scale: 8 }).notNull(),
     investmentValue: decimal("investmentValue", { precision: 18, scale: 8 }).notNull(),
@@ -136,10 +172,14 @@ export const balanceHistory = mysqlTable(
     createdAt: timestamp("createdAt").defaultNow().notNull(),
   },
   (table) => ([
-    index("idx_userId_date").on(table.userId, table.date),
+    index("idx_userId_portfolioId_date").on(table.userId, table.portfolioId, table.date),
     foreignKey({
       columns: [table.userId],
       foreignColumns: [users.id],
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [table.portfolioId],
+      foreignColumns: [portfolios.id],
     }).onDelete("cascade"),
   ])
 );
@@ -153,6 +193,7 @@ export const purchases = mysqlTable(
   {
     id: int("id").autoincrement().primaryKey(),
     userId: int("userId").notNull(),
+    portfolioId: int("portfolioId").notNull(),
     holdingId: int("holdingId").notNull(),
     symbol: varchar("symbol", { length: 20 }).notNull(),
     quantity: decimal("quantity", { precision: 18, scale: 8 }).notNull(),
@@ -161,11 +202,15 @@ export const purchases = mysqlTable(
     createdAt: timestamp("createdAt").defaultNow().notNull(),
   },
   (table) => ([
-    index("idx_userId_holdingId").on(table.userId, table.holdingId),
+    index("idx_userId_portfolioId_holdingId").on(table.userId, table.portfolioId, table.holdingId),
     index("idx_symbol").on(table.symbol),
     foreignKey({
       columns: [table.userId],
       foreignColumns: [users.id],
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [table.portfolioId],
+      foreignColumns: [portfolios.id],
     }).onDelete("cascade"),
     foreignKey({
       columns: [table.holdingId],

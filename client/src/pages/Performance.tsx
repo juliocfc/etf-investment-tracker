@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
 import { Card } from "@/components/ui/card";
 import {
@@ -16,17 +16,33 @@ import {
 
 export default function Performance() {
   const [timePeriod, setTimePeriod] = useState<"1m" | "1y" | "3y">("1y");
+  const [selectedPortfolioId, setSelectedPortfolioId] = useState<number | null>(null);
+
+  // Get portfolios
+  const { data: portfolios } = trpc.portfolio.getAll.useQuery();
+
+  // Initialize selected portfolio
+  useEffect(() => {
+    if (portfolios && portfolios.length > 0 && !selectedPortfolioId) {
+      setSelectedPortfolioId(portfolios[0].id);
+    }
+  }, [portfolios, selectedPortfolioId]);
 
   // Queries
-  const { data: performance } = trpc.etf.calculatePerformance.useQuery({
-    days: timePeriod === "1m" ? 30 : timePeriod === "1y" ? 365 : 1095,
-  });
+  const { data: performance } = trpc.etf.calculatePerformance.useQuery(
+    selectedPortfolioId ? { portfolioId: selectedPortfolioId, days: timePeriod === "1m" ? 30 : timePeriod === "1y" ? 365 : 1095 } : { portfolioId: 0, days: 365 },
+    { enabled: selectedPortfolioId !== null }
+  );
 
-  const { data: balanceHistory } = trpc.etf.getBalanceHistory.useQuery({
-    days: timePeriod === "1m" ? 30 : timePeriod === "1y" ? 365 : 1095,
-  });
+  const { data: balanceHistory } = trpc.etf.getBalanceHistory.useQuery(
+    selectedPortfolioId ? { portfolioId: selectedPortfolioId, days: timePeriod === "1m" ? 30 : timePeriod === "1y" ? 365 : 1095 } : { portfolioId: 0, days: 365 },
+    { enabled: selectedPortfolioId !== null }
+  );
 
-  const { data: holdings } = trpc.etf.getHoldings.useQuery();
+  const { data: holdings } = trpc.etf.getHoldings.useQuery(
+    selectedPortfolioId ? { portfolioId: selectedPortfolioId } : { portfolioId: 0 },
+    { enabled: selectedPortfolioId !== null }
+  );
 
   // Prepare balance history data for chart
   const balanceChartData = balanceHistory?.map((item) => ({
@@ -44,6 +60,12 @@ export default function Performance() {
     holdings?.[0]?.symbol || ""
   );
 
+  useEffect(() => {
+    if (holdings && holdings.length > 0 && !selectedSymbol) {
+      setSelectedSymbol(holdings[0].symbol);
+    }
+  }, [holdings, selectedSymbol]);
+
   const { data: priceHistory } = trpc.etf.getPriceHistory.useQuery({
     symbol: selectedSymbol,
     days: timePeriod === "1m" ? 30 : timePeriod === "1y" ? 365 : 1095,
@@ -57,8 +79,32 @@ export default function Performance() {
     price: parseFloat(item.price.toString()),
   })) || [];
 
+  if (!selectedPortfolioId || !portfolios) {
+    return (
+      <div className="space-y-6 p-6">
+        <div className="text-center text-gray-400">Loading portfolios...</div>
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 p-6">
+      {/* Portfolio Selector */}
+      <div className="flex items-center gap-4 mb-6">
+        <label className="text-sm text-gray-400">Select Portfolio:</label>
+        <select
+          value={selectedPortfolioId || ""}
+          onChange={(e) => setSelectedPortfolioId(parseInt(e.target.value))}
+          className="px-4 py-2 bg-black border border-cyan-500/50 rounded text-white"
+        >
+          {portfolios.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </select>
+      </div>
+
       {/* Performance Metrics */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="data-card">
