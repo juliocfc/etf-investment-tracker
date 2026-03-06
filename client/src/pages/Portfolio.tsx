@@ -5,7 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Plus, Trash2, Edit2, RefreshCw, ShoppingCart, History } from "lucide-react";
 import { toast } from "sonner";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useContext } from "react";
 
 export default function Portfolio() {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
@@ -33,6 +33,8 @@ export default function Portfolio() {
   const [isCSVImportOpen, setIsCSVImportOpen] = useState<number | null>(null);
   const [csvFile, setCSVFile] = useState<File | null>(null);
   const [csvPreview, setCSVPreview] = useState<any[]>([]);
+  const [metrics, setMetrics] = useState<Record<string, any>>({});
+  const [loadingMetrics, setLoadingMetrics] = useState<Set<string>>(new Set());
 
   // Queries
   const { data: holdings, refetch: refetchHoldings } = trpc.etf.getHoldings.useQuery();
@@ -154,6 +156,35 @@ export default function Portfolio() {
   useEffect(() => {
     updatePricesMutation.mutate();
   }, []);
+
+  // Fetch performance metrics for each holding
+  useEffect(() => {
+    if (!summary?.holdings || summary.holdings.length === 0) return;
+
+    const fetchMetrics = async () => {
+      for (const holding of summary.holdings) {
+        if (metrics[holding.symbol]) continue;
+        
+        try {
+          const utils = trpc.useUtils();
+          const result = await utils.etf.getPerformanceMetrics.fetch({ symbol: holding.symbol });
+          setMetrics(prev => ({
+            ...prev,
+            [holding.symbol]: result
+          }));
+        } catch (error) {
+          console.error(`Failed to fetch metrics for ${holding.symbol}:`, error);
+          setMetrics(prev => ({
+            ...prev,
+            [holding.symbol]: { ytdReturn: null, oneYearReturn: null, volatility: null }
+          }));
+        }
+      }
+    };
+
+    fetchMetrics();
+  }, [summary?.holdings]);
+
 
   // Handle symbol input change with auto-lookup
   const handleSymbolChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -447,6 +478,9 @@ export default function Portfolio() {
                 <th className="text-right py-3 px-4 text-cyan-400 font-mono">ALLOCATION %</th>
                 <th className="text-right py-3 px-4 text-cyan-400 font-mono">GAIN/LOSS</th>
                 <th className="text-right py-3 px-4 text-cyan-400 font-mono">GAIN/LOSS %</th>
+                <th className="text-right py-3 px-4 text-cyan-400 font-mono">YTD RETURN</th>
+                <th className="text-right py-3 px-4 text-cyan-400 font-mono">1-YR RETURN</th>
+                <th className="text-right py-3 px-4 text-cyan-400 font-mono">VOLATILITY</th>
                 <th className="text-center py-3 px-4 text-cyan-400 font-mono">ACTIONS</th>
               </tr>
             </thead>
@@ -477,6 +511,34 @@ export default function Portfolio() {
                     }`}
                   >
                     {holding.gainPercent}%
+                  </td>
+                  <td className={`py-3 px-4 text-right font-bold ${
+                    metrics[holding.symbol]?.ytdReturn !== null && metrics[holding.symbol]?.ytdReturn >= 0 ? "text-green-400" : "text-red-400"
+                  }`}>
+                    {metrics[holding.symbol]?.ytdReturn !== undefined 
+                      ? metrics[holding.symbol]?.ytdReturn !== null 
+                        ? metrics[holding.symbol].ytdReturn.toFixed(2) + "%"
+                        : "N/A"
+                      : <span className="text-gray-500 text-xs">loading...</span>
+                    }
+                  </td>
+                  <td className={`py-3 px-4 text-right font-bold ${
+                    metrics[holding.symbol]?.oneYearReturn !== null && metrics[holding.symbol]?.oneYearReturn >= 0 ? "text-green-400" : "text-red-400"
+                  }`}>
+                    {metrics[holding.symbol]?.oneYearReturn !== undefined 
+                      ? metrics[holding.symbol]?.oneYearReturn !== null 
+                        ? metrics[holding.symbol].oneYearReturn.toFixed(2) + "%"
+                        : "N/A"
+                      : <span className="text-gray-500 text-xs">loading...</span>
+                    }
+                  </td>
+                  <td className="py-3 px-4 text-right text-yellow-400 font-bold">
+                    {metrics[holding.symbol]?.volatility !== undefined 
+                      ? metrics[holding.symbol]?.volatility !== null 
+                        ? metrics[holding.symbol].volatility.toFixed(2) + "%"
+                        : "N/A"
+                      : <span className="text-gray-500 text-xs">loading...</span>
+                    }
                   </td>
                   <td className="py-3 px-4 text-center space-x-2 flex justify-center">
                     <Dialog open={isBuyDialogOpen === holding.id} onOpenChange={(open) => setIsBuyDialogOpen(open ? holding.id : null)}>

@@ -133,3 +133,11 @@ Core web app completed with cyberpunk design. Remaining: static results webpage.
 - [x] Change all price/dollar values to 2 decimal places (AVG Cost, Current Price, Value)
 - [x] Fix portfolio allocation percentage showing "NaN%"
 - [x] Fix pie chart not visible/rendering
+
+## Performance Metrics Feature
+- [x] Fetch historical price data from Alpha Vantage API
+- [x] Calculate YTD return for each holding
+- [x] Calculate 1-year return for each holding
+- [x] Calculate volatility (standard deviation) for each holding
+- [x] Add metrics to Portfolio table UI
+- [x] Test metrics calculation and display

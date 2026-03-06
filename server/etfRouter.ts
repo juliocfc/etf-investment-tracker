@@ -26,6 +26,7 @@ import {
   validateEtfSymbol,
 } from "./financialApi";
 import { fetchETFName } from "./etfLookup";
+import { calculatePerformanceMetrics } from "./performanceMetrics";
 
 export const etfRouter = router({
   getHoldings: protectedProcedure.query(async ({ ctx }) => {
@@ -452,6 +453,42 @@ export const etfRouter = router({
         failed: result.failed,
         errors: [...result.errors, ...invalidRecords.map((r) => r.error || "")],
         newAvgCost,
+      };
+    }),
+
+  getPerformanceMetrics: protectedProcedure
+    .input(
+      z.object({
+        symbol: z.string().min(1).max(20),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      // Fetch 1+ year of historical prices
+      const prices = await fetchHistoricalPrices(input.symbol, 400);
+      
+      if (!prices || prices.length === 0) {
+        return {
+          symbol: input.symbol,
+          ytdReturn: null,
+          oneYearReturn: null,
+          volatility: null,
+          error: "Unable to fetch historical price data",
+        };
+      }
+
+      // Calculate metrics
+      const metrics = calculatePerformanceMetrics(
+        prices.map((p) => ({
+          date: p.timestamp,
+          price: p.price,
+        }))
+      );
+
+      return {
+        symbol: input.symbol,
+        ytdReturn: metrics.ytdReturn,
+        oneYearReturn: metrics.oneYearReturn,
+        volatility: metrics.volatility,
       };
     }),
 });
