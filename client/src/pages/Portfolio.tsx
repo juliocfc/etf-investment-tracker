@@ -5,10 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Plus, Trash2, Edit2, RefreshCw, ShoppingCart, History } from "lucide-react";
 import { toast } from "sonner";
-import { useEffect, useRef, useState } from "react";
-import { Chart as ChartJS, ArcElement, Tooltip, Legend } from "chart.js";
-
-ChartJS.register(ArcElement, Tooltip, Legend);
+import React, { useEffect, useRef, useState } from "react";
 
 export default function Portfolio() {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
@@ -797,9 +794,6 @@ function CSVImportContent({ holdingId, onImport }: { holdingId: number; onImport
 
 
 function PortfolioAllocationChart({ summary }: { summary: any }) {
-  const chartRef = useRef<HTMLCanvasElement>(null);
-  const chartInstanceRef = useRef<ChartJS | null>(null);
-
   const labels: string[] = [];
   const data: number[] = [];
   const colors: string[] = [];
@@ -833,75 +827,6 @@ function PortfolioAllocationChart({ summary }: { summary: any }) {
     colors.push("#1a1a2e"); // dark gray for cash
   }
 
-  const chartData = {
-    labels: labels,
-    datasets: [
-      {
-        data: data,
-        backgroundColor: colors,
-        borderColor: "#0a0e27",
-        borderWidth: 2,
-      },
-    ],
-  };
-
-  const chartOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: {
-        position: "bottom" as const,
-        labels: {
-          color: "#00d9ff",
-          font: {
-            family: "monospace",
-            size: 12,
-          },
-          padding: 15,
-        },
-      },
-      tooltip: {
-        callbacks: {
-          label: function (context: any) {
-            const label = context.label || "";
-            const value = context.parsed || 0;
-            return `${label}: ${value.toFixed(1)}%`;
-          },
-        },
-        backgroundColor: "#0a0e27",
-        titleColor: "#00d9ff",
-        bodyColor: "#00d9ff",
-        borderColor: "#00d9ff",
-        borderWidth: 1,
-      },
-    },
-  };
-
-  useEffect(() => {
-    if (!chartRef.current || data.length === 0) return;
-
-    // Destroy existing chart if it exists
-    if (chartInstanceRef.current) {
-      chartInstanceRef.current.destroy();
-    }
-
-    // Create new chart
-    const ctx = chartRef.current.getContext("2d");
-    if (ctx) {
-      chartInstanceRef.current = new ChartJS(ctx, {
-        type: "doughnut",
-        data: chartData,
-        options: chartOptions as any,
-      });
-    }
-
-    return () => {
-      if (chartInstanceRef.current) {
-        chartInstanceRef.current.destroy();
-      }
-    };
-  }, [data, labels, colors]);
-
   if (data.length === 0) {
     return (
       <div className="bg-black/50 border border-cyan-500/30 rounded p-6 text-center text-gray-400">
@@ -910,11 +835,44 @@ function PortfolioAllocationChart({ summary }: { summary: any }) {
     );
   }
 
+  // Create SVG pie chart
+  const radius = 80;
+  const centerX = 100;
+  const centerY = 100;
+  let currentAngle = -Math.PI / 2;
+  const slices: React.ReactNode[] = [];
+
+  data.forEach((value, index) => {
+    const sliceAngle = (value / 100) * 2 * Math.PI;
+    const startAngle = currentAngle;
+    const endAngle = currentAngle + sliceAngle;
+
+    const x1 = centerX + radius * Math.cos(startAngle);
+    const y1 = centerY + radius * Math.sin(startAngle);
+    const x2 = centerX + radius * Math.cos(endAngle);
+    const y2 = centerY + radius * Math.sin(endAngle);
+
+    const largeArc = sliceAngle > Math.PI ? 1 : 0;
+    const pathData = `M ${centerX} ${centerY} L ${x1} ${y1} A ${radius} ${radius} 0 ${largeArc} 1 ${x2} ${y2} Z`;
+
+    slices.push(
+      <path
+        key={index}
+        d={pathData}
+        fill={colors[index]}
+        stroke="#0a0e27"
+        strokeWidth="2"
+      />
+    );
+
+    currentAngle = endAngle;
+  });
+
   return (
     <div className="bg-black/50 border border-cyan-500/30 rounded p-6">
-      <div style={{ position: "relative", height: "300px", width: "100%" }}>
-        <canvas ref={chartRef} />
-      </div>
+      <svg width="100%" height="250" viewBox="0 0 200 200" className="mx-auto">
+        {slices}
+      </svg>
       <div className="mt-4 grid grid-cols-2 gap-2">
         {labels.map((label, index) => (
           <div key={label} className="flex items-center gap-2 text-xs">
