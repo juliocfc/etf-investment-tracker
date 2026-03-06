@@ -1,4 +1,3 @@
-import { useState, useEffect, useRef } from "react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -6,6 +5,10 @@ import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Plus, Trash2, Edit2, RefreshCw, ShoppingCart, History } from "lucide-react";
 import { toast } from "sonner";
+import { useEffect, useRef, useState } from "react";
+import { Chart as ChartJS, ArcElement, Tooltip, Legend } from "chart.js";
+
+ChartJS.register(ArcElement, Tooltip, Legend);
 
 export default function Portfolio() {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
@@ -456,18 +459,20 @@ export default function Portfolio() {
                   <td className="py-3 px-4 text-green-400 font-bold">{holding.symbol}</td>
                   <td className="py-3 px-4 text-gray-300">{holding.name}</td>
                   <td className="py-3 px-4 text-right text-white">{parseFloat(holding.quantity).toFixed(3)}</td>
-                  <td className="py-3 px-4 text-right text-cyan-300">${parseFloat(holding.averageCost || 0).toFixed(3)}</td>
-                  <td className="py-3 px-4 text-right text-white">${holding.currentPrice}</td>
-                  <td className="py-3 px-4 text-right text-white">${holding.currentValue}</td>
+                  <td className="py-3 px-4 text-right text-cyan-300">${parseFloat(holding.averageCost || 0).toFixed(2)}</td>
+                  <td className="py-3 px-4 text-right text-white">${parseFloat(holding.currentPrice || 0).toFixed(2)}</td>
+                  <td className="py-3 px-4 text-right text-white">${parseFloat(holding.currentValue || 0).toFixed(2)}</td>
                   <td className="py-3 px-4 text-right text-cyan-300">
-                    {((parseFloat(holding.currentValue) / parseFloat(summary?.investmentValue || "1")) * 100).toFixed(1)}%
+                    {summary?.investmentValue && parseFloat(summary.investmentValue) > 0
+                      ? ((parseFloat(holding.currentValue || 0) / parseFloat(summary.investmentValue)) * 100).toFixed(1)
+                      : "0.0"}%
                   </td>
                   <td
                     className={`py-3 px-4 text-right font-bold ${
-                      parseFloat(holding.gain) >= 0 ? "text-green-400" : "text-red-400"
+                      parseFloat(holding.gain || 0) >= 0 ? "text-green-400" : "text-red-400"
                     }`}
                   >
-                    ${holding.gain}
+                    ${parseFloat(holding.gain || 0).toFixed(2)}
                   </td>
                   <td
                     className={`py-3 px-4 text-right font-bold ${
@@ -793,6 +798,7 @@ function CSVImportContent({ holdingId, onImport }: { holdingId: number; onImport
 
 function PortfolioAllocationChart({ summary }: { summary: any }) {
   const chartRef = useRef<HTMLCanvasElement>(null);
+  const chartInstanceRef = useRef<ChartJS | null>(null);
 
   const labels: string[] = [];
   const data: number[] = [];
@@ -811,15 +817,19 @@ function PortfolioAllocationChart({ summary }: { summary: any }) {
   ];
 
   summary.holdings?.forEach((holding: any, index: number) => {
-    labels.push(holding.symbol);
-    data.push(parseFloat(holding.percentage));
-    colors.push(holdingColors[index % holdingColors.length]);
+    const percentage = parseFloat(holding.percentage || 0);
+    if (percentage > 0) {
+      labels.push(holding.symbol);
+      data.push(percentage);
+      colors.push(holdingColors[index % holdingColors.length]);
+    }
   });
 
   // Add cash allocation
-  if (parseFloat(summary.cashAllocationPercent) > 0) {
+  const cashPercent = parseFloat(summary.cashAllocationPercent || 0);
+  if (cashPercent > 0) {
     labels.push("CASH");
-    data.push(parseFloat(summary.cashAllocationPercent));
+    data.push(cashPercent);
     colors.push("#1a1a2e"); // dark gray for cash
   }
 
@@ -837,7 +847,7 @@ function PortfolioAllocationChart({ summary }: { summary: any }) {
 
   const chartOptions = {
     responsive: true,
-    maintainAspectRatio: true,
+    maintainAspectRatio: false,
     plugins: {
       legend: {
         position: "bottom" as const,
@@ -867,9 +877,44 @@ function PortfolioAllocationChart({ summary }: { summary: any }) {
     },
   };
 
+  useEffect(() => {
+    if (!chartRef.current || data.length === 0) return;
+
+    // Destroy existing chart if it exists
+    if (chartInstanceRef.current) {
+      chartInstanceRef.current.destroy();
+    }
+
+    // Create new chart
+    const ctx = chartRef.current.getContext("2d");
+    if (ctx) {
+      chartInstanceRef.current = new ChartJS(ctx, {
+        type: "doughnut",
+        data: chartData,
+        options: chartOptions as any,
+      });
+    }
+
+    return () => {
+      if (chartInstanceRef.current) {
+        chartInstanceRef.current.destroy();
+      }
+    };
+  }, [data, labels, colors]);
+
+  if (data.length === 0) {
+    return (
+      <div className="bg-black/50 border border-cyan-500/30 rounded p-6 text-center text-gray-400">
+        No allocation data available
+      </div>
+    );
+  }
+
   return (
-    <div className="bg-black/50 border border-cyan-500/30 rounded p-6 max-w-md mx-auto">
-      <canvas ref={chartRef} />
+    <div className="bg-black/50 border border-cyan-500/30 rounded p-6">
+      <div style={{ position: "relative", height: "300px", width: "100%" }}>
+        <canvas ref={chartRef} />
+      </div>
       <div className="mt-4 grid grid-cols-2 gap-2">
         {labels.map((label, index) => (
           <div key={label} className="flex items-center gap-2 text-xs">

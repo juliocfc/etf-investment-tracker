@@ -128,3 +128,8 @@ Core web app completed with cyberpunk design. Remaining: static results webpage.
 - [x] Update login page to use "Login with Google" button
 - [x] Test Google OAuth credentials and service initialization
 - [x] Verify session cookie creation and authentication flow
+
+## Current Issues to Fix
+- [x] Change all price/dollar values to 2 decimal places (AVG Cost, Current Price, Value)
+- [x] Fix portfolio allocation percentage showing "NaN%"
+- [x] Fix pie chart not visible/rendering
