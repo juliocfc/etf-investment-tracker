@@ -21,8 +21,6 @@ export const CyberpunkDashboard: React.FC<DashboardLayoutProps> = ({
     { id: "portfolio", label: "Portfolio", icon: "📊" },
     { id: "performance", label: "Performance", icon: "📈" },
     { id: "dividends", label: "Dividends", icon: "💰" },
-    { id: "history", label: "History", icon: "📜" },
-    { id: "debug", label: "Debug", icon: "🐛" },
   ];
 
   return (

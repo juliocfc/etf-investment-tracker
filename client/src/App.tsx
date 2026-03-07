@@ -8,8 +8,6 @@ import CyberpunkDashboard from "./components/CyberpunkDashboard";
 import Portfolio from "./pages/Portfolio";
 import Performance from "./pages/Performance";
 import Dividends from "./pages/Dividends";
-import History from "./pages/History";
-import DebugPrices from "./pages/DebugPrices";
 import { useState } from "react";
 import { TrendingUp } from "lucide-react";
 
@@ -24,10 +22,6 @@ function DashboardRouter() {
         return <Performance />;
       case "dividends":
         return <Dividends />;
-      case "history":
-        return <History />;
-      case "debug":
-        return <DebugPrices />;
       default:
         return <Portfolio />;
     }

@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, Trash2, Edit2, RefreshCw, ShoppingCart, History, FolderPlus } from "lucide-react";
+import { Plus, Trash2, RefreshCw, ShoppingCart, History, FolderPlus, FileUp } from "lucide-react";
 import { toast } from "sonner";
 import React, { useEffect, useRef, useState, useMemo } from "react";
 
@@ -14,7 +14,6 @@ export default function Portfolio() {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isBuyDialogOpen, setIsBuyDialogOpen] = useState<number | null>(null);
   const [purchaseHistoryOpen, setPurchaseHistoryOpen] = useState<number | null>(null);
-  const [editingId, setEditingId] = useState<number | null>(null);
   const [formData, setFormData] = useState({
     symbol: "",
     name: "",
@@ -109,26 +108,6 @@ export default function Portfolio() {
     },
     onError: (error) => {
       toast.error(error.message || "Failed to add ETF");
-    },
-  });
-
-  const updateHoldingMutation = trpc.etf.updateHolding.useMutation({
-    onSuccess: () => {
-      toast.success("ETF updated successfully!");
-      refetchHoldings();
-      refetchSummary();
-      setEditingId(null);
-      setFormData({
-        symbol: "",
-        name: "",
-        quantity: "",
-        purchasePrice: "",
-        purchaseDate: new Date().toISOString().split("T")[0],
-      });
-      setIsAddDialogOpen(false);
-    },
-    onError: (error) => {
-      toast.error(error.message || "Failed to update ETF");
     },
   });
 
@@ -279,22 +258,6 @@ export default function Portfolio() {
     });
   };
 
-  const handleUpdateHolding = async () => {
-    if (!editingId || !formData.symbol || !formData.quantity || !formData.purchasePrice) {
-      toast.error("Please fill in all fields");
-      return;
-    }
-
-    updateHoldingMutation.mutate({
-      id: editingId,
-      symbol: formData.symbol,
-      name: formData.name,
-      quantity: formData.quantity,
-      purchasePrice: formData.purchasePrice,
-      purchaseDate: new Date(formData.purchaseDate + "T00:00:00"),
-    });
-  };
-
   const handleBuyMoreShares = async (holdingId: number) => {
     if (!selectedPortfolioId) {
       toast.error("Please select a portfolio");
@@ -312,18 +275,6 @@ export default function Portfolio() {
       price: buyData.price,
       purchaseDate: new Date(buyData.purchaseDate + "T00:00:00"),
     });
-  };
-
-  const handleEditHolding = (holding: any) => {
-    setEditingId(holding.id);
-    setFormData({
-      symbol: holding.symbol,
-      name: holding.name,
-      quantity: holding.quantity.toString(),
-      purchasePrice: holding.purchasePrice.toString(),
-      purchaseDate: new Date(holding.purchaseDate).toISOString().split("T")[0],
-    });
-    setIsAddDialogOpen(true);
   };
 
   const handleDeleteHolding = (id: number) => {
@@ -518,7 +469,6 @@ export default function Portfolio() {
             <Dialog open={isAddDialogOpen} onOpenChange={(open) => {
               setIsAddDialogOpen(open);
               if (!open) {
-                setEditingId(null);
                 setFormData({
                   symbol: "",
                   name: "",
@@ -536,7 +486,7 @@ export default function Portfolio() {
               </DialogTrigger>
               <DialogContent>
                 <DialogHeader>
-                  <DialogTitle>{editingId ? "Update ETF" : "Add New ETF"}</DialogTitle>
+                  <DialogTitle>Add New ETF</DialogTitle>
                 </DialogHeader>
                 <div className="space-y-4">
                   <Input
@@ -569,11 +519,11 @@ export default function Portfolio() {
                     onChange={(e) => setFormData({ ...formData, purchaseDate: e.target.value })}
                   />
                   <Button
-                    onClick={editingId ? handleUpdateHolding : handleAddHolding}
+                    onClick={handleAddHolding}
                     className="w-full bg-cyan-600 hover:bg-cyan-700"
-                    disabled={addHoldingMutation.isPending || updateHoldingMutation.isPending}
+                    disabled={addHoldingMutation.isPending}
                   >
-                    {editingId ? "Update" : "Add"}
+                    Add
                   </Button>
                 </div>
               </DialogContent>
@@ -621,10 +571,11 @@ export default function Portfolio() {
                       <Button
                         size="sm"
                         variant="ghost"
-                        onClick={() => handleEditHolding(holding)}
+                        title="Batch Purchase"
+                        onClick={() => setIsCSVImportOpen(holding.id)}
                         className="text-cyan-400 hover:text-cyan-300"
                       >
-                        <Edit2 className="h-4 w-4" />
+                        <FileUp className="h-4 w-4" />
                       </Button>
                       <Button
                         size="sm"
@@ -756,12 +707,11 @@ export default function Portfolio() {
 
       {/* Purchase History Dialog */}
       {purchaseHistoryOpen && (
-        <Dialog open={!!purchaseHistoryOpen} onOpenChange={() => setPurchaseHistoryOpen(null)}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Purchase History</DialogTitle>
-            </DialogHeader>
-            <PurchaseHistoryTable
+       <Dialog open={!!purchaseHistoryOpen} onOpenChange={() => setPurchaseHistoryOpen(null)}>
+         <DialogContent className="sm:max-w-[600px]">
+           <DialogHeader>
+             <DialogTitle>Purchase History</DialogTitle>
+           </DialogHeader>            <PurchaseHistoryTable
               holdingId={purchaseHistoryOpen}
               onDelete={handleDeletePurchase}
             />
@@ -848,14 +798,14 @@ function PurchaseHistoryTable({ holdingId, onDelete }: { holdingId: number, onDe
   const { data: purchases } = trpc.etf.getPurchases.useQuery({ holdingId });
 
   return (
-    <div className="overflow-x-auto">
+    <div className="overflow-auto max-h-[60vh] scrollbar-thin scrollbar-thumb-cyan-500/50">
       <table className="w-full text-sm">
-        <thead>
+        <thead className="sticky top-0 bg-black z-10">
           <tr className="border-b border-cyan-500/30">
-            <th className="text-left py-2 px-4">Date</th>
-            <th className="text-right py-2 px-4">Quantity</th>
-            <th className="text-right py-2 px-4">Price</th>
-            <th className="text-center py-2 px-4">Action</th>
+            <th className="text-left py-2 px-4 bg-black">Date</th>
+            <th className="text-right py-2 px-4 bg-black">Quantity</th>
+            <th className="text-right py-2 px-4 bg-black">Price</th>
+            <th className="text-center py-2 px-4 bg-black">Action</th>
           </tr>
         </thead>
         <tbody>
@@ -887,21 +837,55 @@ function PurchaseHistoryTable({ holdingId, onDelete }: { holdingId: number, onDe
 }
 
 function CSVImportForm({ holdingId, onImport }: { holdingId: number, onImport: (holdingId: number, csv: string) => void }) {
-  const [csvContent, setCSVContent] = useState("");
+  const [file, setFile] = useState<File | null>(null);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      setFile(e.target.files[0]);
+    }
+  };
+
+  const handleUpload = () => {
+    if (!file) {
+      toast.error("Please select a file first");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const content = e.target?.result as string;
+      if (content) {
+        onImport(holdingId, content);
+      }
+    };
+    reader.onerror = () => {
+      toast.error("Failed to read file");
+    };
+    reader.readAsText(file);
+  };
 
   return (
     <div className="space-y-4">
-      <textarea
-        placeholder="Paste CSV content here (Date, Quantity, Cost)"
-        value={csvContent}
-        onChange={(e) => setCSVContent(e.target.value)}
-        className="w-full h-32 p-2 bg-black border border-cyan-500/50 rounded text-white"
-      />
+      <div className="text-sm text-gray-400">
+        <p>File should include a header: <code>date,quantity,cost</code></p>
+        <p>Example: <code>Dec-19-2025,10,$27.50</code></p>
+      </div>
+      <div className="flex flex-col gap-2">
+        <label className="text-xs text-cyan-400">Select CSV File</label>
+        <input
+          type="file"
+          accept=".csv,.txt"
+          onChange={handleFileChange}
+          className="w-full p-2 bg-black border border-cyan-500/50 rounded text-white file:bg-cyan-600 file:text-white file:border-none file:px-3 file:py-1 file:rounded file:mr-4 file:hover:bg-cyan-700 file:cursor-pointer"
+        />
+        {file && <p className="text-xs text-cyan-300">Selected: {file.name}</p>}
+      </div>
       <Button
-        onClick={() => onImport(holdingId, csvContent)}
+        onClick={handleUpload}
         className="w-full bg-cyan-600 hover:bg-cyan-700"
+        disabled={!file}
       >
-        Import
+        Upload and Import
       </Button>
     </div>
   );
