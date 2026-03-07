@@ -274,7 +274,7 @@ export default function Portfolio() {
       name: formData.name,
       quantity: formData.quantity,
       purchasePrice: formData.purchasePrice,
-      purchaseDate: new Date(formData.purchaseDate),
+      purchaseDate: new Date(formData.purchaseDate + "T00:00:00"),
     });
   };
 
@@ -290,7 +290,7 @@ export default function Portfolio() {
       name: formData.name,
       quantity: formData.quantity,
       purchasePrice: formData.purchasePrice,
-      purchaseDate: new Date(formData.purchaseDate),
+      purchaseDate: new Date(formData.purchaseDate + "T00:00:00"),
     });
   };
 
@@ -309,7 +309,7 @@ export default function Portfolio() {
       holdingId,
       quantity: buyData.quantity,
       price: buyData.price,
-      purchaseDate: new Date(buyData.purchaseDate),
+      purchaseDate: new Date(buyData.purchaseDate + "T00:00:00"),
     });
   };
 
@@ -849,23 +849,27 @@ function PurchaseHistoryTable({ holdingId, onDelete }: { holdingId: number, onDe
           </tr>
         </thead>
         <tbody>
-          {purchases?.map((purchase: any) => (
-            <tr key={purchase.id} className="border-b border-cyan-500/10">
-              <td className="py-2 px-4">{new Date(purchase.purchaseDate).toLocaleDateString()}</td>
-              <td className="text-right py-2 px-4">{parseFloat(purchase.quantity).toFixed(3)}</td>
-              <td className="text-right py-2 px-4">${parseFloat(purchase.price).toFixed(2)}</td>
-              <td className="text-center py-2 px-4">
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => onDelete(purchase.id, holdingId)}
-                  className="text-red-400 hover:text-red-300"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </td>
-            </tr>
-          ))}
+          {purchases?.map((purchase: any) => {
+            const date = new Date(purchase.purchaseDate);
+            const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+            return (
+              <tr key={purchase.id} className="border-b border-cyan-500/10">
+                <td className="py-2 px-4">{dateStr}</td>
+                <td className="text-right py-2 px-4">{parseFloat(purchase.quantity).toFixed(3)}</td>
+                <td className="text-right py-2 px-4">${parseFloat(purchase.price).toFixed(2)}</td>
+                <td className="text-center py-2 px-4">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => onDelete(purchase.id, holdingId)}
+                    className="text-red-400 hover:text-red-300"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
