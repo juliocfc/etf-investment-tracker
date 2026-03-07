@@ -1,11 +1,16 @@
+import { getEnv } from "./_core/env";
+import { delay } from "./utils";
 /**
  * Financial Data API Integration
  * Fetches real-time ETF prices and dividend information
  * Uses Alpha Vantage as primary provider with fallback options
  */
 
-const ALPHA_VANTAGE_API_KEY = process.env.ALPHA_VANTAGE_API_KEY || "demo";
+const env = getEnv();
+const ALPHA_VANTAGE_API_KEY = env.alphaVantageApiKey;
 const ALPHA_VANTAGE_BASE_URL = "https://www.alphavantage.co/query";
+let lastApiCallTime = 0;
+const MIN_DELAY_MS = 1100; // 1.1 seconds to be safe
 
 interface PriceData {
   symbol: string;
@@ -20,15 +25,27 @@ interface DividendData {
   paymentDate?: Date;
 }
 
+async function throttledApiCall<T>(
+  fn: () => Promise<T>
+): Promise<T> {
+  const timeSinceLastCall = Date.now() - lastApiCallTime;
+  if (timeSinceLastCall < MIN_DELAY_MS) {
+    await delay(MIN_DELAY_MS - timeSinceLastCall);
+  }
+  lastApiCallTime = Date.now();
+  return fn();
+}
+
 /**
  * Fetch current price for an ETF symbol
  * Uses Alpha Vantage Global Quote endpoint
  */
 export async function fetchEtfPrice(symbol: string): Promise<PriceData | null> {
-  try {
-    const params = new URLSearchParams({
-      function: "GLOBAL_QUOTE",
-      symbol: symbol.toUpperCase(),
+  return throttledApiCall(async () => {
+    try {
+      const params = new URLSearchParams({
+        function: "GLOBAL_QUOTE",
+        symbol: symbol.toUpperCase(),
       apikey: ALPHA_VANTAGE_API_KEY,
     });
 
@@ -58,6 +75,7 @@ export async function fetchEtfPrice(symbol: string): Promise<PriceData | null> {
     console.error(`[FinancialApi] Error fetching price for ${symbol}:`, error);
     return null;
   }
+});
 }
 
 /**

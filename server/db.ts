@@ -8,6 +8,7 @@ let _db: ReturnType<typeof drizzle> | null = null;
 export async function getDb() {
   if (!_db) {
     const dbPath = process.env.DATABASE_URL || "local.db";
+    console.log(`[Database] Initializing database at path: ${dbPath}`);
     const sqlite = new Database(dbPath);
     _db = drizzle(sqlite);
   }

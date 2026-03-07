@@ -1,6 +1,6 @@
+import { getEnv } from "./_core/env";
 import axios from 'axios';
 
-const API_KEY = process.env.ALPHA_VANTAGE_API_KEY;
 const BASE_URL = 'https://www.alphavantage.co/query';
 
 // Cache for ETF names to avoid repeated API calls
@@ -11,6 +11,7 @@ const etfNameCache: Map<string, string> = new Map();
  */
 export async function fetchETFName(symbol: string): Promise<string | null> {
   try {
+    const env = getEnv();
     // Check cache first
     if (etfNameCache.has(symbol)) {
       return etfNameCache.get(symbol) || null;
@@ -20,7 +21,7 @@ export async function fetchETFName(symbol: string): Promise<string | null> {
       params: {
         function: 'SYMBOL_SEARCH',
         keywords: symbol,
-        apikey: API_KEY,
+        apikey: env.alphaVantageApiKey,
       },
       timeout: 5000,
     });

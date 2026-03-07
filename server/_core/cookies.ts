@@ -41,11 +41,11 @@ export function getSessionCookieOptions(
 
   // SameSite=None requires Secure=true, so we force it in production
   const isSecure = isSecureRequest(req) || process.env.NODE_ENV === "production";
-
+  console.log("[Cookie Options] isSecure:", isSecure);
   return {
     httpOnly: true,
     path: "/",
-    sameSite: "none",
+    sameSite: "lax",
     secure: isSecure,
   };
 }

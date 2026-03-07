@@ -25,6 +25,10 @@ export async function setupVite(app: Express, server: Server) {
     const url = req.originalUrl;
 
     try {
+      // Skip debug collector requests
+      if (req.path.includes('/__manus__')) {
+        return res.status(404).send('Not found');
+      }
       const clientTemplate = path.resolve(
         import.meta.dirname,
         "../..",
