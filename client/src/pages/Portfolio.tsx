@@ -31,7 +31,6 @@ export default function Portfolio() {
 
   const [cashAmount, setCashAmount] = useState("");
   const [isEditingCash, setIsEditingCash] = useState(false);
-  const [isLookingUpName, setIsLookingUpName] = useState(false);
   const [lookupTimeout, setLookupTimeout] = useState<NodeJS.Timeout | null>(null);
   const [isCSVImportOpen, setIsCSVImportOpen] = useState<number | null>(null);
   const [csvFile, setCSVFile] = useState<File | null>(null);
@@ -207,14 +206,14 @@ export default function Portfolio() {
 
   // Fetch performance metrics for each holding
   const utils = trpc.useUtils();
-  
+
   useEffect(() => {
     if (!summary?.holdings || summary.holdings.length === 0) return;
 
     const fetchMetrics = async () => {
       for (const holding of summary.holdings) {
         if (metrics[holding.symbol]) continue;
-        
+
         try {
           const result = await utils.etf.getPerformanceMetrics.fetch({ symbol: holding.symbol });
           setMetrics(prev => ({
@@ -242,8 +241,8 @@ export default function Portfolio() {
 
     if (lookupTimeout) clearTimeout(lookupTimeout);
 
-    if (newSymbol.length > 0) {
-      setIsLookingUpName(true);
+    if (newSymbol.length > 2) {
+
       const timeout = setTimeout(async () => {
         try {
           const result = await refetchETFName();
@@ -252,9 +251,7 @@ export default function Portfolio() {
           }
         } catch (error) {
           console.error("Failed to lookup ETF name:", error);
-        } finally {
-          setIsLookingUpName(false);
-        }
+        } 
       }, 500);
 
       setLookupTimeout(timeout);
@@ -532,7 +529,6 @@ export default function Portfolio() {
                     placeholder="Symbol (e.g., VOO)"
                     value={formData.symbol}
                     onChange={handleSymbolChange}
-                    disabled={isLookingUpName}
                   />
                   <Input
                     placeholder="Name"
