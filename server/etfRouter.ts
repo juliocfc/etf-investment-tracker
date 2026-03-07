@@ -429,6 +429,14 @@ export const etfRouter = router({
               ? ((parseFloat(h.currentValue) / totalValue) * 100).toFixed(2)
               : "0",
         })),
+        investmentAllocationBreakdown: holdingsWithValues.map((h) => ({
+          symbol: h.symbol,
+          name: h.name,
+          percentage:
+            totalInvestmentValue > 0
+              ? ((parseFloat(h.currentValue) / totalInvestmentValue) * 100).toFixed(2)
+              : "0",
+        })),
         cashAllocationPercent:
           totalValue > 0
             ? ((cashAmount / totalValue) * 100).toFixed(2)

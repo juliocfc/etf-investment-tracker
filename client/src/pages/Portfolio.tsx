@@ -125,6 +125,7 @@ export default function Portfolio() {
         purchasePrice: "",
         purchaseDate: new Date().toISOString().split("T")[0],
       });
+      setIsAddDialogOpen(false);
     },
     onError: (error) => {
       toast.error(error.message || "Failed to update ETF");
@@ -322,6 +323,7 @@ export default function Portfolio() {
       purchasePrice: holding.purchasePrice.toString(),
       purchaseDate: new Date(holding.purchaseDate).toISOString().split("T")[0],
     });
+    setIsAddDialogOpen(true);
   };
 
   const handleDeleteHolding = (id: number) => {
@@ -513,7 +515,19 @@ export default function Portfolio() {
               <RefreshCw className="mr-2 h-4 w-4" />
               Update Prices
             </Button>
-            <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+            <Dialog open={isAddDialogOpen} onOpenChange={(open) => {
+              setIsAddDialogOpen(open);
+              if (!open) {
+                setEditingId(null);
+                setFormData({
+                  symbol: "",
+                  name: "",
+                  quantity: "",
+                  purchasePrice: "",
+                  purchaseDate: new Date().toISOString().split("T")[0],
+                });
+              }
+            }}>
               <DialogTrigger asChild>
                 <Button className="bg-cyan-600 hover:bg-cyan-700">
                   <Plus className="mr-2 h-4 w-4" />
@@ -578,15 +592,14 @@ export default function Portfolio() {
                 <th className="text-right py-3 px-4 text-cyan-400">Current Price</th>
                 <th className="text-right py-3 px-4 text-cyan-400">Value</th>
                 <th className="text-right py-3 px-4 text-cyan-400">Gain/Loss</th>
-                <th className="text-right py-3 px-4 text-cyan-400">YTD Return</th>
-                <th className="text-right py-3 px-4 text-cyan-400">1Y Return</th>
-                <th className="text-right py-3 px-4 text-cyan-400">Volatility</th>
+                <th className="text-right py-3 px-4 text-cyan-400">Gain/Loss %</th>
+                <th className="text-right py-3 px-4 text-cyan-400">Allocation %</th>
                 <th className="text-center py-3 px-4 text-cyan-400">Actions</th>
               </tr>
             </thead>
             <tbody>
               {summary?.holdings?.map((holding: any) => {
-                const metric = metrics[holding.symbol];
+                const allocation = summary.investmentAllocationBreakdown?.find((a: any) => a.symbol === holding.symbol);
                 return (
                   <tr key={holding.id} className="border-b border-cyan-500/10 hover:bg-cyan-500/5">
                     <td className="py-3 px-4 font-mono text-cyan-300">{holding.symbol}</td>
@@ -596,16 +609,13 @@ export default function Portfolio() {
                     <td className="text-right py-3 px-4 font-mono">${parseFloat(holding.currentPrice || 0).toFixed(2)}</td>
                     <td className="text-right py-3 px-4 font-mono">${holding.currentValue}</td>
                     <td className={`text-right py-3 px-4 font-mono ${parseFloat(holding.gain) >= 0 ? "text-green-400" : "text-red-400"}`}>
-                      ${holding.gain} ({holding.gainPercent}%)
+                      ${holding.gain}
                     </td>
-                    <td className={`text-right py-3 px-4 font-mono ${metric?.ytdReturn && parseFloat(metric.ytdReturn) >= 0 ? "text-green-400" : "text-red-400"}`}>
-                      {metric?.ytdReturn ? `${parseFloat(metric.ytdReturn).toFixed(2)}%` : "—"}
+                    <td className={`text-right py-3 px-4 font-mono ${parseFloat(holding.gainPercent) >= 0 ? "text-green-400" : "text-red-400"}`}>
+                      {holding.gainPercent}%
                     </td>
-                    <td className={`text-right py-3 px-4 font-mono ${metric?.oneYearReturn && parseFloat(metric.oneYearReturn) >= 0 ? "text-green-400" : "text-red-400"}`}>
-                      {metric?.oneYearReturn ? `${parseFloat(metric.oneYearReturn).toFixed(2)}%` : "—"}
-                    </td>
-                    <td className="text-right py-3 px-4 font-mono text-yellow-400">
-                      {metric?.volatility ? `${parseFloat(metric.volatility).toFixed(2)}%` : "—"}
+                    <td className="text-right py-3 px-4 font-mono text-cyan-400">
+                      {allocation?.percentage || "0.00"}%
                     </td>
                     <td className="text-center py-3 px-4 space-x-2">
                       <Button
