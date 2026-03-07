@@ -1,4 +1,4 @@
-export function getENV() {
+export function getEnv() {
   return {
     appId: process.env.VITE_APP_ID ?? "",
     cookieSecret: process.env.JWT_SECRET ?? "",
@@ -13,15 +13,9 @@ export function getENV() {
   };
 }
 
-// Create a lazy-loaded singleton
-let cachedENV: ReturnType<typeof getENV> | null = null;
-
-export function getEnv() {
-  if (!cachedENV) {
-    cachedENV = getENV();
-  }
-  return cachedENV;
-}
-
-// Keep this for backward compatibility, but it will be evaluated after dotenv loads
-export const ENV = getENV();
+// For backward compatibility
+export const ENV = new Proxy({} as ReturnType<typeof getEnv>, {
+  get: (target, prop) => {
+    return getEnv()[prop as keyof ReturnType<typeof getEnv>];
+  },
+});

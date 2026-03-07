@@ -27,6 +27,11 @@ class GoogleOAuthService {
 
   constructor() {
     const env = getEnv();
+    console.log("[Google OAuth] Constructor called, env:", {
+      clientId: env.googleOAuthClientId ? "SET" : "UNDEFINED",
+      clientSecret: env.googleOAuthClientSecret ? "SET" : "UNDEFINED",
+      allEnv: process.env
+  });
     this.clientId = env.googleOAuthClientId;
     this.clientSecret = env.googleOAuthClientSecret;
 
@@ -107,4 +112,12 @@ class GoogleOAuthService {
   }
 }
 
-export const googleOAuthService = new GoogleOAuthService();
+let _googleOAuthService: GoogleOAuthService | null = null;
+
+export function getGoogleOAuthService(): GoogleOAuthService {
+  if (!_googleOAuthService) {
+    _googleOAuthService = new GoogleOAuthService();
+  }
+  return _googleOAuthService;
+}
+

@@ -4,7 +4,8 @@ import type { Express, Request, Response } from "express";
 import * as db from "../db";
 import { getSessionCookieOptions } from "./cookies";
 import { sdk } from "./sdk";
-import { googleOAuthService } from "./googleOAuth";
+import { getGoogleOAuthService } from "./googleOAuth";
+
 
 function getQueryParam(req: Request, key: string): string | undefined {
   const value = req.query[key];
@@ -39,13 +40,13 @@ export function registerOAuthRoutes(app: Express) {
       }
 
       console.log("[Google OAuth] Exchanging code for token");
-      const tokenResponse = await googleOAuthService.exchangeCodeForToken(
+      const tokenResponse = await getGoogleOAuthService().exchangeCodeForToken(
         code,
         redirectUri
       );
 
       console.log("[Google OAuth] Retrieving user info");
-      const userInfo = await googleOAuthService.getUserInfo(
+      const userInfo = await getGoogleOAuthService().getUserInfo(
         tokenResponse.access_token
       );
 
