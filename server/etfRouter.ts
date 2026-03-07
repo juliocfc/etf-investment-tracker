@@ -132,9 +132,9 @@ export const etfRouter = router({
       for (let i = 0; i < holdings.length; i++) {
         const holding = holdings[i];
         
-        // Add 1.2 second delay between requests to respect Alpha Vantage rate limit
+        // Small delay between requests to be polite to Yahoo Finance
         if (i > 0) {
-          await new Promise((resolve) => setTimeout(resolve, 1200));
+          await new Promise((resolve) => setTimeout(resolve, 100));
         }
         
         const priceData = await fetchEtfPrice(holding.symbol);

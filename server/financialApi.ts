@@ -1,16 +1,14 @@
-import { getEnv } from "./_core/env";
-import { delay } from "./utils";
+import YahooFinance from 'yahoo-finance2';
+
+const yahooFinance = new YahooFinance({
+  suppressNotices: ['yahooSurvey', 'ripHistorical']
+});
+
 /**
  * Financial Data API Integration
  * Fetches real-time ETF prices and dividend information
- * Uses Alpha Vantage as primary provider with fallback options
+ * Uses Yahoo Finance as the primary provider
  */
-
-const env = getEnv();
-const ALPHA_VANTAGE_API_KEY = env.alphaVantageApiKey;
-const ALPHA_VANTAGE_BASE_URL = "https://www.alphavantage.co/query";
-let lastApiCallTime = 0;
-const MIN_DELAY_MS = 1100; // 1.1 seconds to be safe
 
 interface PriceData {
   symbol: string;
@@ -25,101 +23,61 @@ interface DividendData {
   paymentDate?: Date;
 }
 
-async function throttledApiCall<T>(
-  fn: () => Promise<T>
-): Promise<T> {
-  const timeSinceLastCall = Date.now() - lastApiCallTime;
-  if (timeSinceLastCall < MIN_DELAY_MS) {
-    await delay(MIN_DELAY_MS - timeSinceLastCall);
-  }
-  lastApiCallTime = Date.now();
-  return fn();
-}
-
 /**
  * Fetch current price for an ETF symbol
- * Uses Alpha Vantage Global Quote endpoint
  */
 export async function fetchEtfPrice(symbol: string): Promise<PriceData | null> {
-  return throttledApiCall(async () => {
-    try {
-      const params = new URLSearchParams({
-        function: "GLOBAL_QUOTE",
+  try {
+    console.log(`[FinancialApi] Fetching price for ${symbol} from Yahoo Finance`);
+    const quote = await yahooFinance.quote(symbol.toUpperCase());
+    
+    if (quote && quote.regularMarketPrice) {
+      console.log(`[FinancialApi] Successfully fetched price for ${symbol}: $${quote.regularMarketPrice}`);
+      return {
         symbol: symbol.toUpperCase(),
-      apikey: ALPHA_VANTAGE_API_KEY,
-    });
-
-    const url = `${ALPHA_VANTAGE_BASE_URL}?${params}`;
-    console.log(`[FinancialApi] Fetching price for ${symbol} from ${url}`);
-    
-    const response = await fetch(url);
-    const data = await response.json();
-    
-    console.log(`[FinancialApi] API Response for ${symbol}:`, JSON.stringify(data).substring(0, 200));
-
-    if (data["Global Quote"] && data["Global Quote"]["05. price"]) {
-      const price = parseFloat(data["Global Quote"]["05. price"]);
-      if (!isNaN(price)) {
-        console.log(`[FinancialApi] Successfully fetched price for ${symbol}: $${price}`);
-        return {
-          symbol: symbol.toUpperCase(),
-          price,
-          timestamp: new Date(),
-        };
-      }
+        price: quote.regularMarketPrice,
+        timestamp: quote.regularMarketTime || new Date(),
+      };
     }
 
-    console.warn(`[FinancialApi] No price data for ${symbol}. Response keys: ${Object.keys(data).join(', ')}`);
+    console.warn(`[FinancialApi] No price data for ${symbol}.`);
     return null;
   } catch (error) {
     console.error(`[FinancialApi] Error fetching price for ${symbol}:`, error);
     return null;
   }
-});
 }
 
 /**
  * Fetch historical daily prices for an ETF
- * Uses Alpha Vantage TIME_SERIES_DAILY endpoint
  */
 export async function fetchHistoricalPrices(
   symbol: string,
   days: number = 365
 ): Promise<PriceData[]> {
   try {
-    const params = new URLSearchParams({
-      function: "TIME_SERIES_DAILY",
-      symbol: symbol.toUpperCase(),
-      outputsize: days > 100 ? "full" : "compact",
-      apikey: ALPHA_VANTAGE_API_KEY,
+    const endDate = new Date();
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
+
+    console.log(`[FinancialApi] Fetching historical prices for ${symbol} from ${startDate.toISOString()} to ${endDate.toISOString()}`);
+    
+    const results = await yahooFinance.historical(symbol.toUpperCase(), {
+      period1: startDate,
+      period2: endDate,
+      interval: '1d',
     });
 
-    const response = await fetch(`${ALPHA_VANTAGE_BASE_URL}?${params}`);
-    const data = await response.json();
-
-    const timeSeries = data["Time Series (Daily)"];
-    if (!timeSeries) {
+    if (!results || results.length === 0) {
       console.warn(`[FinancialApi] No historical data for ${symbol}`);
       return [];
     }
 
-    const cutoffDate = new Date();
-    cutoffDate.setDate(cutoffDate.getDate() - days);
-
-    const prices: PriceData[] = [];
-    for (const [dateStr, dailyData] of Object.entries(timeSeries)) {
-      const date = new Date(dateStr);
-      if (date >= cutoffDate) {
-        const closePrice = parseFloat((dailyData as any)["4. close"]);
-        if (!isNaN(closePrice)) {
-          prices.push({
-            symbol: symbol.toUpperCase(),
-            price: closePrice,
-            timestamp: date,
-          });
-        }
-      }
-    }
+    const prices: PriceData[] = results.map((day) => ({
+      symbol: symbol.toUpperCase(),
+      price: day.close,
+      timestamp: new Date(day.date),
+    }));
 
     return prices.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
   } catch (error) {
@@ -133,18 +91,20 @@ export async function fetchHistoricalPrices(
 
 /**
  * Fetch dividend information for an ETF
- * Note: Alpha Vantage has limited dividend data; this is a basic implementation
- * For production, consider using a specialized dividend API
  */
 export async function fetchDividendData(symbol: string): Promise<DividendData[]> {
   try {
-    // Alpha Vantage doesn't have a dedicated dividend endpoint
-    // This is a placeholder for future integration with specialized APIs
-    // like IEX Cloud, Polygon.io, or Finnhub
+    console.log(`[FinancialApi] Fetching dividend data for ${symbol} from Yahoo Finance`);
     
-    console.log(
-      `[FinancialApi] Dividend data for ${symbol} requires specialized API integration`
-    );
+    const quote = await yahooFinance.quote(symbol.toUpperCase());
+    if (quote && quote.trailingAnnualDividendRate) {
+        return [{
+            symbol: symbol.toUpperCase(),
+            dividendPerShare: quote.trailingAnnualDividendRate,
+            exDate: quote.dividendDate ? new Date(quote.dividendDate) : new Date(),
+        }];
+    }
+    
     return [];
   } catch (error) {
     console.error(
@@ -160,8 +120,8 @@ export async function fetchDividendData(symbol: string): Promise<DividendData[]>
  */
 export async function validateEtfSymbol(symbol: string): Promise<boolean> {
   try {
-    const priceData = await fetchEtfPrice(symbol);
-    return priceData !== null;
+    const quote = await yahooFinance.quote(symbol.toUpperCase());
+    return !!(quote && quote.regularMarketPrice);
   } catch (error) {
     console.error(`[FinancialApi] Error validating symbol ${symbol}:`, error);
     return false;
@@ -170,21 +130,20 @@ export async function validateEtfSymbol(symbol: string): Promise<boolean> {
 
 /**
  * Batch fetch prices for multiple symbols
- * Respects API rate limits
+ * Yahoo Finance is much faster than Alpha Vantage, so we can reduce delays
  */
 export async function fetchMultiplePrices(
   symbols: string[]
 ): Promise<Map<string, PriceData>> {
   const results = new Map<string, PriceData>();
 
-  // Add delay between requests to respect rate limits
   for (const symbol of symbols) {
     const priceData = await fetchEtfPrice(symbol);
     if (priceData) {
       results.set(symbol.toUpperCase(), priceData);
     }
-    // Alpha Vantage free tier: 5 requests per minute
-    await new Promise((resolve) => setTimeout(resolve, 12000));
+    // Small delay to be polite
+    await new Promise((resolve) => setTimeout(resolve, 200));
   }
 
   return results;
