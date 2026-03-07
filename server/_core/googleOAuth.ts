@@ -1,5 +1,6 @@
+
 import axios from "axios";
-import { ENV } from "./env";
+import { getEnv } from "./env";
 
 export interface GoogleTokenResponse {
   access_token: string;
@@ -25,8 +26,9 @@ class GoogleOAuthService {
   private readonly userInfoUrl = "https://www.googleapis.com/oauth2/v2/userinfo";
 
   constructor() {
-    this.clientId = ENV.googleOAuthClientId;
-    this.clientSecret = ENV.googleOAuthClientSecret;
+    const env = getEnv();
+    this.clientId = env.googleOAuthClientId;
+    this.clientSecret = env.googleOAuthClientSecret;
 
     if (!this.clientId || !this.clientSecret) {
       console.error(

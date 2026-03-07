@@ -1,33 +1,12 @@
 {
   "version": "7",
-  "dialect": "mysql",
+  "dialect": "sqlite",
   "entries": [
     {
       "idx": 0,
-      "version": "5",
-      "when": 1772387283638,
-      "tag": "0000_strong_mesmero",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "5",
-      "when": 1772387556562,
-      "tag": "0001_superb_hairball",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "5",
-      "when": 1772629715617,
-      "tag": "0002_perpetual_dark_beast",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "5",
-      "when": 1772809738890,
-      "tag": "0003_glamorous_bushwacker",
+      "version": "6",
+      "when": 1772896056062,
+      "tag": "0000_fast_bastion",
       "breakpoints": true
     }
   ]

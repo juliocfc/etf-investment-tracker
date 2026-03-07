@@ -1,12 +1,23 @@
-import "dotenv/config";
+import dotenv from "dotenv";
+
+// Load environment variables from .env.local FIRST
+dotenv.config({ path: ".env.local" });
+
+// Now import everything else AFTER dotenv loads
 import express from "express";
 import { createServer } from "http";
 import net from "net";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
-import { registerOAuthRoutes } from "./oauth";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
+
+// Delay the oauth import until it's actually needed
+async function getRegisterOAuthRoutes( ) {
+  const { registerOAuthRoutes } = await import("./oauth");
+  return registerOAuthRoutes;
+}
+
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -54,7 +65,9 @@ async function startServer() {
   });
   
   // OAuth callback under /api/oauth/callback
+  const registerOAuthRoutes = await getRegisterOAuthRoutes();
   registerOAuthRoutes(app);
+
   // tRPC API
   app.use(
     "/api/trpc",

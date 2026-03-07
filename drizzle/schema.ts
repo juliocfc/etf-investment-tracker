@@ -1,223 +1,93 @@
-import { decimal, int, mysqlEnum, mysqlTable, text, timestamp, varchar, index, foreignKey } from "drizzle-orm/mysql-core";
+import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { sql } from "drizzle-orm";
 
-/**
- * Core user table backing auth flow.
- * Extend this file with additional tables as your product grows.
- * Columns use camelCase to match both database fields and generated types.
- */
-export const users = mysqlTable("users", {
-  /**
-   * Surrogate primary key. Auto-incremented numeric value managed by the database.
-   * Use this for relations between tables.
-   */
-  id: int("id").autoincrement().primaryKey(),
-  /** Manus OAuth identifier (openId) returned from the OAuth callback. Unique per user. */
-  openId: varchar("openId", { length: 64 }).notNull().unique(),
+export const users = sqliteTable("users", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  openId: text("openId").notNull().unique(),
   name: text("name"),
-  email: varchar("email", { length: 320 }),
-  loginMethod: varchar("loginMethod", { length: 64 }),
-  role: mysqlEnum("role", ["user", "admin"]).default("user").notNull(),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-  lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
+  email: text("email"),
+  loginMethod: text("loginMethod"),
+  role: text("role").default("user").notNull(), // "user" or "admin"
+  createdAt: integer("createdAt", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+  updatedAt: integer("updatedAt", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+  lastSignedIn: integer("lastSignedIn", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 
-// Portfolio table (groups ETF holdings and cash)
-export const portfolios = mysqlTable(
-  "portfolios",
-  {
-    id: int("id").autoincrement().primaryKey(),
-    userId: int("userId").notNull(),
-    name: varchar("name", { length: 255 }).notNull(),
-    description: text("description"),
-    createdAt: timestamp("createdAt").defaultNow().notNull(),
-    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-  },
-  (table) => ([
-    index("idx_userId").on(table.userId),
-    foreignKey({
-      columns: [table.userId],
-      foreignColumns: [users.id],
-    }).onDelete("cascade"),
-  ])
-);
+export const portfolios = sqliteTable("portfolios", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("userId").notNull(),
+  name: text("name").notNull(),
+  description: text("description"),
+  createdAt: integer("createdAt", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+  updatedAt: integer("updatedAt", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
 
-export type Portfolio = typeof portfolios.$inferSelect;
-export type InsertPortfolio = typeof portfolios.$inferInsert;
+export const etfHoldings = sqliteTable("etfHoldings", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("userId").notNull(),
+  portfolioId: integer("portfolioId").notNull(),
+  symbol: text("symbol").notNull(),
+  name: text("name").notNull(),
+  quantity: text("quantity").notNull(),
+  purchasePrice: text("purchasePrice").notNull(),
+  currentPrice: text("currentPrice").notNull(),
+  purchaseDate: integer("purchaseDate", { mode: "timestamp" }).notNull(),
+  lastPriceUpdate: integer("lastPriceUpdate", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+  createdAt: integer("createdAt", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+  updatedAt: integer("updatedAt", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
 
-// ETF Holdings table
-export const etfHoldings = mysqlTable(
-  "etf_holdings",
-  {
-    id: int("id").autoincrement().primaryKey(),
-    userId: int("userId").notNull(),
-    portfolioId: int("portfolioId").notNull(),
-    symbol: varchar("symbol", { length: 20 }).notNull(),
-    name: varchar("name", { length: 255 }).notNull(),
-    quantity: decimal("quantity", { precision: 18, scale: 8 }).notNull(),
-    purchasePrice: decimal("purchasePrice", { precision: 18, scale: 8 }).notNull(),
-    purchaseDate: timestamp("purchaseDate").notNull(),
-    currentPrice: decimal("currentPrice", { precision: 18, scale: 8 }),
-    lastPriceUpdate: timestamp("lastPriceUpdate"),
-    createdAt: timestamp("createdAt").defaultNow().notNull(),
-    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-  },
-  (table) => ([
-    index("idx_userId").on(table.userId),
-    index("idx_portfolioId").on(table.portfolioId),
-    index("idx_symbol").on(table.symbol),
-    foreignKey({
-      columns: [table.userId],
-      foreignColumns: [users.id],
-    }).onDelete("cascade"),
-    foreignKey({
-      columns: [table.portfolioId],
-      foreignColumns: [portfolios.id],
-    }).onDelete("cascade"),
-  ])
-);
+export const purchases = sqliteTable("purchases", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("userId").notNull(),
+  portfolioId: integer("portfolioId").notNull(),
+  holdingId: integer("holdingId").notNull(),
+  symbol: text("symbol").notNull(),
+  quantity: text("quantity").notNull(),
+  price: text("price").notNull(),
+  purchaseDate: integer("purchaseDate", { mode: "timestamp" }).notNull(),
+  createdAt: integer("createdAt", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
 
-export type EtfHolding = typeof etfHoldings.$inferSelect;
-export type InsertEtfHolding = typeof etfHoldings.$inferInsert;
+export const priceHistory = sqliteTable("priceHistory", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("userId").notNull(),
+  symbol: text("symbol").notNull(),
+  price: text("price").notNull(),
+  date: integer("date", { mode: "timestamp" }).notNull(),
+  timestamp: integer("timestamp", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
 
-// Price History table
-export const priceHistory = mysqlTable(
-  "price_history",
-  {
-    id: int("id").autoincrement().primaryKey(),
-    userId: int("userId").notNull(),
-    symbol: varchar("symbol", { length: 20 }).notNull(),
-    price: decimal("price", { precision: 18, scale: 8 }).notNull(),
-    date: timestamp("date").notNull(),
-    createdAt: timestamp("createdAt").defaultNow().notNull(),
-  },
-  (table) => ([
-    index("idx_userId_symbol_date").on(table.userId, table.symbol, table.date),
-    foreignKey({
-      columns: [table.userId],
-      foreignColumns: [users.id],
-    }).onDelete("cascade"),
-  ])
-);
+export const cashBalance = sqliteTable("cashBalance", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("userId").notNull(),
+  portfolioId: integer("portfolioId").notNull(),
+  amount: text("amount").notNull(),
+  createdAt: integer("createdAt", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+  updatedAt: integer("updatedAt", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
 
-export type PriceHistory = typeof priceHistory.$inferSelect;
-export type InsertPriceHistory = typeof priceHistory.$inferInsert;
+export const balanceHistory = sqliteTable("balanceHistory", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("userId").notNull(),
+  portfolioId: integer("portfolioId").notNull(),
+  totalValue: text("totalValue").notNull(),
+  cashValue: text("cashValue").notNull(),
+  investmentValue: text("investmentValue").notNull(),
+  date: integer("date", { mode: "timestamp" }).notNull(),
+  timestamp: integer("timestamp", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
 
-// Dividend History table
-export const dividendHistory = mysqlTable(
-  "dividend_history",
-  {
-    id: int("id").autoincrement().primaryKey(),
-    userId: int("userId").notNull(),
-    symbol: varchar("symbol", { length: 20 }).notNull(),
-    dividendPerShare: decimal("dividendPerShare", { precision: 18, scale: 8 }).notNull(),
-    exDate: timestamp("exDate").notNull(),
-    paymentDate: timestamp("paymentDate"),
-    totalDividend: decimal("totalDividend", { precision: 18, scale: 8 }),
-    createdAt: timestamp("createdAt").defaultNow().notNull(),
-  },
-  (table) => ([
-    index("idx_userId_symbol").on(table.userId, table.symbol),
-    foreignKey({
-      columns: [table.userId],
-      foreignColumns: [users.id],
-    }).onDelete("cascade"),
-  ])
-);
-
-export type DividendHistory = typeof dividendHistory.$inferSelect;
-export type InsertDividendHistory = typeof dividendHistory.$inferInsert;
-
-// Cash Balance table (per portfolio)
-export const cashBalance = mysqlTable(
-  "cash_balance",
-  {
-    id: int("id").autoincrement().primaryKey(),
-    userId: int("userId").notNull(),
-    portfolioId: int("portfolioId").notNull(),
-    amount: decimal("amount", { precision: 18, scale: 8 }).notNull().default("0"),
-    createdAt: timestamp("createdAt").defaultNow().notNull(),
-    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-  },
-  (table) => ([
-    index("idx_userId_portfolioId").on(table.userId, table.portfolioId),
-    foreignKey({
-      columns: [table.userId],
-      foreignColumns: [users.id],
-    }).onDelete("cascade"),
-    foreignKey({
-      columns: [table.portfolioId],
-      foreignColumns: [portfolios.id],
-    }).onDelete("cascade"),
-  ])
-);
-
-export type CashBalance = typeof cashBalance.$inferSelect;
-export type InsertCashBalance = typeof cashBalance.$inferInsert;
-
-// Balance History table (for tracking portfolio balance over time)
-export const balanceHistory = mysqlTable(
-  "balance_history",
-  {
-    id: int("id").autoincrement().primaryKey(),
-    userId: int("userId").notNull(),
-    portfolioId: int("portfolioId").notNull(),
-    totalValue: decimal("totalValue", { precision: 18, scale: 8 }).notNull(),
-    cashValue: decimal("cashValue", { precision: 18, scale: 8 }).notNull(),
-    investmentValue: decimal("investmentValue", { precision: 18, scale: 8 }).notNull(),
-    date: timestamp("date").notNull(),
-    createdAt: timestamp("createdAt").defaultNow().notNull(),
-  },
-  (table) => ([
-    index("idx_userId_portfolioId_date").on(table.userId, table.portfolioId, table.date),
-    foreignKey({
-      columns: [table.userId],
-      foreignColumns: [users.id],
-    }).onDelete("cascade"),
-    foreignKey({
-      columns: [table.portfolioId],
-      foreignColumns: [portfolios.id],
-    }).onDelete("cascade"),
-  ])
-);
-
-export type BalanceHistory = typeof balanceHistory.$inferSelect;
-export type InsertBalanceHistory = typeof balanceHistory.$inferInsert;
-
-// Purchases table (tracks individual buy transactions for average cost calculation)
-export const purchases = mysqlTable(
-  "purchases",
-  {
-    id: int("id").autoincrement().primaryKey(),
-    userId: int("userId").notNull(),
-    portfolioId: int("portfolioId").notNull(),
-    holdingId: int("holdingId").notNull(),
-    symbol: varchar("symbol", { length: 20 }).notNull(),
-    quantity: decimal("quantity", { precision: 18, scale: 8 }).notNull(),
-    price: decimal("price", { precision: 18, scale: 8 }).notNull(),
-    purchaseDate: timestamp("purchaseDate").notNull(),
-    createdAt: timestamp("createdAt").defaultNow().notNull(),
-  },
-  (table) => ([
-    index("idx_userId_portfolioId_holdingId").on(table.userId, table.portfolioId, table.holdingId),
-    index("idx_symbol").on(table.symbol),
-    foreignKey({
-      columns: [table.userId],
-      foreignColumns: [users.id],
-    }).onDelete("cascade"),
-    foreignKey({
-      columns: [table.portfolioId],
-      foreignColumns: [portfolios.id],
-    }).onDelete("cascade"),
-    foreignKey({
-      columns: [table.holdingId],
-      foreignColumns: [etfHoldings.id],
-    }).onDelete("cascade"),
-  ])
-);
-
-export type Purchase = typeof purchases.$inferSelect;
-export type InsertPurchase = typeof purchases.$inferInsert;
+export const dividendHistory = sqliteTable("dividendHistory", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("userId").notNull(),
+  symbol: text("symbol").notNull(),
+  dividendPerShare: text("dividendPerShare").notNull(),
+  totalDividend: text("totalDividend").notNull(),
+  exDate: integer("exDate", { mode: "timestamp" }).notNull(),
+  paymentDate: integer("paymentDate", { mode: "timestamp" }),
+  createdAt: integer("createdAt", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+});

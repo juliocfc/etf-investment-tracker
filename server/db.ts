@@ -1,19 +1,15 @@
 import { eq, and, gte, desc } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/mysql2";
+import { drizzle } from "drizzle-orm/better-sqlite3";
 import { InsertUser, users } from "../drizzle/schema";
-import { ENV } from './_core/env';
+import Database from "better-sqlite3";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
-// Lazily create the drizzle instance so local tooling can run without a DB.
 export async function getDb() {
-  if (!_db && process.env.DATABASE_URL) {
-    try {
-      _db = drizzle(process.env.DATABASE_URL);
-    } catch (error) {
-      console.warn("[Database] Failed to connect:", error);
-      _db = null;
-    }
+  if (!_db) {
+    const dbPath = process.env.DATABASE_URL || "local.db";
+    const sqlite = new Database(dbPath);
+    _db = drizzle(sqlite);
   }
   return _db;
 }
@@ -60,14 +56,22 @@ export async function upsertUser(user: InsertUser): Promise<void> {
     }
 
     // Only perform update if there are fields to update
-    if (Object.keys(updateSet).length > 0) {
-      await db
-        .insert(users)
-        .values(values)
-        .onDuplicateKeyUpdate({ set: updateSet });
+    // SQLite (and the drizzle sqlite driver) does not support `onDuplicateKeyUpdate`.
+    // Do a manual upsert: check for existing user by openId, update if found, otherwise insert.
+    const existingUser = await db
+      .select()
+      .from(users)
+      .where(eq(users.openId, user.openId))
+      .limit(1);
+
+    if (existingUser.length > 0) {
+      // Update existing user only if there are fields to update
+      if (Object.keys(updateSet).length > 0) {
+        await db.update(users).set(updateSet).where(eq(users.openId, user.openId));
+      }
     } else {
-      // If no fields to update, just insert (will be ignored if exists)
-      await db.insert(users).values(values).onDuplicateKeyUpdate({ set: {} });
+      // Insert new user
+      await db.insert(users).values(values);
     }
   } catch (error) {
     console.error("[Database] Upsert failed:", error);
@@ -210,12 +214,27 @@ export async function getDividendHistory(userId: number, symbol: string) {
   return db.select().from(dividendHistory).where(and(eq(dividendHistory.userId, userId), eq(dividendHistory.symbol, symbol))).orderBy(desc(dividendHistory.exDate));
 }
 
-export async function addDividendHistory(userId: number, symbol: string, dividendPerShare: string, exDate: Date, paymentDate?: Date, totalDividend?: string) {
+export async function addDividendHistory(
+  userId: number,
+  symbol: string,
+  dividendPerShare: string,
+  totalDividend: string,  // Make this required
+  exDate: Date,
+  paymentDate?: Date
+) {
   const db = await getDb();
   if (!db) return null;
   const { dividendHistory } = await import("../drizzle/schema");
-  return db.insert(dividendHistory).values({ userId, symbol, dividendPerShare, exDate, paymentDate, totalDividend });
+  return db.insert(dividendHistory).values({
+    userId,
+    symbol,
+    dividendPerShare,
+    totalDividend,
+    exDate,
+    paymentDate,
+  });
 }
+
 
 // Purchase queries
 export async function addPurchase(userId: number, portfolioId: number, holdingId: number, symbol: string, quantity: string, price: string, purchaseDate: Date) {

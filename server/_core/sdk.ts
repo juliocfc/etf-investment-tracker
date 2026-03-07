@@ -6,7 +6,7 @@ import type { Request } from "express";
 import { SignJWT, jwtVerify } from "jose";
 import type { User } from "../../drizzle/schema";
 import * as db from "../db";
-import { ENV } from "./env";
+import { getEnv } from "./env";
 import type {
   ExchangeTokenRequest,
   ExchangeTokenResponse,
@@ -30,8 +30,9 @@ const GET_USER_INFO_WITH_JWT_PATH = `/webdev.v1.WebDevAuthPublicService/GetUserI
 
 class OAuthService {
   constructor(private client: ReturnType<typeof axios.create>) {
-    console.log("[OAuth] Initialized with baseURL:", ENV.oAuthServerUrl);
-    if (!ENV.oAuthServerUrl) {
+    const env = getEnv();
+    console.log("[OAuth] Initialized with baseURL:", env.oAuthServerUrl);
+    if (!env.oAuthServerUrl) {
       console.error(
         "[OAuth] ERROR: OAUTH_SERVER_URL is not configured! Set OAUTH_SERVER_URL environment variable."
       );
@@ -47,8 +48,9 @@ class OAuthService {
     code: string,
     state: string
   ): Promise<ExchangeTokenResponse> {
+    const env = getEnv();
     const payload: ExchangeTokenRequest = {
-      clientId: ENV.appId,
+      clientId: env.appId,
       grantType: "authorization_code",
       code,
       redirectUri: this.decodeState(state),
@@ -78,7 +80,7 @@ class OAuthService {
 
 const createOAuthHttpClient = (): AxiosInstance =>
   axios.create({
-    baseURL: ENV.oAuthServerUrl,
+    baseURL: getEnv().oAuthServerUrl,
     timeout: AXIOS_TIMEOUT_MS,
   });
 
@@ -155,7 +157,7 @@ class SDKServer {
   }
 
   private getSessionSecret() {
-    const secret = ENV.cookieSecret;
+    const secret = getEnv().cookieSecret;
     return new TextEncoder().encode(secret);
   }
 
@@ -171,7 +173,7 @@ class SDKServer {
     return this.signSession(
       {
         openId,
-        appId: ENV.appId,
+        appId: getEnv().appId,
         name: options.name || "",
       },
       options
@@ -237,7 +239,7 @@ class SDKServer {
   ): Promise<GetUserInfoWithJwtResponse> {
     const payload: GetUserInfoWithJwtRequest = {
       jwtToken,
-      projectId: ENV.appId,
+      projectId: getEnv().appId,
     };
 
     const { data } = await this.client.post<GetUserInfoWithJwtResponse>(

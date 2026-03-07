@@ -1,13 +1,14 @@
 // Preconfigured storage helpers for Manus WebDev templates
 // Uses the Biz-provided storage proxy (Authorization: Bearer <token>)
 
-import { ENV } from './_core/env';
+import { getEnv } from './_core/env';
 
 type StorageConfig = { baseUrl: string; apiKey: string };
 
 function getStorageConfig(): StorageConfig {
-  const baseUrl = ENV.forgeApiUrl;
-  const apiKey = ENV.forgeApiKey;
+  const env = getEnv();
+  const baseUrl = env.forgeApiUrl;
+  const apiKey = env.forgeApiKey;
 
   if (!baseUrl || !apiKey) {
     throw new Error(
