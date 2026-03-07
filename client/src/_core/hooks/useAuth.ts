@@ -42,11 +42,16 @@ export function useAuth(options?: UseAuthOptions) {
     }
   }, [logoutMutation, utils]);
 
+  useEffect(() => {
+    if (meQuery.data) {
+      localStorage.setItem(
+        "manus-runtime-user-info",
+        JSON.stringify(meQuery.data)
+      );
+    }
+  }, [meQuery.data]);
+
   const state = useMemo(() => {
-    localStorage.setItem(
-      "manus-runtime-user-info",
-      JSON.stringify(meQuery.data)
-    );
     return {
       user: meQuery.data ?? null,
       loading: meQuery.isLoading || logoutMutation.isPending,
@@ -61,15 +66,6 @@ export function useAuth(options?: UseAuthOptions) {
     logoutMutation.isPending,
   ]);
 
-  useEffect(() => {
-    // Refetch auth status when component mounts
-    // Add a small delay to ensure cookie is set after OAuth redirect
-    const timer = setTimeout(() => {
-      meQuery.refetch();
-    }, 100);
-    return () => clearTimeout(timer);
-  }, [meQuery]);
-
   // Listen for storage changes (OAuth callback might update from another tab)
   useEffect(() => {
     const handleStorageChange = () => {
@@ -77,7 +73,7 @@ export function useAuth(options?: UseAuthOptions) {
     };
     window.addEventListener("storage", handleStorageChange);
     return () => window.removeEventListener("storage", handleStorageChange);
-  }, [meQuery]);
+  }, [meQuery.refetch]);
 
   useEffect(() => {
     if (!redirectOnUnauthenticated) return;
