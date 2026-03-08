@@ -6,13 +6,13 @@ const yahooFinance = new YahooFinance({
   suppressNotices: ['yahooSurvey', 'ripHistorical']
 });
 
-const MASSIVE_API_KEY = "8u4pCrdgx_pFCWonDBTpchyoyHSXEpPL";
-const MASSIVE_BASE_URL = "https://api.massive.com";
+const NINJAS_API_KEY = "ud6rGsasXebH6or8fKU0qsy2kD7BOv9Xfjm1HPdZ";
+const NINJAS_BASE_URL = "https://api.api-ninjas.com/v1/stockprice";
 
 /**
  * Financial Data API Integration
  * Fetches real-time ETF prices and dividend information
- * Uses Yahoo Finance as the primary provider with Massive API and Alpha Vantage as fallbacks
+ * Uses Yahoo Finance as the primary provider with API Ninjas and Alpha Vantage as fallbacks
  */
 
 interface PriceData {
@@ -60,55 +60,44 @@ export async function fetchEtfPrice(symbol: string): Promise<PriceData | null> {
       return data;
     }
   } catch (error: any) {
-    if (error.message?.includes('429')) {
-      console.warn(`[FinancialApi] Yahoo Finance throttled (429). Attempting Massive API fallback for ${sym}`);
-      const massivePrice = await fetchPriceFromMassive(sym);
-      if (massivePrice) return massivePrice;
-      
-      console.warn(`[FinancialApi] Massive API fallback failed. Attempting Alpha Vantage fallback for ${sym}`);
-      return fetchPriceFromAlphaVantage(sym);
-    }
-    console.error(`[FinancialApi] Yahoo Finance error for ${sym}:`, error.message);
+    console.warn(`[FinancialApi] Yahoo Finance failed for ${sym}:`, error.message);
   }
 
-  // If YF failed for reasons other than 429, still try fallbacks
-  const massivePrice = await fetchPriceFromMassive(sym);
-  if (massivePrice) return massivePrice;
+  // Attempt API Ninjas Fallback
+  console.log(`[FinancialApi] Attempting API Ninjas fallback for ${sym}`);
+  const ninjasPrice = await fetchPriceFromNinjas(sym);
+  if (ninjasPrice) return ninjasPrice;
   
+  // Attempt Alpha Vantage Fallback
+  console.log(`[FinancialApi] Attempting Alpha Vantage fallback for ${sym}`);
   return fetchPriceFromAlphaVantage(sym);
 }
 
-async function fetchPriceFromMassive(symbol: string): Promise<PriceData | null> {
+async function fetchPriceFromNinjas(symbol: string): Promise<PriceData | null> {
   try {
-    console.log(`[FinancialApi] Fetching price for ${symbol} from Massive API`);
-    const url = `${MASSIVE_BASE_URL}/v2/snapshot/locale/us/markets/stocks/tickers/${symbol}`;
-    
-    const response = await axios.get(url, {
-      headers: {
-        'Authorization': `Bearer ${MASSIVE_API_KEY}`
-      }
+    const response = await axios.get(`${NINJAS_BASE_URL}?ticker=${symbol}`, {
+      headers: { 'X-Api-Key': NINJAS_API_KEY }
     });
     
-    const tickerData = response.data.ticker;
-    if (tickerData && tickerData.day && tickerData.day.c) {
+    if (response.data && response.data.price) {
+      console.log(`[FinancialApi] API Ninjas successfully fetched price for ${symbol}: ${response.data.price}`);
       const result = {
         symbol: symbol.toUpperCase(),
-        price: tickerData.day.c, // 'c' is close price in Polygon/Massive snapshot format
-        timestamp: new Date(),
+        price: parseFloat(response.data.price),
+        timestamp: response.data.updated ? new Date(response.data.updated * 1000) : new Date(),
       };
       priceCache.set(symbol.toUpperCase(), { data: result, timestamp: Date.now() });
       return result;
     }
     return null;
   } catch (error: any) {
-    console.error(`[FinancialApi] Massive API fallback failed for ${symbol}:`, error.message);
+    console.error(`[FinancialApi] API Ninjas fallback failed for ${symbol}:`, error.message);
     return null;
   }
 }
 
 async function fetchPriceFromAlphaVantage(symbol: string): Promise<PriceData | null> {
   try {
-    console.log(`[FinancialApi] Fetching price for ${symbol} from Alpha Vantage`);
     const env = getEnv();
     const url = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${symbol}&apikey=${env.alphaVantageApiKey}`;
     
@@ -120,7 +109,6 @@ async function fetchPriceFromAlphaVantage(symbol: string): Promise<PriceData | n
     }
 
     const data = response.data['Global Quote'];
-    
     if (data && data['05. price']) {
       const result = {
         symbol: symbol.toUpperCase(),
