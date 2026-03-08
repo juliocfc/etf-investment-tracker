@@ -64,7 +64,7 @@ export const etfRouter = router({
       const priceData = await fetchEtfPrice(input.symbol);
       const currentPrice = priceData?.price.toString();
 
-      const result = await createEtfHolding({
+      const holdingId = await createEtfHolding({
         userId: ctx.user.id,
         portfolioId: input.portfolioId,
         symbol: input.symbol.toUpperCase(),
@@ -77,19 +77,19 @@ export const etfRouter = router({
       });
 
       // Create a purchase record for the initial holding
-      if (result && result.id) {
-        await addPurchase(
-          ctx.user.id,
-          input.portfolioId,
-          result.id,
-          input.symbol.toUpperCase(),
-          input.quantity,
-          input.purchasePrice,
-          input.purchaseDate
-        );
+      if (holdingId) {
+        await addPurchase({
+          userId: ctx.user.id,
+          portfolioId: input.portfolioId,
+          holdingId: Number(holdingId),
+          symbol: input.symbol.toUpperCase(),
+          quantity: input.quantity,
+          price: input.purchasePrice,
+          purchaseDate: input.purchaseDate,
+        });
       }
 
-      return result;
+      return { id: holdingId };
     }),
 
   updateHolding: protectedProcedure

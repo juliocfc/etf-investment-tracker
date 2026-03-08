@@ -69,7 +69,21 @@ export async function getUserEtfHoldings(userId: number, portfolioId: number) {
 export async function createEtfHolding(data: any) {
   const db = await getDb();
   const result = await db.insert(etfHoldings).values(data);
-  return (result as any).lastInsertRowid || (result as any).insertId;
+  
+  // For Turso/LibSQL, the ID is often in result.lastInsertRowid or we need to query it
+  if ((result as any).lastInsertRowid !== undefined) {
+    return (result as any).lastInsertRowid;
+  }
+  
+  // Fallback: get the most recent ID for this user
+  const row = await db.select({ id: etfHoldings.id })
+    .from(etfHoldings)
+    .where(eq(etfHoldings.userId, data.userId))
+    .orderBy(desc(etfHoldings.id))
+    .limit(1)
+    .then((rows: any[]) => rows[0]);
+    
+  return row?.id;
 }
 
 export async function updateEtfHolding(id: number, data: any) {
