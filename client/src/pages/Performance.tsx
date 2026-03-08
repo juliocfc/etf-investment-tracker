@@ -15,8 +15,13 @@ import {
 } from "recharts";
 import { TrendingUp, Activity, BarChart3, Database, RefreshCw, ArrowUpRight, ArrowDownRight } from "lucide-react";
 
+type TimeRange = "1m" | "ytd" | "1y" | "5y";
+
 export default function Performance({ selectedPortfolioId }: { selectedPortfolioId: number }) {
-  const [timePeriod, setTimePeriod] = useState<"1m" | "1y" | "5y">("1y");
+  // Independent time range states for each panel
+  const [growthRange, setGrowthRange] = useState<TimeRange>("1y");
+  const [priceRange, setPriceRange] = useState<TimeRange>("1y");
+  const [quantityRange, setQuantityRange] = useState<TimeRange>("1y");
 
   // Independent asset selectors for each chart
   const [evolutionHoldingId, setEvolutionHoldingId] = useState<number | "ALL">("ALL");
@@ -37,29 +42,48 @@ export default function Performance({ selectedPortfolioId }: { selectedPortfolio
   }, [holdings, priceHoldingId, quantityHoldingId]);
 
   // Queries
+  const { data: growthMetrics, isLoading: isLoadingMetrics } = trpc.etf.getPortfolioGrowthMetrics.useQuery(
+    { 
+      portfolioId: selectedPortfolioId, 
+      holdingId: evolutionHoldingId === "ALL" ? undefined : evolutionHoldingId
+    },
+    { enabled: !!selectedPortfolioId }
+  );
+
   const { data: evolution, isLoading: isLoadingEvolution } = trpc.etf.getPortfolioEvolution.useQuery(
     { 
       portfolioId: selectedPortfolioId, 
-      range: timePeriod,
+      range: growthRange,
       holdingId: evolutionHoldingId === "ALL" ? undefined : evolutionHoldingId
     },
     { enabled: !!selectedPortfolioId }
   );
 
   const selectedPriceHolding = holdings?.find(h => h.id === priceHoldingId) || holdings?.[0];
+  
+  const getDaysForRange = (range: TimeRange) => {
+    if (range === "1m") return 30;
+    if (range === "ytd") {
+      const now = new Date();
+      const startOfYear = new Date(now.getFullYear(), 0, 1);
+      return Math.ceil((now.getTime() - startOfYear.getTime()) / (1000 * 60 * 60 * 24));
+    }
+    if (range === "5y") return 365 * 5;
+    return 365;
+  };
+
   const { data: priceHistory, isLoading: isLoadingPrice } = trpc.etf.getMarketPriceHistory.useQuery(
     {
       symbol: selectedPriceHolding?.symbol || "",
-      days: timePeriod === "1m" ? 30 : timePeriod === "1y" ? 365 : 365 * 5,
+      days: getDaysForRange(priceRange),
     },
     { enabled: !!selectedPriceHolding }
   );
 
-  const selectedQuantityHolding = holdings?.find(h => h.id === quantityHoldingId) || holdings?.[0];
   const { data: quantityHistory, isLoading: isLoadingQuantity } = trpc.etf.getAssetQuantityHistory.useQuery(
     {
       holdingId: quantityHoldingId || 0,
-      range: timePeriod,
+      range: quantityRange,
     },
     { enabled: quantityHoldingId !== null }
   );
@@ -69,7 +93,7 @@ export default function Performance({ selectedPortfolioId }: { selectedPortfolio
     date: new Date(item.date).toLocaleDateString(undefined, {
       month: "short",
       day: "numeric",
-      year: timePeriod === "5y" ? "2-digit" : undefined,
+      year: growthRange === "5y" ? "2-digit" : undefined,
     }),
     value: parseFloat(item.value),
     rawDate: item.date,
@@ -80,7 +104,7 @@ export default function Performance({ selectedPortfolioId }: { selectedPortfolio
     date: new Date(item.timestamp).toLocaleDateString(undefined, {
       month: "short",
       day: "numeric",
-      year: timePeriod === "5y" ? "2-digit" : undefined,
+      year: priceRange === "5y" ? "2-digit" : undefined,
     }),
     price: parseFloat(item.price.toString()),
   })) || [];
@@ -90,7 +114,7 @@ export default function Performance({ selectedPortfolioId }: { selectedPortfolio
     date: new Date(item.date).toLocaleDateString(undefined, {
       month: "short",
       day: "numeric",
-      year: timePeriod === "5y" ? "2-digit" : undefined,
+      year: quantityRange === "5y" ? "2-digit" : undefined,
     }),
     shares: parseFloat(item.quantity),
   })) || [];
@@ -106,6 +130,24 @@ export default function Performance({ selectedPortfolioId }: { selectedPortfolio
 
   const evolutionChange = getEvolutionChange();
 
+  const RangeSelector = ({ value, onChange, className }: { value: TimeRange, onChange: (val: TimeRange) => void, className?: string }) => (
+    <div className={`flex bg-slate-100 p-0.5 rounded-md ${className}`}>
+      {(["1m", "ytd", "1y", "5y"] as const).map((period) => (
+        <button
+          key={period}
+          onClick={() => onChange(period)}
+          className={`px-3 py-1 rounded-sm text-[10px] font-bold uppercase transition-all duration-200 ${
+            value === period
+              ? "bg-white text-primary shadow-sm"
+              : "text-slate-500 hover:text-slate-800"
+          }`}
+        >
+          {period}
+        </button>
+      ))}
+    </div>
+  );
+
   return (
     <div className="space-y-8">
       {/* Action Bar */}
@@ -119,22 +161,31 @@ export default function Performance({ selectedPortfolioId }: { selectedPortfolio
             <p className="text-xs text-slate-500 font-medium">Historical growth and individual asset tracking</p>
           </div>
         </div>
+      </div>
 
-        <div className="flex bg-slate-100 p-1 rounded-md">
-          {(["1m", "1y", "5y"] as const).map((period) => (
-            <button
-              key={period}
-              onClick={() => setTimePeriod(period)}
-              className={`px-6 py-2 rounded text-xs font-bold uppercase transition-all duration-300 ${
-                timePeriod === period
-                  ? "bg-white text-primary shadow-sm"
-                  : "text-slate-500 hover:text-slate-800"
-              }`}
-            >
-              {period === "1m" ? "1 Month" : period === "1y" ? "1 Year" : "5 Years"}
-            </button>
-          ))}
-        </div>
+      {/* Performance Summary Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+        {[
+          { label: "1 Month", value: growthMetrics?.m1, id: "m1" },
+          { label: "YTD", value: growthMetrics?.ytd, id: "ytd" },
+          { label: "1 Year", value: growthMetrics?.y1, id: "y1" },
+          { label: "5 Years", value: growthMetrics?.y5, id: "y5" },
+        ].map((metric) => {
+          const val = parseFloat(metric.value || "0");
+          const isPositive = val >= 0;
+          return (
+            <Card key={metric.id} className="p-4 bg-white shadow-sm border border-border flex flex-col items-center justify-center text-center">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">{metric.label}</span>
+              {isLoadingMetrics ? (
+                <div className="h-8 w-16 bg-slate-100 animate-pulse rounded" />
+              ) : (
+                <div className={`text-2xl font-bold font-mono ${isPositive ? "text-green-600" : "text-red-600"}`}>
+                  {isPositive ? "+" : ""}{val.toFixed(2)}%
+                </div>
+              )}
+            </Card>
+          );
+        })}
       </div>
 
       {/* Main Portfolio Evolution Chart */}
@@ -145,7 +196,7 @@ export default function Performance({ selectedPortfolioId }: { selectedPortfolio
               <TrendingUp className="w-5 h-5 text-primary" />
               <h2 className="text-xl font-bold text-slate-800">Portfolio Growth</h2>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <select
                 value={evolutionHoldingId}
                 onChange={(e) => setEvolutionHoldingId(e.target.value === "ALL" ? "ALL" : parseInt(e.target.value))}
@@ -156,6 +207,7 @@ export default function Performance({ selectedPortfolioId }: { selectedPortfolio
                   <option key={h.id} value={h.id}>{h.symbol}</option>
                 ))}
               </select>
+              <RangeSelector value={growthRange} onChange={setGrowthRange} />
             </div>
           </div>
           
@@ -168,7 +220,7 @@ export default function Performance({ selectedPortfolioId }: { selectedPortfolio
                 </div>
               </div>
               <div className={`text-right px-4 py-2 rounded-lg ${evolutionChange.isPositive ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
-                <div className="text-[10px] font-bold uppercase tracking-widest opacity-70">{timePeriod} Change</div>
+                <div className="text-[10px] font-bold uppercase tracking-widest opacity-70">{growthRange} Change</div>
                 <div className="flex items-center justify-end gap-1 font-bold">
                   {evolutionChange.isPositive ? <ArrowUpRight className="w-4 h-4" /> : <ArrowDownRight className="w-4 h-4" />}
                   <span>{evolutionChange.isPositive ? "+" : ""}{evolutionChange.percent}%</span>
@@ -218,7 +270,7 @@ export default function Performance({ selectedPortfolioId }: { selectedPortfolio
                     fontSize: "12px",
                   }}
                   itemStyle={{ color: "#004a99", fontWeight: "bold" }}
-                  formatter={(value) => [formatCurrency(value as number), "Portfolio Value"]}
+                  formatter={(value) => [formatCurrency(value as number), "Value"]}
                 />
                 <Area
                   type="monotone"
@@ -243,22 +295,25 @@ export default function Performance({ selectedPortfolioId }: { selectedPortfolio
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
         {/* Price History */}
         <Card className="p-6 bg-white shadow-sm border border-border">
-          <div className="flex justify-between items-center mb-6">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
             <div className="flex items-center gap-2">
               <div className="p-1.5 bg-slate-100 rounded text-slate-600">
                 <Activity className="w-4 h-4" />
               </div>
               <h2 className="text-lg font-bold text-slate-800">Asset Price History</h2>
             </div>
-            <select
-              value={priceHoldingId || ""}
-              onChange={(e) => setPriceHoldingId(parseInt(e.target.value))}
-              className="bg-slate-50 border border-slate-200 rounded px-3 py-1 text-xs font-bold text-slate-600 focus:outline-none focus:border-primary"
-            >
-              {holdings?.map((h) => (
-                <option key={h.id} value={h.id}>{h.symbol}</option>
-              ))}
-            </select>
+            <div className="flex items-center gap-2">
+              <select
+                value={priceHoldingId || ""}
+                onChange={(e) => setPriceHoldingId(parseInt(e.target.value))}
+                className="bg-slate-50 border border-slate-200 rounded px-2 py-1 text-xs font-bold text-slate-600 focus:outline-none focus:border-primary"
+              >
+                {holdings?.map((h) => (
+                  <option key={h.id} value={h.id}>{h.symbol}</option>
+                ))}
+              </select>
+              <RangeSelector value={priceRange} onChange={setPriceRange} />
+            </div>
           </div>
 
           <div className="h-[250px] w-full">
@@ -314,22 +369,25 @@ export default function Performance({ selectedPortfolioId }: { selectedPortfolio
 
         {/* Quantity History */}
         <Card className="p-6 bg-white shadow-sm border border-border">
-          <div className="flex justify-between items-center mb-6">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
             <div className="flex items-center gap-2">
               <div className="p-1.5 bg-slate-100 rounded text-slate-600">
                 <Database className="w-4 h-4" />
               </div>
               <h2 className="text-lg font-bold text-slate-800">Position Over Time</h2>
             </div>
-            <select
-              value={quantityHoldingId || ""}
-              onChange={(e) => setQuantityHoldingId(parseInt(e.target.value))}
-              className="bg-slate-50 border border-slate-200 rounded px-3 py-1 text-xs font-bold text-slate-600 focus:outline-none focus:border-primary"
-            >
-              {holdings?.map((h) => (
-                <option key={h.id} value={h.id}>{h.symbol}</option>
-              ))}
-            </select>
+            <div className="flex items-center gap-2">
+              <select
+                value={quantityHoldingId || ""}
+                onChange={(e) => setQuantityHoldingId(parseInt(e.target.value))}
+                className="bg-slate-50 border border-slate-200 rounded px-2 py-1 text-xs font-bold text-slate-600 focus:outline-none focus:border-primary"
+              >
+                {holdings?.map((h) => (
+                  <option key={h.id} value={h.id}>{h.symbol}</option>
+                ))}
+              </select>
+              <RangeSelector value={quantityRange} onChange={setQuantityRange} />
+            </div>
           </div>
 
           <div className="h-[250px] w-full">
@@ -403,20 +461,15 @@ export default function Performance({ selectedPortfolioId }: { selectedPortfolio
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 relative z-10">
           <div className="space-y-2">
-            <div className="text-[10px] text-white/50 uppercase font-bold tracking-widest">Reporting Range</div>
-            <div className="text-sm font-semibold">
-              {timePeriod === "1m" ? "Trailing 30 Days (Daily High Fidelity)" : timePeriod === "1y" ? "Standard Fiscal Year (Weekly)" : "Long-Term 5-Year Outlook (Weekly)"}
-            </div>
+            <div className="text-[10px] text-white/50 uppercase font-bold tracking-widest">Global Sourcing</div>
+            <div className="text-sm font-semibold">Verified Yahoo Finance Market Link</div>
           </div>
           <div className="space-y-2">
-            <div className="text-[10px] text-white/50 uppercase font-bold tracking-widest">Data Source</div>
-            <div className="text-sm font-semibold flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-              Verified Yahoo Finance Market Link
-            </div>
+            <div className="text-[10px] text-white/50 uppercase font-bold tracking-widest">Calculated Returns</div>
+            <div className="text-sm font-semibold">TWR - Time Weighted Return Proxy</div>
           </div>
           <div className="space-y-2">
-            <div className="text-[10px] text-white/50 uppercase font-bold tracking-widest">Position Count</div>
+            <div className="text-[10px] text-white/50 uppercase font-bold tracking-widest">Portfolio Tracking</div>
             <div className="text-sm font-semibold">{holdings?.length || 0} Investments Successfully Indexed</div>
           </div>
         </div>

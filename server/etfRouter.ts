@@ -628,11 +628,18 @@ export const etfRouter = router({
     .input(
       z.object({
         holdingId: z.number(),
-        range: z.enum(["1m", "1y", "5y"]),
+        range: z.enum(["1m", "ytd", "1y", "5y"]),
       })
     )
     .query(async ({ input }) => {
-      const days = input.range === "1m" ? 30 : input.range === "1y" ? 365 : 365 * 5;
+      let days = 365;
+      if (input.range === "1m") days = 30;
+      else if (input.range === "ytd") {
+        const now = new Date();
+        const startOfYear = new Date(now.getFullYear(), 0, 1);
+        days = Math.ceil((now.getTime() - startOfYear.getTime()) / (1000 * 60 * 60 * 24));
+      } else if (input.range === "5y") days = 365 * 5;
+
       const interval = input.range === "1m" ? 1 : 7; // days between points
       
       const purchases = await getPurchases(input.holdingId);
@@ -660,11 +667,84 @@ export const etfRouter = router({
       return result;
     }),
 
+  getPortfolioGrowthMetrics: protectedProcedure
+    .input(
+      z.object({
+        portfolioId: z.number(),
+        holdingId: z.number().optional(),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      let holdings = await getUserEtfHoldings(ctx.user.id, input.portfolioId);
+      if (input.holdingId) {
+        holdings = holdings.filter(h => h.id === input.holdingId);
+      }
+
+      if (!holdings || holdings.length === 0) {
+        return { m1: "0", ytd: "0", y1: "0", y5: "0" };
+      }
+
+      // To calculate all metrics, we need 5 years of history
+      const days = 365 * 5;
+      const interval = "1wk";
+
+      const evolution: Record<string, number> = {};
+      const dates: Date[] = [];
+
+      for (const holding of holdings) {
+        const priceHistory = await fetchHistoricalPrices(holding.symbol, days, interval);
+        const purchases = await getPurchases(holding.id);
+
+        for (const pricePoint of priceHistory) {
+          const dateKey = pricePoint.timestamp.toISOString().split("T")[0];
+          if (!evolution[dateKey]) {
+            evolution[dateKey] = 0;
+            dates.push(pricePoint.timestamp);
+          }
+
+          let quantityOwned = 0;
+          for (const purchase of purchases) {
+            if (new Date(purchase.purchaseDate) <= pricePoint.timestamp) {
+              quantityOwned += parseFloat(purchase.quantity.toString());
+            }
+          }
+          evolution[dateKey] += quantityOwned * pricePoint.price;
+        }
+      }
+
+      const sortedDates = dates.sort((a, b) => a.getTime() - b.getTime());
+      if (sortedDates.length < 2) return { m1: "0", ytd: "0", y1: "0", y5: "0" };
+
+      const latestValue = evolution[sortedDates[sortedDates.length - 1].toISOString().split("T")[0]];
+      
+      const calculateGrowth = (targetDate: Date) => {
+        const closestDate = sortedDates
+          .filter(d => d <= targetDate)
+          .sort((a, b) => b.getTime() - a.getTime())[0] || sortedDates[0];
+        
+        const startValue = evolution[closestDate.toISOString().split("T")[0]];
+        return startValue > 0 ? ((latestValue - startValue) / startValue) * 100 : 0;
+      };
+
+      const now = new Date();
+      const m1Date = new Date(); m1Date.setMonth(now.getMonth() - 1);
+      const ytdDate = new Date(now.getFullYear(), 0, 1);
+      const y1Date = new Date(); y1Date.setFullYear(now.getFullYear() - 1);
+      const y5Date = new Date(); y5Date.setFullYear(now.getFullYear() - 5);
+
+      return {
+        m1: calculateGrowth(m1Date).toFixed(2),
+        ytd: calculateGrowth(ytdDate).toFixed(2),
+        y1: calculateGrowth(y1Date).toFixed(2),
+        y5: calculateGrowth(y5Date).toFixed(2),
+      };
+    }),
+
   getPortfolioEvolution: protectedProcedure
     .input(
       z.object({
         portfolioId: z.number(),
-        range: z.enum(["1m", "1y", "5y"]),
+        range: z.enum(["1m", "ytd", "1y", "5y"]),
         holdingId: z.number().optional(),
       })
     )
@@ -676,7 +756,14 @@ export const etfRouter = router({
         holdings = holdings.filter(h => h.id === input.holdingId);
       }
 
-      const days = input.range === "1m" ? 30 : input.range === "1y" ? 365 : 365 * 5;
+      let days = 365;
+      if (input.range === "1m") days = 30;
+      else if (input.range === "ytd") {
+        const now = new Date();
+        const startOfYear = new Date(now.getFullYear(), 0, 1);
+        days = Math.ceil((now.getTime() - startOfYear.getTime()) / (1000 * 60 * 60 * 24));
+      } else if (input.range === "5y") days = 365 * 5;
+
       const interval = input.range === "1m" ? "1d" : "1wk";
 
       const evolution: Record<string, number> = {};
