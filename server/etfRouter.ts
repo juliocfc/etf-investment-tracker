@@ -343,11 +343,15 @@ export const etfRouter = router({
 
         for (const div of dividendData) {
           const exDate = new Date(div.exDate);
+          // Set to midnight of the ex-date
+          exDate.setHours(0, 0, 0, 0);
           
-          // Calculate quantity owned on ex-date
+          // Calculate quantity owned BEFORE the ex-date
           let quantityOwned = 0;
           for (const purchase of purchases) {
-            if (new Date(purchase.purchaseDate) < exDate) {
+            const purchaseDate = new Date(purchase.purchaseDate);
+            // Must have purchased before the ex-dividend date to be eligible
+            if (purchaseDate < exDate) {
               quantityOwned += parseFloat(purchase.quantity.toString());
             }
           }
