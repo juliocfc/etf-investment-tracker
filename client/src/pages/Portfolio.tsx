@@ -4,7 +4,15 @@ import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { Plus, Trash2, RefreshCw, ShoppingCart, History, FolderPlus, FileUp, Wallet, TrendingUp, Info, ArrowUpCircle, CheckCircle2 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Plus, Trash2, RefreshCw, ShoppingCart, History, FolderPlus, FileUp, Wallet, TrendingUp, Info, ArrowUpCircle, CheckCircle2, MoreVertical } from "lucide-react";
 import { toast } from "sonner";
 import { formatCurrency, formatNumber } from "@/lib/utils";
 import React, { useEffect, useRef, useState, useMemo } from "react";
@@ -369,31 +377,32 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
           <table className="w-full">
             <thead>
               <tr className="bg-slate-50 border-b border-border">
-                <th className="text-left py-3 px-4 text-slate-600">Asset</th>
-                <th className="text-right py-3 px-4 text-slate-600">Qty</th>
-                <th className="text-right py-3 px-4 text-slate-600">Avg Cost</th>
-                <th className="text-right py-3 px-4 text-slate-600">Total Cost</th>
-                <th className="text-right py-3 px-4 text-slate-600">Mkt Price</th>
-                <th className="text-right py-3 px-4 text-slate-600">Mkt Value</th>
-                <th className="text-right py-3 px-4 text-slate-600">Gain/Loss</th>
-                <th className="text-right py-3 px-4 text-slate-600">Return</th>
-                <th className="text-right py-3 px-4 text-slate-600">Alloc %</th>
-                <th className="text-right py-3 px-4 text-slate-600">Desired Alloc %</th>
-                <th className="text-center py-3 px-4 text-slate-600">Actions</th>
+                <th className="text-left py-3 px-3 text-slate-600">Asset</th>
+                <th className="text-right py-3 px-3 text-slate-600">Qty</th>
+                <th className="text-right py-3 px-3 text-slate-600">Avg Cost</th>
+                <th className="text-right py-3 px-3 text-slate-600">Total Cost</th>
+                <th className="text-right py-3 px-3 text-slate-600">Mkt Price</th>
+                <th className="text-right py-3 px-3 text-slate-600">Mkt Value</th>
+                <th className="text-right py-3 px-3 text-slate-600">Gain/Loss</th>
+                <th className="text-right py-3 px-3 text-slate-600">Return</th>
+                <th className="text-right py-3 px-3 text-slate-600">Allocation</th>
+                <th className="text-center py-3 px-3 text-slate-600">Actions</th>
               </tr>
             </thead>
             <tbody>
               {summary?.holdings?.map((holding: any) => {
                 const allocation = summary.investmentAllocationBreakdown?.find((a: any) => a.symbol === holding.symbol);
                 const isGain = parseFloat(holding.gain) >= 0;
+                const isUnderWeight = parseFloat(allocation?.percentage || "0") < (parseFloat(holding.desiredAllocation) || 0);
+                
                 return (
                   <tr key={holding.id} className="border-b border-border hover:bg-slate-50 transition-colors">
-                    <td className="py-4 px-4 min-w-[80px]">
-                      <div className="font-bold text-primary text-base leading-tight">{holding.symbol}</div>
+                    <td className="py-3 px-3">
+                      <div className="font-bold text-primary text-sm leading-tight">{holding.symbol}</div>
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <div className="text-slate-500 text-[10px] leading-tight cursor-help whitespace-nowrap">
-                            {holding.name.length > 25 ? `${holding.name.substring(0, 25)}...` : holding.name}
+                            {holding.name.length > 20 ? `${holding.name.substring(0, 20)}...` : holding.name}
                           </div>
                         </TooltipTrigger>
                         <TooltipContent side="right">
@@ -401,60 +410,79 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                         </TooltipContent>
                       </Tooltip>
                     </td>
-                    <td className="text-right py-4 px-6 font-mono font-medium">{formatNumber(holding.quantity, 3)}</td>
-                    <td className="text-right py-4 px-6 font-mono text-slate-600">{formatCurrency(holding.averageCost)}</td>
-                    <td className="text-right py-4 px-6 font-mono text-slate-600">{formatCurrency(holding.totalCost)}</td>
-                    <td className="text-right py-4 px-6 font-mono text-slate-600">{formatCurrency(holding.currentPrice)}</td>
-                    <td className="text-right py-4 px-6 font-mono font-bold">{formatCurrency(holding.currentValue)}</td>
-                    <td className={`text-right py-4 px-6 font-mono font-bold ${isGain ? "text-green-600" : "text-red-600"}`}>
+                    <td className="text-right py-3 px-3 font-mono text-xs font-medium">{formatNumber(holding.quantity, 3)}</td>
+                    <td className="text-right py-3 px-3 font-mono text-xs text-slate-600">{formatCurrency(holding.averageCost)}</td>
+                    <td className="text-right py-3 px-3 font-mono text-xs text-slate-600">{formatCurrency(holding.totalCost)}</td>
+                    <td className="text-right py-3 px-3 font-mono text-xs text-slate-600">{formatCurrency(holding.currentPrice)}</td>
+                    <td className="text-right py-3 px-3 font-mono text-xs font-bold">{formatCurrency(holding.currentValue)}</td>
+                    <td className={`text-right py-3 px-3 font-mono text-xs font-bold ${isGain ? "text-green-600" : "text-red-600"}`}>
                       {isGain ? "+" : ""}{formatCurrency(holding.gain)}
                     </td>
-                    <td className={`text-right py-4 px-6 font-mono font-bold ${isGain ? "text-green-600" : "text-red-600"}`}>
+                    <td className={`text-right py-3 px-3 font-mono text-xs font-bold ${isGain ? "text-green-600" : "text-red-600"}`}>
                       {isGain ? "+" : ""}{holding.gainPercent}%
                     </td>
-                    <td className="text-right py-4 px-6 font-mono text-slate-500 font-medium">
-                      {allocation?.percentage || "0.00"}%
-                    </td>
-                    <td className="text-right py-4 px-6 font-mono">
-                      <div className="flex items-center justify-end gap-2">
-                        {parseFloat(allocation?.percentage || "0") < (parseFloat(holding.desiredAllocation) || 0) && (
-                          <div className="flex items-center gap-1 text-[9px] font-bold text-green-600 bg-green-50 px-1.5 py-0.5 rounded border border-green-100 animate-pulse shrink-0">
-                            <ArrowUpCircle className="w-2.5 h-2.5" />
-                            BUY
+                    <td className="text-right py-3 px-3 font-mono">
+                      <div className="flex flex-col items-end gap-1">
+                        <div className="text-xs font-bold text-slate-700 leading-none">{allocation?.percentage || "0.00"}%</div>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          {isUnderWeight && (
+                            <div className="flex items-center text-[8px] font-bold text-green-600 animate-pulse">
+                              <ArrowUpCircle className="w-2.5 h-2.5 mr-0.5" /> BUY
+                            </div>
+                          )}
+                          <div className="flex items-center text-[10px] text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                            <span className="mr-1">Target</span>
+                            <input
+                              type="number"
+                              step="0.1"
+                              defaultValue={holding.desiredAllocation || "0"}
+                              onBlur={(e) => {
+                                if (e.target.value !== holding.desiredAllocation) {
+                                  updateHoldingMutation.mutate({
+                                    id: holding.id,
+                                    desiredAllocation: e.target.value,
+                                  });
+                                }
+                              }}
+                              className="w-10 bg-transparent border-none p-0 text-right focus:outline-none focus:ring-0 font-bold text-slate-600"
+                            />
+                            <span>%</span>
                           </div>
-                        )}
-                        <input
-                          type="number"
-                          step="0.1"
-                          defaultValue={holding.desiredAllocation || "0"}
-                          onBlur={(e) => {
-                            if (e.target.value !== holding.desiredAllocation) {
-                              updateHoldingMutation.mutate({
-                                id: holding.id,
-                                desiredAllocation: e.target.value,
-                              });
-                            }
-                          }}
-                          className="w-14 bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 text-right text-xs focus:outline-none focus:border-primary transition-colors"
-                        />
-                        <span className="text-slate-400 text-[10px]">%</span>
+                        </div>
                       </div>
                     </td>
-                    <td className="text-center py-4 px-6">
-                      <div className="flex items-center justify-center gap-1">
-                        <Button variant="ghost" size="icon" title="Batch Import" onClick={() => setIsCSVImportOpen(holding.id)} className="text-slate-400 hover:text-primary">
-                          <FileUp className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="icon" title="Buy" onClick={() => setIsBuyDialogOpen(holding.id)} className="text-slate-400 hover:text-primary">
-                          <ShoppingCart className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="icon" title="History" onClick={() => setPurchaseHistoryOpen(holding.id)} className="text-slate-400 hover:text-primary">
-                          <History className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="icon" title="Delete" onClick={() => handleDeleteHolding(holding.id)} className="text-slate-400 hover:text-destructive">
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
+                    <td className="text-center py-3 px-3">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-primary">
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-48">
+                          <DropdownMenuLabel>Manage Asset</DropdownMenuLabel>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem onClick={() => setIsBuyDialogOpen(holding.id)}>
+                            <ShoppingCart className="mr-2 h-4 w-4 text-slate-500" />
+                            <span>Add Shares</span>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => setIsCSVImportOpen(holding.id)}>
+                            <FileUp className="mr-2 h-4 w-4 text-slate-500" />
+                            <span>Batch Import</span>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => setPurchaseHistoryOpen(holding.id)}>
+                            <History className="mr-2 h-4 w-4 text-slate-500" />
+                            <span>View History</span>
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem 
+                            onClick={() => handleDeleteHolding(holding.id)}
+                            className="text-red-600 focus:text-red-600 focus:bg-red-50"
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            <span>Delete Asset</span>
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </td>
                   </tr>
                 );
@@ -463,9 +491,9 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
             {summary?.holdings?.length > 0 && (
               <tfoot className="bg-slate-50 border-t-2 border-slate-200">
                 <tr className="font-bold text-slate-800">
-                  <td colSpan={5} className="py-4 px-4 uppercase text-[10px] tracking-widest text-slate-500">Total Portfolio Performance</td>
-                  <td className="text-right py-4 px-6 font-mono text-lg">{formatCurrency(summary.investmentValue)}</td>
-                  <td className={`text-right py-4 px-6 font-mono text-lg ${
+                  <td colSpan={5} className="py-4 px-3 uppercase text-[10px] tracking-widest text-slate-500">Total Portfolio Performance</td>
+                  <td className="text-right py-4 px-3 font-mono text-sm">{formatCurrency(summary.investmentValue)}</td>
+                  <td className={`text-right py-4 px-3 font-mono text-sm ${
                     summary.holdings.reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0) >= 0 
                       ? "text-green-600" 
                       : "text-red-600"
@@ -473,7 +501,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                     {summary.holdings.reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0) >= 0 ? "+" : ""}
                     {formatCurrency(summary.holdings.reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0))}
                   </td>
-                  <td className={`text-right py-4 px-6 font-mono text-lg ${
+                  <td className={`text-right py-4 px-3 font-mono text-sm ${
                     (summary.holdings.reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0) / 
                     summary.holdings.reduce((acc: number, h: any) => acc + (parseFloat(h.averageCost || h.purchasePrice) * parseFloat(h.quantity)), 0) * 100) >= 0
                       ? "text-green-600"
@@ -484,8 +512,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                       summary.holdings.reduce((acc: number, h: any) => acc + (parseFloat(h.averageCost || h.purchasePrice) * parseFloat(h.quantity)), 0)) * 100
                     ).toFixed(2)}%
                   </td>
-                  <td className="text-right py-4 px-6 font-mono text-slate-500">100%</td>
-                  <td></td>
+                  <td className="text-right py-4 px-3 font-mono text-slate-500 text-xs">100%</td>
                   <td></td>
                 </tr>
               </tfoot>
