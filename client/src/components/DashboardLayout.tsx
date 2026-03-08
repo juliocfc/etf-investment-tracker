@@ -228,13 +228,13 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
 
         {/* Main Content */}
         <main className="flex-1 overflow-auto bg-slate-50 flex flex-col">
-          <div className="p-6 lg:p-10 max-w-[1600px] mx-auto w-full flex-1">
+          <div className="p-6 lg:p-10 max-w-[1800px] mx-auto w-full flex-1">
             {children}
           </div>
           
           {/* Page Footer */}
           <footer className="mt-auto py-6 px-10 border-t border-slate-200 bg-white">
-            <div className="max-w-[1600px] mx-auto flex flex-col sm:flex-row justify-between items-center gap-4">
+            <div className="max-w-[1800px] mx-auto flex flex-col sm:flex-row justify-between items-center gap-4">
               <div className="flex items-center gap-6">
                 <div className="flex items-center gap-2">
                   <div className="w-2 h-2 rounded-full bg-green-600 animate-pulse" />

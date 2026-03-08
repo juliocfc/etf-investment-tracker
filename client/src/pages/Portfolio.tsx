@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Plus, Trash2, RefreshCw, ShoppingCart, History, FolderPlus, FileUp, Wallet, TrendingUp, Info, ArrowUpCircle, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import { formatCurrency, formatNumber } from "@/lib/utils";
@@ -290,8 +291,8 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
 
       {/* Main Holdings Table */}
       <Card className="bg-white shadow-sm border border-border overflow-hidden">
-        <div className="px-6 py-4 border-b border-border bg-slate-50/50 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
+        <div className="px-6 py-4 border-b border-border bg-slate-50/50 flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-3 min-w-fit">
             <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
               <TrendingUp className="w-5 h-5 text-primary" />
               Active Holdings
@@ -299,13 +300,13 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
             <span className="text-[10px] font-bold text-slate-400 bg-slate-200/50 px-2 py-0.5 rounded-full uppercase tracking-widest">{summary?.holdings?.length || 0} Assets</span>
           </div>
           
-          <div className="flex items-center gap-3 w-full sm:w-auto">
+          <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto sm:justify-end">
             <Button
               variant="outline"
               size="sm"
               onClick={() => selectedPortfolioId && updatePricesMutation.mutate({ portfolioId: selectedPortfolioId })}
               disabled={updatePricesMutation.isPending}
-              className="flex-1 sm:flex-none border-slate-200 hover:bg-slate-50 text-xs font-bold uppercase tracking-wider"
+              className="flex-1 sm:flex-none border-slate-200 hover:bg-slate-50 text-xs font-bold uppercase tracking-wider h-9"
             >
               <RefreshCw className={`mr-2 h-3.5 w-3.5 ${updatePricesMutation.isPending ? "animate-spin" : ""}`} />
               Update Prices
@@ -324,7 +325,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
               }
             }}>
               <DialogTrigger asChild>
-                <Button size="sm" className="flex-1 sm:flex-none bg-primary hover:bg-primary/90 text-white shadow-md shadow-primary/10 text-xs font-bold uppercase tracking-wider">
+                <Button size="sm" className="flex-1 sm:flex-none bg-primary hover:bg-primary/90 text-white shadow-md shadow-primary/10 text-xs font-bold uppercase tracking-wider h-9">
                   <Plus className="mr-2 h-3.5 w-3.5" />
                   Add ETF
                 </Button>
@@ -368,16 +369,17 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
           <table className="w-full">
             <thead>
               <tr className="bg-slate-50 border-b border-border">
-                <th className="text-left py-3 px-6 text-slate-600">Asset</th>
-                <th className="text-right py-3 px-6 text-slate-600">Qty</th>
-                <th className="text-right py-3 px-6 text-slate-600">Avg Cost</th>
-                <th className="text-right py-3 px-6 text-slate-600">Mkt Price</th>
-                <th className="text-right py-3 px-6 text-slate-600">Mkt Value</th>
-                <th className="text-right py-3 px-6 text-slate-600">Gain/Loss</th>
-                <th className="text-right py-3 px-6 text-slate-600">Return</th>
-                <th className="text-right py-3 px-6 text-slate-600">Alloc %</th>
-                <th className="text-right py-3 px-6 text-slate-600">Desired Alloc %</th>
-                <th className="text-center py-3 px-6 text-slate-600">Actions</th>
+                <th className="text-left py-3 px-4 text-slate-600">Asset</th>
+                <th className="text-right py-3 px-4 text-slate-600">Qty</th>
+                <th className="text-right py-3 px-4 text-slate-600">Avg Cost</th>
+                <th className="text-right py-3 px-4 text-slate-600">Total Cost</th>
+                <th className="text-right py-3 px-4 text-slate-600">Mkt Price</th>
+                <th className="text-right py-3 px-4 text-slate-600">Mkt Value</th>
+                <th className="text-right py-3 px-4 text-slate-600">Gain/Loss</th>
+                <th className="text-right py-3 px-4 text-slate-600">Return</th>
+                <th className="text-right py-3 px-4 text-slate-600">Alloc %</th>
+                <th className="text-right py-3 px-4 text-slate-600">Desired Alloc %</th>
+                <th className="text-center py-3 px-4 text-slate-600">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -386,12 +388,22 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                 const isGain = parseFloat(holding.gain) >= 0;
                 return (
                   <tr key={holding.id} className="border-b border-border hover:bg-slate-50 transition-colors">
-                    <td className="py-4 px-6">
+                    <td className="py-4 px-4 min-w-[80px]">
                       <div className="font-bold text-primary text-base leading-tight">{holding.symbol}</div>
-                      <div className="text-slate-500 text-[10px] leading-tight max-w-[180px] truncate">{holding.name}</div>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div className="text-slate-500 text-[10px] leading-tight cursor-help whitespace-nowrap">
+                            {holding.name.length > 25 ? `${holding.name.substring(0, 25)}...` : holding.name}
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent side="right">
+                          <p className="max-w-[300px]">{holding.name}</p>
+                        </TooltipContent>
+                      </Tooltip>
                     </td>
                     <td className="text-right py-4 px-6 font-mono font-medium">{formatNumber(holding.quantity, 3)}</td>
                     <td className="text-right py-4 px-6 font-mono text-slate-600">{formatCurrency(holding.averageCost)}</td>
+                    <td className="text-right py-4 px-6 font-mono text-slate-600">{formatCurrency(holding.totalCost)}</td>
                     <td className="text-right py-4 px-6 font-mono text-slate-600">{formatCurrency(holding.currentPrice)}</td>
                     <td className="text-right py-4 px-6 font-mono font-bold">{formatCurrency(holding.currentValue)}</td>
                     <td className={`text-right py-4 px-6 font-mono font-bold ${isGain ? "text-green-600" : "text-red-600"}`}>
@@ -451,7 +463,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
             {summary?.holdings?.length > 0 && (
               <tfoot className="bg-slate-50 border-t-2 border-slate-200">
                 <tr className="font-bold text-slate-800">
-                  <td colSpan={4} className="py-4 px-6 uppercase text-[10px] tracking-widest text-slate-500">Total Portfolio Performance</td>
+                  <td colSpan={5} className="py-4 px-4 uppercase text-[10px] tracking-widest text-slate-500">Total Portfolio Performance</td>
                   <td className="text-right py-4 px-6 font-mono text-lg">{formatCurrency(summary.investmentValue)}</td>
                   <td className={`text-right py-4 px-6 font-mono text-lg ${
                     summary.holdings.reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0) >= 0 

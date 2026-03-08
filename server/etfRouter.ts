@@ -544,6 +544,7 @@ export const etfRouter = router({
           return {
             ...holding,
             averageCost: avgCost,
+            totalCost: purchaseValue.toFixed(2),
             currentValue: value.toFixed(2),
             gain: gain.toFixed(2),
             gainPercent: gainPercent.toFixed(2),
