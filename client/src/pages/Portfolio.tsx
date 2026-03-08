@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, Trash2, RefreshCw, ShoppingCart, History, FolderPlus, FileUp } from "lucide-react";
+import { Plus, Trash2, RefreshCw, ShoppingCart, History, FolderPlus, FileUp, Wallet, TrendingUp, Info } from "lucide-react";
 import { toast } from "sonner";
 import React, { useEffect, useRef, useState, useMemo } from "react";
 
@@ -30,15 +30,21 @@ export default function Portfolio() {
 
   const [cashAmount, setCashAmount] = useState("");
   const [isEditingCash, setIsEditingCash] = useState(false);
-  const [lookupTimeout, setLookupTimeout] = useState<NodeJS.Timeout | null>(null);
   const [isCSVImportOpen, setIsCSVImportOpen] = useState<number | null>(null);
-  const [csvFile, setCSVFile] = useState<File | null>(null);
-  const [csvPreview, setCSVPreview] = useState<any[]>([]);
-  const [metrics, setMetrics] = useState<Record<string, any>>({});
-  const [loadingMetrics, setLoadingMetrics] = useState<Set<string>>(new Set());
 
-  // Portfolio queries
-  const { data: portfolios, refetch: refetchPortfolios } = trpc.portfolio.getAll.useQuery();
+  const utils = trpc.useUtils();
+
+  // Queries
+  const { data: portfolios } = trpc.portfolio.getAll.useQuery();
+  const { data: summary, refetch: refetchSummary } = trpc.etf.getPortfolioSummary.useQuery(
+    { portfolioId: selectedPortfolioId || 0 },
+    { enabled: selectedPortfolioId !== null }
+  );
+
+  const { data: holdings, refetch: refetchHoldings } = trpc.etf.getHoldings.useQuery(
+    { portfolioId: selectedPortfolioId || 0 },
+    { enabled: selectedPortfolioId !== null }
+  );
 
   // Initialize selected portfolio
   useEffect(() => {
@@ -47,51 +53,28 @@ export default function Portfolio() {
     }
   }, [portfolios, selectedPortfolioId]);
 
-  // Queries (only run if portfolio is selected)
-  const { data: holdings, refetch: refetchHoldings } = trpc.etf.getHoldings.useQuery(
-    selectedPortfolioId ? { portfolioId: selectedPortfolioId } : { portfolioId: 0 },
-    { enabled: selectedPortfolioId !== null }
-  );
-  const { data: summary, refetch: refetchSummary } = trpc.etf.getPortfolioSummary.useQuery(
-    selectedPortfolioId ? { portfolioId: selectedPortfolioId } : { portfolioId: 0 },
-    { enabled: selectedPortfolioId !== null }
-  );
-  const { data: cashBalance } = trpc.etf.getCashBalance.useQuery(
-    selectedPortfolioId ? { portfolioId: selectedPortfolioId } : { portfolioId: 0 },
-    { enabled: selectedPortfolioId !== null }
-  );
-
-  // ETF name lookup query - enabled only when needed
-  const { refetch: refetchETFName } = trpc.etf.lookupETFName.useQuery(
-    { symbol: formData.symbol },
-    { enabled: false }
-  );
-
-  // Portfolio mutations
+  // Mutations
   const createPortfolioMutation = trpc.portfolio.create.useMutation({
-    onSuccess: () => {
-      toast.success("Portfolio created successfully!");
-      refetchPortfolios();
-      setNewPortfolioName("");
+    onSuccess: (newPortfolio) => {
+      toast.success("Portfolio created!");
       setIsAddPortfolioOpen(false);
-    },
-    onError: (error) => {
-      toast.error(error.message || "Failed to create portfolio");
+      setNewPortfolioName("");
+      utils.portfolio.getAll.invalidate();
+      setSelectedPortfolioId(newPortfolio.id);
     },
   });
 
-  const deletePortfolioMutation = trpc.portfolio.delete.useMutation({
+  const updatePricesMutation = trpc.etf.updatePrices.useMutation({
     onSuccess: () => {
-      toast.success("Portfolio deleted successfully!");
-      refetchPortfolios();
-      setSelectedPortfolioId(null);
+      toast.success("Prices updated!");
+      refetchHoldings();
+      refetchSummary();
     },
     onError: (error) => {
-      toast.error(error.message || "Failed to delete portfolio");
+      toast.error(error.message || "Failed to update prices");
     },
   });
 
-  // ETF Mutations
   const addHoldingMutation = trpc.etf.addHolding.useMutation({
     onSuccess: () => {
       toast.success("ETF added successfully!");
@@ -135,106 +118,62 @@ export default function Portfolio() {
       setIsBuyDialogOpen(null);
     },
     onError: (error) => {
-      toast.error(error.message || "Failed to purchase shares");
+      toast.error(error.message || "Failed to buy shares");
+    },
+  });
+
+  const updateCashMutation = trpc.etf.updateCashBalance.useMutation({
+    onSuccess: () => {
+      toast.success("Cash balance updated!");
+      refetchSummary();
+      setIsEditingCash(false);
     },
   });
 
   const deletePurchaseMutation = trpc.etf.deletePurchase.useMutation({
     onSuccess: () => {
-      toast.success("Purchase deleted successfully!");
+      toast.success("Purchase deleted!");
       refetchHoldings();
       refetchSummary();
-    },
-    onError: (error) => {
-      toast.error(error.message || "Failed to delete purchase");
-    },
-  });
-
-  const updatePricesMutation = trpc.etf.updatePrices.useMutation({
-    onSuccess: (data) => {
-      console.log("Prices updated successfully:", data);
-      toast.success("Prices updated!");
-      refetchHoldings();
-      refetchSummary();
-    },
-    onError: (error) => {
-      console.error("Error updating prices:", error);
-      toast.error(error.message || "Failed to update prices");
     },
   });
 
   const importCSVMutation = trpc.etf.importPurchasesFromCSV.useMutation({
     onSuccess: (data) => {
-      toast.success(`Imported ${data.imported} purchases!`);
-      refetchHoldings();
-      refetchSummary();
-      setIsCSVImportOpen(null);
-      setCSVFile(null);
-      setCSVPreview([]);
+      if (data.success) {
+        toast.success(`Imported ${data.imported} purchases!`);
+        if (data.failed > 0) {
+          toast.warning(`${data.failed} rows failed to import.`);
+        }
+        refetchHoldings();
+        refetchSummary();
+        setIsCSVImportOpen(null);
+      } else {
+        toast.error("Failed to import CSV");
+      }
     },
     onError: (error) => {
-      toast.error(error.message || "Failed to import CSV");
+      toast.error(error.message || "Import failed");
     },
   });
 
-  // Auto-fetch prices on page load or portfolio change
-  useEffect(() => {
-    if (selectedPortfolioId) {
-      updatePricesMutation.mutate({ portfolioId: selectedPortfolioId });
-    }
-  }, [selectedPortfolioId]);
+  // Handlers
+  const handleSymbolChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const symbol = e.target.value.toUpperCase();
+    setFormData({ ...formData, symbol });
 
-  // Fetch performance metrics for each holding
-  const utils = trpc.useUtils();
-
-  useEffect(() => {
-    if (!summary?.holdings || summary.holdings.length === 0) return;
-
-    const fetchMetrics = async () => {
-      for (const holding of summary.holdings) {
-        if (metrics[holding.symbol]) continue;
-
-        try {
-          const result = await utils.etf.getPerformanceMetrics.fetch({ symbol: holding.symbol });
-          setMetrics(prev => ({
-            ...prev,
-            [holding.symbol]: result
-          }));
-        } catch (error) {
-          console.error(`Failed to fetch metrics for ${holding.symbol}:`, error);
-          setMetrics(prev => ({
-            ...prev,
-            [holding.symbol]: { ytdReturn: null, oneYearReturn: null, volatility: null }
-          }));
-        }
-      }
-    };
-
-    fetchMetrics();
-  }, [summary?.holdings, utils]);
-
-
-  // Handle symbol input change with auto-lookup
-  const handleSymbolChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newSymbol = e.target.value.toUpperCase();
-    setFormData((prev) => ({ ...prev, symbol: newSymbol }));
-
-    if (lookupTimeout) clearTimeout(lookupTimeout);
-
-    if (newSymbol.length > 2) {
-
+    if (symbol.length >= 2) {
       const timeout = setTimeout(async () => {
         try {
-          const result = await refetchETFName();
-          if (result.data) {
-            setFormData((prev) => ({ ...prev, name: result.data || "" }));
+          const name = await utils.etf.lookupETFName.fetch({ symbol });
+          if (name) {
+            setFormData((prev) => ({ ...formData, symbol, name }));
           }
         } catch (error) {
-          console.error("Failed to lookup ETF name:", error);
-        } 
+          console.error("Error looking up ETF name:", error);
+        }
       }, 500);
-
-      setLookupTimeout(timeout);
+      return () => clearTimeout(timeout);
     }
   };
 
@@ -243,7 +182,7 @@ export default function Portfolio() {
       toast.error("Please select a portfolio");
       return;
     }
-    if (!formData.symbol || !formData.name || !formData.quantity || !formData.purchasePrice) {
+    if (!formData.symbol || !formData.quantity || !formData.purchasePrice) {
       toast.error("Please fill in all fields");
       return;
     }
@@ -284,188 +223,131 @@ export default function Portfolio() {
   };
 
   const handleDeletePurchase = (purchaseId: number, holdingId: number) => {
-    if (confirm("Are you sure you want to delete this purchase?")) {
+    if (confirm("Are you sure you want to delete this purchase record?")) {
       deletePurchaseMutation.mutate({ purchaseId, holdingId });
     }
   };
 
-  const handleCSVImport = (holdingId: number, csvContent: string) => {
-    if (!selectedPortfolioId) {
-      toast.error("Please select a portfolio");
-      return;
-    }
-    importCSVMutation.mutate({ portfolioId: selectedPortfolioId, holdingId, csvContent });
+  const handleImportCSV = (holdingId: number, csvContent: string) => {
+    if (!selectedPortfolioId) return;
+    importCSVMutation.mutate({
+      portfolioId: selectedPortfolioId,
+      holdingId,
+      csvContent,
+    });
   };
 
-  const updateCashMutation = trpc.etf.updateCashBalance.useMutation({
-    onSuccess: () => {
-      toast.success("Cash balance updated!");
-      setIsEditingCash(false);
-      refetchSummary();
-    },
-    onError: () => {
-      toast.error("Failed to update cash balance");
-    },
-  });
-
-  const handleCashUpdate = async () => {
-    if (!selectedPortfolioId) {
-      toast.error("Please select a portfolio");
-      return;
-    }
-    if (!cashAmount) {
-      toast.error("Please enter an amount");
-      return;
-    }
-
-    updateCashMutation.mutate({ portfolioId: selectedPortfolioId, amount: cashAmount });
-  };
-
-  const handleCreatePortfolio = () => {
-    if (!newPortfolioName.trim()) {
-      toast.error("Please enter a portfolio name");
-      return;
-    }
-    createPortfolioMutation.mutate({ name: newPortfolioName });
-  };
-
-  const handleDeletePortfolio = (portfolioId: number) => {
-    if (confirm("Are you sure you want to delete this portfolio? This action cannot be undone.")) {
-      deletePortfolioMutation.mutate({ portfolioId });
-    }
-  };
-
-  if (!selectedPortfolioId || !portfolios) {
+  if (!portfolios) {
     return (
-      <div className="space-y-6 p-6">
-        <div className="text-center">
-          <h2 className="text-2xl font-bold mb-4">No Portfolios</h2>
-          <p className="text-gray-400 mb-6">Create your first portfolio to get started</p>
-          <Dialog open={isAddPortfolioOpen} onOpenChange={setIsAddPortfolioOpen}>
-            <DialogTrigger asChild>
-              <Button className="bg-cyan-600 hover:bg-cyan-700">
-                <FolderPlus className="mr-2 h-4 w-4" />
-                Create Portfolio
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Create New Portfolio</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4">
-                <Input
-                  placeholder="Portfolio name (e.g., Retirement, Education)"
-                  value={newPortfolioName}
-                  onChange={(e) => setNewPortfolioName(e.target.value)}
-                />
-                <Button
-                  onClick={handleCreatePortfolio}
-                  className="w-full bg-cyan-600 hover:bg-cyan-700"
-                  disabled={createPortfolioMutation.isPending}
-                >
-                  Create
-                </Button>
-              </div>
-            </DialogContent>
-          </Dialog>
-        </div>
+      <div className="flex items-center justify-center h-64">
+        <RefreshCw className="w-8 h-8 animate-spin text-primary" />
       </div>
     );
   }
 
   return (
-    <div className="space-y-6 p-6">
-      {/* Portfolio Selector */}
-      <div className="flex items-center gap-4 mb-6">
-        <div className="flex-1">
-          <label className="text-sm text-gray-400 block mb-2">Select Portfolio</label>
-          <select
-            value={selectedPortfolioId || ""}
-            onChange={(e) => setSelectedPortfolioId(parseInt(e.target.value))}
-            className="w-full px-4 py-2 bg-black border border-cyan-500/50 rounded text-white"
-          >
-            {portfolios.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        <Dialog open={isAddPortfolioOpen} onOpenChange={setIsAddPortfolioOpen}>
-          <DialogTrigger asChild>
-            <Button className="bg-cyan-600 hover:bg-cyan-700 mt-6">
-              <FolderPlus className="mr-2 h-4 w-4" />
-              New Portfolio
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Create New Portfolio</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4">
-              <Input
-                placeholder="Portfolio name (e.g., Retirement, Education)"
-                value={newPortfolioName}
-                onChange={(e) => setNewPortfolioName(e.target.value)}
-              />
-              <Button
-                onClick={handleCreatePortfolio}
-                className="w-full bg-cyan-600 hover:bg-cyan-700"
-                disabled={createPortfolioMutation.isPending}
+    <div className="space-y-8">
+      {/* Top Bar: Portfolio Selection */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-lg shadow-sm border border-border">
+        <div className="flex items-center gap-4">
+          <div className="p-2 bg-slate-100 rounded-lg">
+            <Wallet className="w-5 h-5 text-slate-600" />
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block mb-1">Select Portfolio</label>
+            <div className="flex items-center gap-2">
+              <select
+                value={selectedPortfolioId || ""}
+                onChange={(e) => setSelectedPortfolioId(parseInt(e.target.value))}
+                className="min-w-[200px] px-3 py-1.5 bg-transparent border-b-2 border-slate-200 focus:border-primary focus:outline-none font-semibold text-slate-800 transition-colors"
               >
-                Create
-              </Button>
+                {portfolios.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+              <Dialog open={isAddPortfolioOpen} onOpenChange={setIsAddPortfolioOpen}>
+                <DialogTrigger asChild>
+                  <Button variant="ghost" size="icon" className="text-primary hover:bg-primary/5 rounded-full">
+                    <Plus className="w-4 h-4" />
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Create Portfolio</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4 pt-4">
+                    <Input
+                      placeholder="Portfolio Name"
+                      value={newPortfolioName}
+                      onChange={(e) => setNewPortfolioName(e.target.value)}
+                    />
+                    <Button 
+                      onClick={() => createPortfolioMutation.mutate({ name: newPortfolioName })}
+                      className="w-full"
+                      disabled={!newPortfolioName}
+                    >
+                      Create
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
             </div>
-          </DialogContent>
-        </Dialog>
-        {portfolios.length > 1 && (
-          <Button
-            variant="destructive"
-            onClick={() => selectedPortfolioId && handleDeletePortfolio(selectedPortfolioId)}
-            className="mt-6"
-          >
-            Delete Portfolio
-          </Button>
-        )}
+          </div>
+        </div>
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-4 gap-4">
-        <Card className="p-4 border-2 border-cyan-500/50 bg-black/50">
-          <div className="text-xs text-cyan-400 mb-2">TOTAL VALUE</div>
-          <div className="text-2xl font-bold text-white">${summary?.totalValue || "0.00"}</div>
-          <div className="text-xs text-gray-400 mt-1">Portfolio worth</div>
-        </Card>
-        <Card className="p-4 border-2 border-cyan-500/50 bg-black/50">
-          <div className="text-xs text-cyan-400 mb-2">INVESTMENT VALUE</div>
-          <div className="text-2xl font-bold text-white">${summary?.investmentValue || "0.00"}</div>
-          <div className="text-xs text-gray-400 mt-1">In ETFs</div>
-        </Card>
-        <Card className="p-4 border-2 border-cyan-500/50 bg-black/50">
-          <div className="text-xs text-cyan-400 mb-2">CASH BALANCE</div>
-          <div className="text-2xl font-bold text-white">${summary?.cashBalance || "0.00"}</div>
-          <div className="text-xs text-gray-400 mt-1">Available cash</div>
-        </Card>
-        <Card className="p-4 border-2 border-cyan-500/50 bg-black/50">
-          <div className="text-xs text-cyan-400 mb-2">HOLDINGS</div>
-          <div className="text-2xl font-bold text-white">{holdings?.length || 0}</div>
-          <div className="text-xs text-gray-400 mt-1">ETFs owned</div>
-        </Card>
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div className="data-card border-l-4 border-l-primary">
+          <div className="data-card-title">Total Portfolio</div>
+          <div className="data-card-value">${summary?.totalValue || "0.00"}</div>
+          <div className="data-card-subtitle flex items-center gap-1 text-slate-500">
+            <Info className="w-3 h-3" /> Includes Cash
+          </div>
+        </div>
+
+        <div className="data-card border-l-4 border-l-green-600">
+          <div className="data-card-title">Investment Value</div>
+          <div className="data-card-value">${summary?.investmentValue || "0.00"}</div>
+          <div className="data-card-subtitle text-slate-500">Current ETF Market Value</div>
+        </div>
+
+        <div className="data-card border-l-4 border-l-slate-400">
+          <div className="data-card-title">Cash Reserve</div>
+          <div className="data-card-value">${summary?.cashBalance || "0.00"}</div>
+          <div className="data-card-subtitle text-slate-500">Available Liquid Funds</div>
+        </div>
+
+        <div className="data-card border-l-4 border-l-orange-500">
+          <div className="data-card-title">Asset Count</div>
+          <div className="data-card-value">{holdings?.length || 0}</div>
+          <div className="data-card-subtitle text-slate-500">Diversified Holdings</div>
+        </div>
       </div>
 
-      {/* Holdings Table */}
-      <Card className="p-6 border-2 border-cyan-500/50 bg-black/50">
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-xl font-bold text-white">Holdings</h2>
-          <div className="flex gap-2">
+      {/* Main Holdings Table */}
+      <Card className="bg-white shadow-sm border border-border overflow-hidden">
+        <div className="px-6 py-4 border-b border-border bg-slate-50/50 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+              <TrendingUp className="w-5 h-5 text-primary" />
+              Active Holdings
+            </h2>
+            <span className="text-[10px] font-bold text-slate-400 bg-slate-200/50 px-2 py-0.5 rounded-full uppercase tracking-widest">{summary?.holdings?.length || 0} Assets</span>
+          </div>
+          
+          <div className="flex items-center gap-3 w-full sm:w-auto">
             <Button
+              variant="outline"
+              size="sm"
               onClick={() => selectedPortfolioId && updatePricesMutation.mutate({ portfolioId: selectedPortfolioId })}
               disabled={updatePricesMutation.isPending}
-              className="bg-cyan-600 hover:bg-cyan-700"
+              className="flex-1 sm:flex-none border-slate-200 hover:bg-slate-50 text-xs font-bold uppercase tracking-wider"
             >
-              <RefreshCw className="mr-2 h-4 w-4" />
+              <RefreshCw className={`mr-2 h-3.5 w-3.5 ${updatePricesMutation.isPending ? "animate-spin" : ""}`} />
               Update Prices
             </Button>
+            
             <Dialog open={isAddDialogOpen} onOpenChange={(open) => {
               setIsAddDialogOpen(open);
               if (!open) {
@@ -479,257 +361,264 @@ export default function Portfolio() {
               }
             }}>
               <DialogTrigger asChild>
-                <Button className="bg-cyan-600 hover:bg-cyan-700">
-                  <Plus className="mr-2 h-4 w-4" />
+                <Button size="sm" className="flex-1 sm:flex-none bg-primary hover:bg-primary/90 text-white shadow-md shadow-primary/10 text-xs font-bold uppercase tracking-wider">
+                  <Plus className="mr-2 h-3.5 w-3.5" />
                   Add ETF
                 </Button>
               </DialogTrigger>
-              <DialogContent>
+              <DialogContent className="sm:max-w-[425px]">
                 <DialogHeader>
-                  <DialogTitle>Add New ETF</DialogTitle>
+                  <DialogTitle>Add New ETF Holding</DialogTitle>
                 </DialogHeader>
-                <div className="space-y-4">
-                  <Input
-                    placeholder="Symbol (e.g., VOO)"
-                    value={formData.symbol}
-                    onChange={handleSymbolChange}
-                  />
-                  <Input
-                    placeholder="Name"
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  />
-                  <Input
-                    placeholder="Quantity"
-                    type="number"
-                    step="0.001"
-                    value={formData.quantity}
-                    onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
-                  />
-                  <Input
-                    placeholder="Purchase Price"
-                    type="number"
-                    step="0.01"
-                    value={formData.purchasePrice}
-                    onChange={(e) => setFormData({ ...formData, purchasePrice: e.target.value })}
-                  />
-                  <Input
-                    type="date"
-                    value={formData.purchaseDate}
-                    onChange={(e) => setFormData({ ...formData, purchaseDate: e.target.value })}
-                  />
-                  <Button
-                    onClick={handleAddHolding}
-                    className="w-full bg-cyan-600 hover:bg-cyan-700"
-                    disabled={addHoldingMutation.isPending}
-                  >
-                    Add
+                <div className="space-y-4 pt-4">
+                  <div className="grid gap-2">
+                    <label className="text-xs font-bold text-slate-500 uppercase">Symbol</label>
+                    <Input placeholder="e.g., VOO" value={formData.symbol} onChange={handleSymbolChange} />
+                  </div>
+                  <div className="grid gap-2">
+                    <label className="text-xs font-bold text-slate-500 uppercase">ETF Name</label>
+                    <Input placeholder="Vanguard S&P 500 ETF" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="grid gap-2">
+                      <label className="text-xs font-bold text-slate-500 uppercase">Quantity</label>
+                      <Input type="number" step="0.001" value={formData.quantity} onChange={(e) => setFormData({ ...formData, quantity: e.target.value })} />
+                    </div>
+                    <div className="grid gap-2">
+                      <label className="text-xs font-bold text-slate-500 uppercase">Price</label>
+                      <Input type="number" step="0.01" value={formData.purchasePrice} onChange={(e) => setFormData({ ...formData, purchasePrice: e.target.value })} />
+                    </div>
+                  </div>
+                  <div className="grid gap-2">
+                    <label className="text-xs font-bold text-slate-500 uppercase">Date</label>
+                    <Input type="date" value={formData.purchaseDate} onChange={(e) => setFormData({ ...formData, purchaseDate: e.target.value })} />
+                  </div>
+                  <Button onClick={handleAddHolding} className="w-full mt-2" disabled={addHoldingMutation.isPending}>
+                    Add Asset
                   </Button>
                 </div>
               </DialogContent>
             </Dialog>
           </div>
         </div>
-
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full">
             <thead>
-              <tr className="border-b border-cyan-500/30">
-                <th className="text-left py-3 px-4 text-cyan-400">Symbol</th>
-                <th className="text-left py-3 px-4 text-cyan-400">Name</th>
-                <th className="text-right py-3 px-4 text-cyan-400">Quantity</th>
-                <th className="text-right py-3 px-4 text-cyan-400">Avg Cost</th>
-                <th className="text-right py-3 px-4 text-cyan-400">Current Price</th>
-                <th className="text-right py-3 px-4 text-cyan-400">Value</th>
-                <th className="text-right py-3 px-4 text-cyan-400">Gain/Loss</th>
-                <th className="text-right py-3 px-4 text-cyan-400">Gain/Loss %</th>
-                <th className="text-right py-3 px-4 text-cyan-400">Allocation %</th>
-                <th className="text-center py-3 px-4 text-cyan-400">Actions</th>
+              <tr className="bg-slate-50 border-b border-border">
+                <th className="text-left py-3 px-6 text-slate-600">Asset</th>
+                <th className="text-right py-3 px-6 text-slate-600">Qty</th>
+                <th className="text-right py-3 px-6 text-slate-600">Avg Cost</th>
+                <th className="text-right py-3 px-6 text-slate-600">Mkt Price</th>
+                <th className="text-right py-3 px-6 text-slate-600">Mkt Value</th>
+                <th className="text-right py-3 px-6 text-slate-600">Gain/Loss</th>
+                <th className="text-right py-3 px-6 text-slate-600">Return</th>
+                <th className="text-right py-3 px-6 text-slate-600">Alloc %</th>
+                <th className="text-center py-3 px-6 text-slate-600">Actions</th>
               </tr>
             </thead>
             <tbody>
               {summary?.holdings?.map((holding: any) => {
                 const allocation = summary.investmentAllocationBreakdown?.find((a: any) => a.symbol === holding.symbol);
+                const isGain = parseFloat(holding.gain) >= 0;
                 return (
-                  <tr key={holding.id} className="border-b border-cyan-500/10 hover:bg-cyan-500/5">
-                    <td className="py-3 px-4 font-mono text-cyan-300">{holding.symbol}</td>
-                    <td className="py-3 px-4">{holding.name}</td>
-                    <td className="text-right py-3 px-4 font-mono">{parseFloat(holding.quantity).toFixed(3)}</td>
-                    <td className="text-right py-3 px-4 font-mono">${holding.averageCost?.toFixed(2) || "0.00"}</td>
-                    <td className="text-right py-3 px-4 font-mono">${parseFloat(holding.currentPrice || 0).toFixed(2)}</td>
-                    <td className="text-right py-3 px-4 font-mono">${holding.currentValue}</td>
-                    <td className={`text-right py-3 px-4 font-mono ${parseFloat(holding.gain) >= 0 ? "text-green-400" : "text-red-400"}`}>
-                      ${holding.gain}
+                  <tr key={holding.id} className="border-b border-border hover:bg-slate-50 transition-colors">
+                    <td className="py-4 px-6">
+                      <div className="font-bold text-primary text-base leading-tight">{holding.symbol}</div>
+                      <div className="text-slate-500 text-[10px] leading-tight max-w-[180px] truncate">{holding.name}</div>
                     </td>
-                    <td className={`text-right py-3 px-4 font-mono ${parseFloat(holding.gainPercent) >= 0 ? "text-green-400" : "text-red-400"}`}>
-                      {holding.gainPercent}%
+                    <td className="text-right py-4 px-6 font-mono font-medium">{parseFloat(holding.quantity).toFixed(3)}</td>
+                    <td className="text-right py-4 px-6 font-mono text-slate-600">${holding.averageCost?.toFixed(2) || "0.00"}</td>
+                    <td className="text-right py-4 px-6 font-mono text-slate-600">${parseFloat(holding.currentPrice || 0).toFixed(2)}</td>
+                    <td className="text-right py-4 px-6 font-mono font-bold">${holding.currentValue}</td>
+                    <td className={`text-right py-4 px-6 font-mono font-bold ${isGain ? "text-green-600" : "text-red-600"}`}>
+                      {isGain ? "+" : ""}${holding.gain}
                     </td>
-                    <td className="text-right py-3 px-4 font-mono text-cyan-400">
+                    <td className={`text-right py-4 px-6 font-mono font-bold ${isGain ? "text-green-600" : "text-red-600"}`}>
+                      {isGain ? "+" : ""}{holding.gainPercent}%
+                    </td>
+                    <td className="text-right py-4 px-6 font-mono text-slate-500 font-medium">
                       {allocation?.percentage || "0.00"}%
                     </td>
-                    <td className="text-center py-3 px-4 space-x-2">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        title="Batch Purchase"
-                        onClick={() => setIsCSVImportOpen(holding.id)}
-                        className="text-cyan-400 hover:text-cyan-300"
-                      >
-                        <FileUp className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => setIsBuyDialogOpen(holding.id)}
-                        className="text-cyan-400 hover:text-cyan-300"
-                      >
-                        <ShoppingCart className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => setPurchaseHistoryOpen(holding.id)}
-                        className="text-cyan-400 hover:text-cyan-300"
-                      >
-                        <History className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => handleDeleteHolding(holding.id)}
-                        className="text-red-400 hover:text-red-300"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                    <td className="text-center py-4 px-6">
+                      <div className="flex items-center justify-center gap-1">
+                        <Button variant="ghost" size="icon" title="Batch Import" onClick={() => setIsCSVImportOpen(holding.id)} className="text-slate-400 hover:text-primary">
+                          <FileUp className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" title="Buy" onClick={() => setIsBuyDialogOpen(holding.id)} className="text-slate-400 hover:text-primary">
+                          <ShoppingCart className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" title="History" onClick={() => setPurchaseHistoryOpen(holding.id)} className="text-slate-400 hover:text-primary">
+                          <History className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" title="Delete" onClick={() => handleDeleteHolding(holding.id)} className="text-slate-400 hover:text-destructive">
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </td>
                   </tr>
                 );
               })}
             </tbody>
+            {summary?.holdings?.length > 0 && (
+              <tfoot className="bg-slate-50 border-t-2 border-slate-200">
+                <tr className="font-bold text-slate-800">
+                  <td colSpan={4} className="py-4 px-6 uppercase text-[10px] tracking-widest text-slate-500">Total Portfolio Performance</td>
+                  <td className="text-right py-4 px-6 font-mono text-lg">${summary.investmentValue}</td>
+                  <td className={`text-right py-4 px-6 font-mono text-lg ${
+                    summary.holdings.reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0) >= 0 
+                      ? "text-green-600" 
+                      : "text-red-600"
+                  }`}>
+                    ${summary.holdings.reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0).toFixed(2)}
+                  </td>
+                  <td className={`text-right py-4 px-6 font-mono text-lg ${
+                    (summary.holdings.reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0) / 
+                    summary.holdings.reduce((acc: number, h: any) => acc + (parseFloat(h.averageCost || h.purchasePrice) * parseFloat(h.quantity)), 0) * 100) >= 0
+                      ? "text-green-600"
+                      : "text-red-600"
+                  }`}>
+                    {(
+                      (summary.holdings.reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0) / 
+                      summary.holdings.reduce((acc: number, h: any) => acc + (parseFloat(h.averageCost || h.purchasePrice) * parseFloat(h.quantity)), 0)) * 100
+                    ).toFixed(2)}%
+                  </td>
+                  <td className="text-right py-4 px-6 font-mono text-slate-500">100%</td>
+                  <td></td>
+                </tr>
+              </tfoot>
+            )}
           </table>
         </div>
       </Card>
 
-      {/* Portfolio Allocation Pie Chart */}
-      {summary && (
-        <Card className="p-6 border-2 border-cyan-500/50 bg-black/50">
-          <h2 className="text-xl font-bold text-white mb-6">Portfolio Allocation</h2>
-          <div className="flex gap-8">
-            <PortfolioAllocationChart data={summary.allocationBreakdown} cashPercent={summary.cashAllocationPercent} />
-            <div className="flex-1">
-              <div className="space-y-2">
-                {summary.allocationBreakdown.map((item: any) => (
-                  <div key={item.symbol} className="flex justify-between text-sm">
-                    <span className="text-gray-300">{item.symbol}</span>
-                    <span className="text-cyan-400 font-mono">{item.percentage}%</span>
+      {/* Allocation & Management Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        {/* Portfolio Allocation Pie Chart */}
+        {summary && (
+          <Card className="p-6 bg-white shadow-sm border border-border">
+            <div className="flex items-center gap-2 mb-6">
+              <div className="p-1.5 bg-slate-100 rounded text-slate-600">
+                <FolderPlus className="w-4 h-4" />
+              </div>
+              <h2 className="text-lg font-bold text-slate-800">Portfolio Allocation</h2>
+            </div>
+            <div className="flex flex-col md:flex-row items-center gap-8">
+              <PortfolioAllocationChart data={summary.allocationBreakdown} cashPercent={summary.cashAllocationPercent} />
+              <div className="flex-1 w-full">
+                <div className="space-y-2">
+                  {summary.allocationBreakdown.map((item: any) => (
+                    <div key={item.symbol} className="flex justify-between items-center text-sm p-2 hover:bg-slate-50 rounded transition-colors">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-primary w-12">{item.symbol}</span>
+                        <span className="text-slate-500 text-xs truncate max-w-[150px]">{item.name}</span>
+                      </div>
+                      <span className="font-mono font-bold text-slate-700">{item.percentage}%</span>
+                    </div>
+                  ))}
+                  <div className="border-t border-slate-100 pt-2 mt-2 flex justify-between items-center text-sm p-2 bg-slate-50 rounded">
+                    <span className="font-bold text-slate-600">Cash Reserve</span>
+                    <span className="font-mono font-bold text-slate-700">{summary.cashAllocationPercent}%</span>
                   </div>
-                ))}
-                <div className="border-t border-cyan-500/30 pt-2 mt-2 flex justify-between text-sm">
-                  <span className="text-gray-300">Cash</span>
-                  <span className="text-cyan-400 font-mono">{summary.cashAllocationPercent}%</span>
                 </div>
               </div>
             </div>
-          </div>
-        </Card>
-      )}
+          </Card>
+        )}
 
-      {/* Cash Balance Section */}
-      <Card className="p-6 border-2 border-cyan-500/50 bg-black/50">
-        <div className="flex justify-between items-center">
-          <div>
-            <h3 className="text-lg font-bold text-white mb-2">Cash Balance</h3>
-            <p className="text-2xl font-bold text-cyan-400">${summary?.cashBalance || "0.00"}</p>
-          </div>
-          {!isEditingCash ? (
-            <Button onClick={() => setIsEditingCash(true)} className="bg-cyan-600 hover:bg-cyan-700">
-              Edit
-            </Button>
-          ) : (
-            <div className="flex gap-2">
-              <Input
-                type="number"
-                step="0.01"
-                value={cashAmount}
-                onChange={(e) => setCashAmount(e.target.value)}
-                placeholder="Enter amount"
-                className="w-32"
-              />
-              <Button onClick={handleCashUpdate} className="bg-cyan-600 hover:bg-cyan-700">
-                Save
-              </Button>
-              <Button onClick={() => setIsEditingCash(false)} variant="outline">
-                Cancel
-              </Button>
+        {/* Cash Balance Section */}
+        <Card className="p-6 bg-white shadow-sm border border-border flex flex-col">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 bg-slate-100 rounded text-slate-600">
+                <Wallet className="w-4 h-4" />
+              </div>
+              <h3 className="text-lg font-bold text-slate-800">Cash Reserve Management</h3>
             </div>
-          )}
-        </div>
-      </Card>
+            {!isEditingCash && (
+              <Button variant="outline" size="sm" onClick={() => {
+                setCashAmount(summary?.cashBalance || "0");
+                setIsEditingCash(true);
+              }} className="text-xs uppercase font-bold border-slate-200">
+                Adjust Balance
+              </Button>
+            )}
+          </div>
+          
+          <div className="flex-1 flex flex-col justify-center bg-slate-50 rounded-lg p-8 border border-slate-100 border-dashed">
+            <div className="text-center">
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Current Liquid Assets</p>
+              {!isEditingCash ? (
+                <p className="text-5xl font-bold text-slate-800 font-mono tracking-tighter">${summary?.cashBalance || "0.00"}</p>
+              ) : (
+                <div className="flex flex-col gap-4 max-w-xs mx-auto">
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={cashAmount}
+                    onChange={(e) => setCashAmount(e.target.value)}
+                    className="text-center text-2xl h-14 font-mono bg-white"
+                    autoFocus
+                  />
+                  <div className="flex gap-2">
+                    <Button onClick={() => updateCashMutation.mutate({ amount: cashAmount, portfolioId: selectedPortfolioId! })} className="flex-1">Save</Button>
+                    <Button variant="outline" onClick={() => setIsEditingCash(false)} className="flex-1">Cancel</Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+          <p className="text-xs text-slate-400 mt-6 text-center italic">
+            Maintaining a healthy cash reserve allows for strategic entries during market downturns.
+          </p>
+        </Card>
+      </div>
 
-      {/* Buy More Shares Dialog */}
+      {/* Dialogs */}
       {isBuyDialogOpen && (
         <Dialog open={!!isBuyDialogOpen} onOpenChange={() => setIsBuyDialogOpen(null)}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Buy More Shares</DialogTitle>
+              <DialogTitle>Add Shares</DialogTitle>
             </DialogHeader>
-            <div className="space-y-4">
-              <Input
-                placeholder="Quantity"
-                type="number"
-                step="0.001"
-                value={buyData.quantity}
-                onChange={(e) => setBuyData({ ...buyData, quantity: e.target.value })}
-              />
-              <Input
-                placeholder="Price per share"
-                type="number"
-                step="0.01"
-                value={buyData.price}
-                onChange={(e) => setBuyData({ ...buyData, price: e.target.value })}
-              />
-              <Input
-                type="date"
-                value={buyData.purchaseDate}
-                onChange={(e) => setBuyData({ ...buyData, purchaseDate: e.target.value })}
-              />
-              <Button
-                onClick={() => handleBuyMoreShares(isBuyDialogOpen)}
-                className="w-full bg-cyan-600 hover:bg-cyan-700"
-                disabled={buyMoreSharesMutation.isPending}
-              >
-                Buy
+            <div className="space-y-4 pt-4">
+              <div className="grid gap-2">
+                <label className="text-xs font-bold text-slate-500 uppercase">Quantity</label>
+                <Input type="number" step="0.001" value={buyData.quantity} onChange={(e) => setBuyData({ ...buyData, quantity: e.target.value })} />
+              </div>
+              <div className="grid gap-2">
+                <label className="text-xs font-bold text-slate-500 uppercase">Execution Price</label>
+                <Input type="number" step="0.01" value={buyData.price} onChange={(e) => setBuyData({ ...buyData, price: e.target.value })} />
+              </div>
+              <div className="grid gap-2">
+                <label className="text-xs font-bold text-slate-500 uppercase">Date of Purchase</label>
+                <Input type="date" value={buyData.purchaseDate} onChange={(e) => setBuyData({ ...buyData, purchaseDate: e.target.value })} />
+              </div>
+              <Button onClick={() => handleBuyMoreShares(isBuyDialogOpen)} className="w-full" disabled={buyMoreSharesMutation.isPending}>
+                Execute Order
               </Button>
             </div>
           </DialogContent>
         </Dialog>
       )}
 
-      {/* Purchase History Dialog */}
       {purchaseHistoryOpen && (
-       <Dialog open={!!purchaseHistoryOpen} onOpenChange={() => setPurchaseHistoryOpen(null)}>
-         <DialogContent className="sm:max-w-[600px]">
-           <DialogHeader>
-             <DialogTitle>Purchase History</DialogTitle>
-           </DialogHeader>            <PurchaseHistoryTable
-              holdingId={purchaseHistoryOpen}
-              onDelete={handleDeletePurchase}
-            />
+        <Dialog open={!!purchaseHistoryOpen} onOpenChange={() => setPurchaseHistoryOpen(null)}>
+          <DialogContent className="sm:max-w-[600px]">
+            <DialogHeader>
+              <DialogTitle>Purchase Audit Trail</DialogTitle>
+            </DialogHeader>
+            <PurchaseHistoryTable holdingId={purchaseHistoryOpen} onDelete={handleDeletePurchase} />
           </DialogContent>
         </Dialog>
       )}
 
-      {/* CSV Import Dialog */}
       {isCSVImportOpen && (
         <Dialog open={!!isCSVImportOpen} onOpenChange={() => setIsCSVImportOpen(null)}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Import Purchases from CSV</DialogTitle>
+              <DialogTitle>Bulk Data Ingestion</DialogTitle>
             </DialogHeader>
-            <CSVImportForm
-              holdingId={isCSVImportOpen}
-              onImport={handleCSVImport}
-            />
+            <CSVImportForm holdingId={isCSVImportOpen} onImport={handleImportCSV} />
           </DialogContent>
         </Dialog>
       )}
@@ -738,59 +627,56 @@ export default function Portfolio() {
 }
 
 function PortfolioAllocationChart({ data, cashPercent }: { data: any[], cashPercent: string }) {
-  const svgRef = useRef<SVGSVGElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const totalWithCash = parseFloat(cashPercent) + data.reduce((acc, item) => acc + parseFloat(item.percentage), 0);
+  
+  const colors = ["#004a99", "#3d8a3d", "#f2a900", "#cc0000", "#666666", "#94a3b8", "#38bdf8", "#10b981", "#fbbf24"];
 
-  const allocationData = [
-    ...data.map(item => ({
-      name: item.symbol,
-      percentage: parseFloat(item.percentage)
-    })),
-    {
-      name: "Cash",
-      percentage: parseFloat(cashPercent)
+  useEffect(() => {
+    if (canvasRef.current && data.length > 0) {
+      const ctx = canvasRef.current.getContext("2d");
+      if (!ctx) return;
+
+      const centerX = 100;
+      const centerY = 100;
+      const radius = 80;
+      let startAngle = 0;
+
+      ctx.clearRect(0, 0, 200, 200);
+
+      // Add cash to data for chart
+      const chartData = [...data];
+      if (parseFloat(cashPercent) > 0) {
+        chartData.push({ symbol: "Cash", percentage: cashPercent });
+      }
+
+      chartData.forEach((item, index) => {
+        const sliceAngle = (parseFloat(item.percentage) / totalWithCash) * 2 * Math.PI;
+        ctx.beginPath();
+        ctx.moveTo(centerX, centerY);
+        ctx.arc(centerX, centerY, radius, startAngle, startAngle + sliceAngle);
+        ctx.closePath();
+        ctx.fillStyle = item.symbol === "Cash" ? "#e2e8f0" : colors[index % colors.length];
+        ctx.fill();
+        ctx.strokeStyle = "white";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        startAngle += sliceAngle;
+      });
+
+      // Draw center hole for donut look
+      ctx.beginPath();
+      ctx.moveTo(centerX, centerY);
+      ctx.arc(centerX, centerY, radius * 0.6, 0, 2 * Math.PI);
+      ctx.fillStyle = "white";
+      ctx.fill();
     }
-  ];
-
-  const colors = [
-    "#06b6d4", "#0891b2", "#06a6d4", "#0891c2", "#0681b2",
-    "#0671a2", "#066192", "#065182", "#064172", "#063162"
-  ];
-
-  let currentAngle = 0;
-  const slices = allocationData.map((item, index) => {
-    const sliceAngle = (item.percentage / 100) * 360;
-    const startAngle = currentAngle;
-    const endAngle = currentAngle + sliceAngle;
-    currentAngle = endAngle;
-
-    const startRad = (startAngle * Math.PI) / 180;
-    const endRad = (endAngle * Math.PI) / 180;
-    const radius = 100;
-
-    const x1 = 150 + radius * Math.cos(startRad);
-    const y1 = 150 + radius * Math.sin(startRad);
-    const x2 = 150 + radius * Math.cos(endRad);
-    const y2 = 150 + radius * Math.sin(endRad);
-
-    const largeArc = sliceAngle > 180 ? 1 : 0;
-    const path = `M 150 150 L ${x1} ${y1} A ${radius} ${radius} 0 ${largeArc} 1 ${x2} ${y2} Z`;
-
-    return {
-      path,
-      color: colors[index % colors.length],
-      label: item.name,
-      percentage: item.percentage.toFixed(1)
-    };
-  });
+  }, [data, cashPercent]);
 
   return (
-    <svg ref={svgRef} width="300" height="300" viewBox="0 0 300 300" className="flex-shrink-0">
-      {slices.map((slice, index) => (
-        <g key={index}>
-          <path d={slice.path} fill={slice.color} stroke="#000" strokeWidth="1" />
-        </g>
-      ))}
-    </svg>
+    <div className="flex flex-col items-center">
+      <canvas ref={canvasRef} width="200" height="200" className="drop-shadow-sm" />
+    </div>
   );
 }
 
@@ -798,14 +684,14 @@ function PurchaseHistoryTable({ holdingId, onDelete }: { holdingId: number, onDe
   const { data: purchases } = trpc.etf.getPurchases.useQuery({ holdingId });
 
   return (
-    <div className="overflow-auto max-h-[60vh] scrollbar-thin scrollbar-thumb-cyan-500/50">
+    <div className="overflow-auto max-h-[60vh] custom-scrollbar border border-border rounded-lg bg-slate-50/30">
       <table className="w-full text-sm">
-        <thead className="sticky top-0 bg-black z-10">
-          <tr className="border-b border-cyan-500/30">
-            <th className="text-left py-2 px-4 bg-black">Date</th>
-            <th className="text-right py-2 px-4 bg-black">Quantity</th>
-            <th className="text-right py-2 px-4 bg-black">Price</th>
-            <th className="text-center py-2 px-4 bg-black">Action</th>
+        <thead className="sticky top-0 bg-slate-50 z-10 shadow-sm">
+          <tr className="border-b border-border">
+            <th className="text-left py-3 px-4">Date</th>
+            <th className="text-right py-3 px-4">Quantity</th>
+            <th className="text-right py-3 px-4">Price</th>
+            <th className="text-center py-3 px-4">Action</th>
           </tr>
         </thead>
         <tbody>
@@ -813,16 +699,16 @@ function PurchaseHistoryTable({ holdingId, onDelete }: { holdingId: number, onDe
             const date = new Date(purchase.purchaseDate);
             const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
             return (
-              <tr key={purchase.id} className="border-b border-cyan-500/10">
-                <td className="py-2 px-4">{dateStr}</td>
-                <td className="text-right py-2 px-4">{parseFloat(purchase.quantity).toFixed(3)}</td>
-                <td className="text-right py-2 px-4">${parseFloat(purchase.price).toFixed(2)}</td>
-                <td className="text-center py-2 px-4">
+              <tr key={purchase.id} className="border-b border-border hover:bg-white transition-colors">
+                <td className="py-3 px-4 font-mono">{dateStr}</td>
+                <td className="text-right py-3 px-4 font-mono">{parseFloat(purchase.quantity).toFixed(3)}</td>
+                <td className="text-right py-3 px-4 font-mono font-medium">${parseFloat(purchase.price).toFixed(2)}</td>
+                <td className="text-center py-3 px-4">
                   <Button
                     size="sm"
                     variant="ghost"
                     onClick={() => onDelete(purchase.id, holdingId)}
-                    className="text-red-400 hover:text-red-300"
+                    className="text-slate-400 hover:text-destructive"
                   >
                     <Trash2 className="h-4 w-4" />
                   </Button>
@@ -865,27 +751,36 @@ function CSVImportForm({ holdingId, onImport }: { holdingId: number, onImport: (
   };
 
   return (
-    <div className="space-y-4">
-      <div className="text-sm text-gray-400">
-        <p>File should include a header: <code>date,quantity,cost</code></p>
-        <p>Example: <code>Dec-19-2025,10,$27.50</code></p>
+    <div className="space-y-6 pt-4">
+      <div className="bg-slate-50 p-4 rounded-lg border border-border">
+        <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3 flex items-center gap-2">
+          <Info className="w-3 h-3" /> Data Specification
+        </h4>
+        <div className="text-xs text-slate-600 space-y-2">
+          <p>File should include a header: <code>date,quantity,cost</code></p>
+          <div className="p-2 bg-white rounded border border-slate-200 font-mono text-[10px]">
+            date,quantity,cost<br/>
+            Dec-19-2025,10,$27.50
+          </div>
+        </div>
       </div>
-      <div className="flex flex-col gap-2">
-        <label className="text-xs text-cyan-400">Select CSV File</label>
-        <input
-          type="file"
-          accept=".csv,.txt"
-          onChange={handleFileChange}
-          className="w-full p-2 bg-black border border-cyan-500/50 rounded text-white file:bg-cyan-600 file:text-white file:border-none file:px-3 file:py-1 file:rounded file:mr-4 file:hover:bg-cyan-700 file:cursor-pointer"
-        />
-        {file && <p className="text-xs text-cyan-300">Selected: {file.name}</p>}
+      
+      <div className="space-y-2">
+        <label className="text-xs font-bold text-slate-500 uppercase">Select Source File</label>
+        <div className="flex items-center justify-center w-full">
+          <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-border border-dashed rounded-lg cursor-pointer bg-slate-50 hover:bg-slate-100 transition-colors">
+            <div className="flex flex-col items-center justify-center pt-5 pb-6 text-slate-500">
+              <FileUp className="w-8 h-8 mb-2 opacity-50" />
+              <p className="text-sm font-medium">{file ? file.name : "Click to select CSV"}</p>
+              <p className="text-[10px] uppercase font-bold opacity-50 mt-1">.csv or .txt files only</p>
+            </div>
+            <input type="file" accept=".csv,.txt" onChange={handleFileChange} className="hidden" />
+          </label>
+        </div>
       </div>
-      <Button
-        onClick={handleUpload}
-        className="w-full bg-cyan-600 hover:bg-cyan-700"
-        disabled={!file}
-      >
-        Upload and Import
+      
+      <Button onClick={handleUpload} className="w-full py-6 text-sm font-bold shadow-lg shadow-primary/10" disabled={!file}>
+        Initiate Data Import
       </Button>
     </div>
   );

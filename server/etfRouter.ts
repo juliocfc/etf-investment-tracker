@@ -24,6 +24,7 @@ import {
   fetchEtfPrice,
   fetchHistoricalPrices,
   validateEtfSymbol,
+  fetchDividendData,
 } from "./financialApi";
 import { fetchETFName } from "./etfLookup";
 import { calculatePerformanceMetrics } from "./performanceMetrics";
@@ -168,6 +169,18 @@ export const etfRouter = router({
       return results;
     }),
 
+  getMarketPriceHistory: protectedProcedure
+    .input(
+      z.object({
+        symbol: z.string(),
+        days: z.number().default(365),
+      })
+    )
+    .query(async ({ input }) => {
+      const interval = input.days <= 30 ? "1d" : "1wk";
+      return fetchHistoricalPrices(input.symbol, input.days, interval);
+    }),
+
   getPriceHistory: protectedProcedure
     .input(
       z.object({
@@ -276,6 +289,111 @@ export const etfRouter = router({
     .input(z.object({ symbol: z.string() }))
     .query(async ({ ctx, input }) => {
       return getDividendHistory(ctx.user.id, input.symbol);
+    }),
+
+  getDetailedDividendReport: protectedProcedure
+    .input(z.object({ portfolioId: z.number() }))
+    .query(async ({ ctx, input }) => {
+      const holdings = await getUserEtfHoldings(ctx.user.id, input.portfolioId);
+      const windowStart = new Date();
+      windowStart.setFullYear(windowStart.getFullYear() - 1);
+
+      const allDividends = [];
+      const etfBreakdown = [];
+
+      const getQuarterKey = (date: Date) => {
+        const q = Math.floor(date.getMonth() / 3) + 1;
+        return `${date.getFullYear()} Q${q}`;
+      };
+
+      // Helper to get last 4 quarter keys
+      const lastQuarters: string[] = [];
+      const tempDate = new Date();
+      for (let i = 0; i < 4; i++) {
+        lastQuarters.unshift(getQuarterKey(tempDate));
+        tempDate.setMonth(tempDate.getMonth() - 3);
+      }
+
+      for (const holding of holdings) {
+        const dividendData = await fetchDividendData(holding.symbol);
+        const purchases = await getPurchases(holding.id);
+        
+        let etfTotalWindow = 0;
+        let etfTotalAllTime = 0;
+        const etfQuarterly: Record<string, number> = {};
+        lastQuarters.forEach(q => etfQuarterly[q] = 0);
+
+        for (const div of dividendData) {
+          const exDate = new Date(div.exDate);
+          
+          // Calculate quantity owned on ex-date
+          let quantityOwned = 0;
+          for (const purchase of purchases) {
+            if (new Date(purchase.purchaseDate) < exDate) {
+              quantityOwned += parseFloat(purchase.quantity.toString());
+            }
+          }
+
+          if (quantityOwned > 0) {
+            const totalAmount = quantityOwned * div.dividendPerShare;
+            const isInWindow = exDate >= windowStart;
+
+            const dividendRecord = {
+              symbol: holding.symbol,
+              exDate: div.exDate,
+              dividendPerShare: div.dividendPerShare,
+              quantityOwned,
+              totalAmount,
+            };
+
+            allDividends.push(dividendRecord);
+            etfTotalAllTime += totalAmount;
+
+            if (isInWindow) {
+              etfTotalWindow += totalAmount;
+              const qKey = getQuarterKey(exDate);
+              if (etfQuarterly[qKey] !== undefined) {
+                etfQuarterly[qKey] += totalAmount;
+              }
+            }
+          }
+        }
+
+        etfBreakdown.push({
+          symbol: holding.symbol,
+          name: holding.name,
+          totalLastYear: etfTotalWindow.toFixed(2),
+          totalAllTime: etfTotalAllTime.toFixed(2),
+          quarterlyBreakdown: lastQuarters.map(q => ({
+            quarter: q,
+            amount: (etfQuarterly[q] || 0).toFixed(2),
+          })),
+        });
+      }
+
+      const totalLastYear = etfBreakdown.reduce((sum, item) => sum + parseFloat(item.totalLastYear), 0);
+      const totalAllTime = etfBreakdown.reduce((sum, item) => sum + parseFloat(item.totalAllTime), 0);
+      const combinedQuarterly: Record<string, number> = {};
+      lastQuarters.forEach(q => combinedQuarterly[q] = 0);
+      
+      etfBreakdown.forEach(item => {
+        item.quarterlyBreakdown.forEach(q => {
+          if (combinedQuarterly[q.quarter] !== undefined) {
+            combinedQuarterly[q.quarter] += parseFloat(q.amount);
+          }
+        });
+      });
+
+      return {
+        totalLastYear: totalLastYear.toFixed(2),
+        totalAllTime: totalAllTime.toFixed(2),
+        quarterlyBreakdown: lastQuarters.map(q => ({
+          quarter: q,
+          amount: (combinedQuarterly[q] || 0).toFixed(2),
+        })),
+        etfBreakdown,
+        history: allDividends.sort((a, b) => new Date(b.exDate).getTime() - new Date(a.exDate).getTime()),
+      };
     }),
 
   calculateTotalDividends: protectedProcedure
@@ -481,6 +599,101 @@ export const etfRouter = router({
         errors: [...result.errors, ...invalidRecords.map((r) => r.error || "")],
         newAvgCost,
       };
+    }),
+
+  getAssetQuantityHistory: protectedProcedure
+    .input(
+      z.object({
+        holdingId: z.number(),
+        range: z.enum(["1m", "1y", "5y"]),
+      })
+    )
+    .query(async ({ input }) => {
+      const days = input.range === "1m" ? 30 : input.range === "1y" ? 365 : 365 * 5;
+      const interval = input.range === "1m" ? 1 : 7; // days between points
+      
+      const purchases = await getPurchases(input.holdingId);
+      const result = [];
+      const endDate = new Date();
+      
+      for (let i = days; i >= 0; i -= interval) {
+        const date = new Date();
+        date.setDate(endDate.getDate() - i);
+        date.setHours(0, 0, 0, 0);
+
+        let quantityOwned = 0;
+        for (const purchase of purchases) {
+          if (new Date(purchase.purchaseDate) <= date) {
+            quantityOwned += parseFloat(purchase.quantity.toString());
+          }
+        }
+
+        result.push({
+          date: date.toISOString().split("T")[0],
+          quantity: quantityOwned.toFixed(3),
+        });
+      }
+
+      return result;
+    }),
+
+  getPortfolioEvolution: protectedProcedure
+    .input(
+      z.object({
+        portfolioId: z.number(),
+        range: z.enum(["1m", "1y", "5y"]),
+        holdingId: z.number().optional(),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      let holdings = await getUserEtfHoldings(ctx.user.id, input.portfolioId);
+      
+      // If a specific holding is requested, filter the list
+      if (input.holdingId) {
+        holdings = holdings.filter(h => h.id === input.holdingId);
+      }
+
+      const days = input.range === "1m" ? 30 : input.range === "1y" ? 365 : 365 * 5;
+      const interval = input.range === "1m" ? "1d" : "1wk";
+
+      const evolution: Record<string, number> = {};
+      const dates: Date[] = [];
+
+      // Fetch history for each holding
+      for (const holding of holdings) {
+        const priceHistory = await fetchHistoricalPrices(holding.symbol, days, interval);
+        const purchases = await getPurchases(holding.id);
+
+        for (const pricePoint of priceHistory) {
+          const dateKey = pricePoint.timestamp.toISOString().split("T")[0];
+          if (!evolution[dateKey]) {
+            evolution[dateKey] = 0;
+            dates.push(pricePoint.timestamp);
+          }
+
+          // Calculate quantity owned on this date
+          let quantityOwned = 0;
+          for (const purchase of purchases) {
+            if (new Date(purchase.purchaseDate) <= pricePoint.timestamp) {
+              quantityOwned += parseFloat(purchase.quantity.toString());
+            }
+          }
+
+          evolution[dateKey] += quantityOwned * pricePoint.price;
+        }
+      }
+
+      // Sort dates and format result
+      const sortedDates = dates.sort((a, b) => a.getTime() - b.getTime());
+      const result = sortedDates.map((date) => {
+        const dateKey = date.toISOString().split("T")[0];
+        return {
+          date: dateKey,
+          value: evolution[dateKey].toFixed(2),
+        };
+      });
+
+      return result;
     }),
 
   getPerformanceMetrics: protectedProcedure

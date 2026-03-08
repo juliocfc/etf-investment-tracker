@@ -49,23 +49,24 @@ export async function fetchEtfPrice(symbol: string): Promise<PriceData | null> {
 }
 
 /**
- * Fetch historical daily prices for an ETF
+ * Fetch historical prices for an ETF
  */
 export async function fetchHistoricalPrices(
   symbol: string,
-  days: number = 365
+  days: number = 365,
+  interval: '1d' | '1wk' | '1mo' = '1d'
 ): Promise<PriceData[]> {
   try {
     const endDate = new Date();
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
 
-    console.log(`[FinancialApi] Fetching historical prices for ${symbol} from ${startDate.toISOString()} to ${endDate.toISOString()}`);
+    console.log(`[FinancialApi] Fetching historical prices for ${symbol} from ${startDate.toISOString()} to ${endDate.toISOString()} with interval ${interval}`);
     
     const results = await yahooFinance.historical(symbol.toUpperCase(), {
       period1: startDate,
       period2: endDate,
-      interval: '1d',
+      interval: interval,
     });
 
     if (!results || results.length === 0) {
@@ -94,18 +95,35 @@ export async function fetchHistoricalPrices(
  */
 export async function fetchDividendData(symbol: string): Promise<DividendData[]> {
   try {
-    console.log(`[FinancialApi] Fetching dividend data for ${symbol} from Yahoo Finance`);
+    console.log(`[FinancialApi] Fetching historical dividend data for ${symbol} from Yahoo Finance`);
     
-    const quote = await yahooFinance.quote(symbol.toUpperCase());
-    if (quote && quote.trailingAnnualDividendRate) {
-        return [{
-            symbol: symbol.toUpperCase(),
-            dividendPerShare: quote.trailingAnnualDividendRate,
-            exDate: quote.dividendDate ? new Date(quote.dividendDate) : new Date(),
-        }];
+    const endDate = new Date();
+    const startDate = new Date('1970-01-01');
+
+    const results = await yahooFinance.historical(symbol.toUpperCase(), {
+      period1: startDate,
+      period2: endDate,
+      events: 'dividends',
+    });
+
+    if (!results || results.length === 0) {
+      // Fallback to quote if no historical dividends found (rare for dividend ETFs)
+      const quote = await yahooFinance.quote(symbol.toUpperCase());
+      if (quote && quote.trailingAnnualDividendRate) {
+          return [{
+              symbol: symbol.toUpperCase(),
+              dividendPerShare: quote.trailingAnnualDividendRate,
+              exDate: quote.dividendDate ? new Date(quote.dividendDate) : new Date(),
+          }];
+      }
+      return [];
     }
-    
-    return [];
+
+    return results.map(d => ({
+      symbol: symbol.toUpperCase(),
+      dividendPerShare: d.dividends,
+      exDate: new Date(d.date),
+    })).sort((a, b) => b.exDate.getTime() - a.exDate.getTime());
   } catch (error) {
     console.error(
       `[FinancialApi] Error fetching dividend data for ${symbol}:`,

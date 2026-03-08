@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
 import { Card } from "@/components/ui/card";
-import { DollarSign } from "lucide-react";
+import { DollarSign, Calendar, ListFilter, Trophy, RefreshCw, Briefcase, TrendingUp } from "lucide-react";
 
 export default function Dividends() {
   const [selectedPortfolioId, setSelectedPortfolioId] = useState<number | null>(null);
@@ -16,180 +16,218 @@ export default function Dividends() {
     }
   }, [portfolios, selectedPortfolioId]);
 
-  const { data: holdings } = trpc.etf.getHoldings.useQuery(
-    selectedPortfolioId ? { portfolioId: selectedPortfolioId } : { portfolioId: 0 },
+  const { data: report, isLoading } = trpc.etf.getDetailedDividendReport.useQuery(
+    { portfolioId: selectedPortfolioId || 0 },
     { enabled: selectedPortfolioId !== null }
   );
-  const { data: totalDividends } = trpc.etf.calculateTotalDividends.useQuery(
-    selectedPortfolioId ? { portfolioId: selectedPortfolioId } : { portfolioId: 0 },
-    { enabled: selectedPortfolioId !== null }
-  );
-  const [selectedSymbol, setSelectedSymbol] = useState<string>(
-    holdings?.[0]?.symbol || ""
-  );
 
-  useEffect(() => {
-    if (holdings && holdings.length > 0 && !selectedSymbol) {
-      setSelectedSymbol(holdings[0].symbol);
-    }
-  }, [holdings, selectedSymbol]);
+  const [filterSymbol, setFilterSymbol] = useState<string>("ALL");
+  const [allTimeFilterSymbol, setAllTimeFilterSymbol] = useState<string>("ALL");
+  const [monthlyFilterSymbol, setMonthlyFilterSymbol] = useState<string>("ALL");
 
-  const { data: dividendHistory } = trpc.etf.getDividendHistory.useQuery({
-    symbol: selectedSymbol,
-  });
-
-  if (!selectedPortfolioId || !portfolios) {
+  if (!portfolios) {
     return (
-      <div className="space-y-6 p-6">
-        <div className="text-center text-gray-400">Loading portfolios...</div>
+      <div className="flex items-center justify-center h-64">
+        <RefreshCw className="w-8 h-8 animate-spin text-primary" />
       </div>
     );
   }
 
+  if (isLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center h-96 gap-4">
+        <RefreshCw className="w-10 h-10 animate-spin text-primary" />
+        <p className="text-sm font-bold text-slate-500 uppercase tracking-widest">Compiling Dividend History...</p>
+      </div>
+    );
+  }
+
+  const filteredHistory = filterSymbol === "ALL" 
+    ? report?.history 
+    : report?.history.filter(h => h.symbol === filterSymbol);
+
+  const displayAllTimeTotal = allTimeFilterSymbol === "ALL"
+    ? report?.totalAllTime
+    : report?.etfBreakdown.find(e => e.symbol === allTimeFilterSymbol)?.totalAllTime || "0.00";
+
+  const displayMonthlyAverage = monthlyFilterSymbol === "ALL"
+    ? (parseFloat(report?.totalLastYear || "0") / 12).toFixed(2)
+    : (parseFloat(report?.etfBreakdown.find(e => e.symbol === monthlyFilterSymbol)?.totalLastYear || "0") / 12).toFixed(2);
+
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-8">
       {/* Portfolio Selector */}
-      <div className="flex items-center gap-4 mb-6">
-        <label className="text-sm text-gray-400">Select Portfolio:</label>
-        <select
-          value={selectedPortfolioId || ""}
-          onChange={(e) => setSelectedPortfolioId(parseInt(e.target.value))}
-          className="px-4 py-2 bg-black border border-cyan-500/50 rounded text-white"
-        >
-          {portfolios.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      {/* Total Dividends Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="data-card">
-          <div className="data-card-title">Total Earned</div>
-          <div className="data-card-value">${totalDividends || "0.00"}</div>
-          <div className="data-card-subtitle">All dividends received</div>
-        </div>
-
-        <div className="data-card">
-          <div className="data-card-title">Holdings Count</div>
-          <div className="data-card-value">{holdings?.length || 0}</div>
-          <div className="data-card-subtitle">ETFs with dividends</div>
-        </div>
-
-        <div className="data-card">
-          <div className="data-card-title">Avg Per Holding</div>
-          <div className="data-card-value">
-            $
-            {holdings && holdings.length > 0
-              ? (parseFloat(totalDividends || "0") / holdings.length).toFixed(2)
-              : "0.00"}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-lg shadow-sm border border-border">
+        <div className="flex items-center gap-4">
+          <div className="p-2 bg-slate-100 rounded-lg">
+            <Briefcase className="w-5 h-5 text-slate-600" />
           </div>
-          <div className="data-card-subtitle">Average dividend</div>
-        </div>
-      </div>
-
-      {/* Dividend History */}
-      <Card className="hud-panel p-4">
-        <div className="mb-4 flex justify-between items-center">
-          <h3 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">
-            Dividend History
-          </h3>
-          {holdings && holdings.length > 0 && (
+          <div>
+            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest block mb-1">Select Portfolio</label>
             <select
-              value={selectedSymbol}
-              onChange={(e) => setSelectedSymbol(e.target.value)}
-              className="bg-input border border-border rounded px-2 py-1 text-sm text-foreground"
+              value={selectedPortfolioId || ""}
+              onChange={(e) => setSelectedPortfolioId(parseInt(e.target.value))}
+              className="min-w-[200px] px-3 py-1.5 bg-transparent border-b-2 border-slate-200 focus:border-primary focus:outline-none font-semibold text-slate-800 transition-colors"
             >
-              {holdings.map((holding) => (
-                <option key={holding.id} value={holding.symbol}>
-                  {holding.symbol}
-                </option>
+              {portfolios.map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
               ))}
             </select>
-          )}
+          </div>
+        </div>
+      </div>
+
+      {/* Main Dividend Metrics */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        {/* All Time Panel */}
+        <Card className="p-6 bg-white shadow-sm border border-border border-t-4 border-t-yellow-500">
+          <div className="flex justify-between items-start mb-4">
+            <div>
+              <div className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Received (All Time)</div>
+              <div className="text-3xl font-bold text-slate-800 font-mono">
+                ${displayAllTimeTotal}
+              </div>
+            </div>
+            <div className="p-2 bg-yellow-50 rounded-lg">
+              <Trophy className="w-5 h-5 text-yellow-600" />
+            </div>
+          </div>
+          <select
+            value={allTimeFilterSymbol}
+            onChange={(e) => setAllTimeFilterSymbol(e.target.value)}
+            className="w-full bg-slate-50 border border-slate-200 rounded px-2 py-1 text-[10px] font-bold text-slate-600 focus:outline-none"
+          >
+            <option value="ALL">Entire Portfolio</option>
+            {report?.etfBreakdown.map(etf => (
+              <option key={etf.symbol} value={etf.symbol}>{etf.symbol}</option>
+            ))}
+          </select>
+        </Card>
+
+        {/* Monthly Average Panel */}
+        <Card className="p-6 bg-white shadow-sm border border-border border-t-4 border-t-green-600">
+          <div className="flex justify-between items-start mb-4">
+            <div>
+              <div className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Monthly Avg (L12M)</div>
+              <div className="text-3xl font-bold text-slate-800 font-mono">
+                ${displayMonthlyAverage}
+              </div>
+            </div>
+            <div className="p-2 bg-green-50 rounded-lg">
+              <DollarSign className="w-5 h-5 text-green-600" />
+            </div>
+          </div>
+          <select
+            value={monthlyFilterSymbol}
+            onChange={(e) => setMonthlyFilterSymbol(e.target.value)}
+            className="w-full bg-slate-50 border border-slate-200 rounded px-2 py-1 text-[10px] font-bold text-slate-600 focus:outline-none"
+          >
+            <option value="ALL">Entire Portfolio</option>
+            {report?.etfBreakdown.map(etf => (
+              <option key={etf.symbol} value={etf.symbol}>{etf.symbol}</option>
+            ))}
+          </select>
+        </Card>
+
+        {/* Last Year Panel */}
+        <Card className="p-6 bg-white shadow-sm border border-border border-t-4 border-t-primary">
+          <div className="flex justify-between items-start mb-4">
+            <div>
+              <div className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Total (Last 12M)</div>
+              <div className="text-3xl font-bold text-slate-800 font-mono">${report?.totalLastYear}</div>
+            </div>
+            <div className="p-2 bg-slate-50 rounded-lg">
+              <Calendar className="w-5 h-5 text-slate-600" />
+            </div>
+          </div>
+          <div className="grid grid-cols-4 gap-1">
+            {report?.quarterlyBreakdown.map((q) => (
+              <div key={q.quarter} className="text-center p-1 bg-slate-50 rounded border border-slate-100">
+                <div className="text-[8px] font-bold text-slate-400 uppercase truncate">{q.quarter.split(' ')[1]}</div>
+                <div className="text-[10px] font-bold text-slate-700">${parseFloat(q.amount).toFixed(0)}</div>
+              </div>
+            ))}
+          </div>
+        </Card>
+
+        {/* Asset Distribution */}
+        <Card className="p-6 bg-white shadow-sm border border-border border-t-4 border-t-pink-600">
+          <div className="flex justify-between items-start mb-4">
+            <div className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">Distribution (L12M)</div>
+            <div className="p-2 bg-pink-50 rounded-lg">
+              <TrendingUp className="w-5 h-5 text-pink-600" />
+            </div>
+          </div>
+          <div className="space-y-2 max-h-[80px] overflow-y-auto pr-2 custom-scrollbar">
+            {report?.etfBreakdown.map((etf) => (
+              <div key={etf.symbol} className="flex justify-between items-center pb-1 border-b border-slate-100 last:border-0">
+                <div className="font-bold text-slate-700 text-[10px]">{etf.symbol}</div>
+                <div className="font-mono text-green-600 text-[10px] font-bold">${etf.totalLastYear}</div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      </div>
+
+      {/* Dividend History Table */}
+      <Card className="bg-white shadow-sm border border-border overflow-hidden">
+        <div className="px-6 py-4 border-b border-border bg-slate-50/50 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <div className="flex items-center gap-2">
+            <Calendar className="w-5 h-5 text-primary" />
+            <h2 className="text-lg font-bold text-slate-800">Detailed Payout History</h2>
+          </div>
+          
+          <div className="flex items-center gap-3">
+            <ListFilter className="w-4 h-4 text-slate-400" />
+            <select
+              value={filterSymbol}
+              onChange={(e) => setFilterSymbol(e.target.value)}
+              className="bg-white border border-slate-200 rounded px-3 py-1.5 text-xs font-bold text-slate-600 focus:outline-none focus:border-primary"
+            >
+              <option value="ALL">All Asset Symbols</option>
+              {report?.etfBreakdown.map(etf => (
+                <option key={etf.symbol} value={etf.symbol}>{etf.symbol}</option>
+              ))}
+            </select>
+          </div>
         </div>
 
-        {dividendHistory && dividendHistory.length > 0 ? (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
+        <div className="overflow-x-auto max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
+          {filteredHistory && filteredHistory.length > 0 ? (
+            <table className="w-full">
+              <thead className="sticky top-0 bg-slate-50 z-10 shadow-sm">
                 <tr className="border-b border-border">
-                  <th className="text-left p-3 text-muted-foreground font-bold uppercase text-xs">
-                    Ex-Date
-                  </th>
-                  <th className="text-right p-3 text-muted-foreground font-bold uppercase text-xs">
-                    Per Share
-                  </th>
-                  <th className="text-right p-3 text-muted-foreground font-bold uppercase text-xs">
-                    Total Amount
-                  </th>
-                  <th className="text-right p-3 text-muted-foreground font-bold uppercase text-xs">
-                    Payment Date
-                  </th>
+                  <th className="text-left py-3 px-6 text-slate-600">Ex-Dividend Date</th>
+                  <th className="text-left py-3 px-6 text-slate-600">Symbol</th>
+                  <th className="text-right py-3 px-6 text-slate-600">Per Share</th>
+                  <th className="text-right py-3 px-6 text-slate-600">Qty at Ex-Date</th>
+                  <th className="text-right py-3 px-6 text-slate-600">Total Received</th>
                 </tr>
               </thead>
               <tbody>
-                {dividendHistory.map((dividend, idx) => (
-                  <tr key={idx} className="border-b border-border/50 hover:bg-card/50">
-                    <td className="p-3">
-                      {new Date(dividend.exDate).toLocaleDateString()}
+                {filteredHistory.map((dividend, idx) => (
+                  <tr key={idx} className="border-b border-border hover:bg-slate-50 transition-colors">
+                    <td className="py-4 px-6 text-slate-600">
+                      {new Date(dividend.exDate).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: '2-digit' })}
                     </td>
-                    <td className="p-3 text-right ">
-                      ${dividend.dividendPerShare.toString()}
+                    <td className="py-4 px-6 font-bold text-primary">{dividend.symbol}</td>
+                    <td className="py-4 px-6 text-right font-mono text-slate-500">
+                      ${parseFloat(dividend.dividendPerShare.toString()).toFixed(4)}
                     </td>
-                    <td className="p-3 text-right font-bold text-green-400">
-                      ${dividend.totalDividend?.toString() || "N/A"}
+                    <td className="py-4 px-6 text-right font-mono text-slate-500">
+                      {parseFloat(dividend.quantityOwned.toString()).toFixed(3)}
                     </td>
-                    <td className="p-3 text-right text-muted-foreground">
-                      {dividend.paymentDate
-                        ? new Date(dividend.paymentDate).toLocaleDateString()
-                        : "Pending"}
+                    <td className="py-4 px-6 text-right font-mono font-bold text-green-600 bg-green-50/30">
+                      ${parseFloat(dividend.totalAmount.toString()).toFixed(2)}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </div>
-        ) : (
-          <div className="py-8 text-center text-muted-foreground">
-            <DollarSign className="w-12 h-12 mx-auto mb-2 opacity-50" />
-            <p>No dividend history available for {selectedSymbol}</p>
-          </div>
-        )}
-      </Card>
-
-      {/* Dividend Breakdown by ETF */}
-      <Card className="hud-panel p-4">
-        <h3 className="text-sm font-bold uppercase tracking-wider text-muted-foreground mb-4">
-          Dividends by ETF
-        </h3>
-
-        <div className="space-y-3">
-          {holdings && holdings.length > 0 ? (
-            holdings.map((holding) => (
-              <div
-                key={holding.id}
-                className="flex justify-between items-center p-3 bg-card/50 rounded border border-border/50"
-              >
-                <div>
-                  <div className="font-bold ">{holding.symbol}</div>
-                  <div className="text-xs text-muted-foreground">{holding.name}</div>
-                </div>
-                <div className="text-right">
-                  <div className="text-sm font-bold text-green-400">
-                    ${(parseFloat(holding.quantity.toString()) * (parseFloat(holding.currentPrice?.toString() || "0"))).toFixed(2)}
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    {holding.quantity.toString()} shares
-                  </div>
-                </div>
-              </div>
-            ))
           ) : (
-            <div className="text-center text-muted-foreground py-8">
-              No holdings yet
+            <div className="py-20 text-center text-slate-400">
+              <DollarSign className="w-12 h-12 mx-auto mb-4 opacity-20" />
+              <p className="text-sm font-medium">No historical dividend distributions found for current selection.</p>
             </div>
           )}
         </div>

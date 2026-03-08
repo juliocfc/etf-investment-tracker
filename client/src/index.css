@@ -43,86 +43,87 @@
 }
 
 :root {
-  /* Cyberpunk Neon Colors - Improved Readability */
-  --neon-pink: oklch(0.65 0.25 330);
-  --neon-cyan: oklch(0.75 0.22 180);  /* Brighter cyan for better contrast */
-  --neon-green: oklch(0.72 0.20 140);  /* Bright green-cyan alternative */
-  --neon-purple: oklch(0.55 0.25 290);
-  --deep-black: oklch(0.08 0 0);
-  --dark-bg: oklch(0.12 0.01 290);
+  /* Professional Financial Palette (Light Theme) */
+  --fidelity-blue: #004a99;
+  --fidelity-green: #3d8a3d;
+  --off-white: #f4f7f9;
+  --border-gray: #d1d7db;
+  --text-main: #333333;
+  --text-muted: #666666;
+
+  --primary: var(--fidelity-blue);
+  --primary-foreground: #ffffff;
   
-  /* Primary colors */
-  --primary: var(--neon-pink);
-  --primary-foreground: var(--deep-black);
-  --sidebar-primary: var(--neon-green);
-  --sidebar-primary-foreground: var(--deep-black);
+  --background: #ffffff;
+  --foreground: var(--text-main);
   
-  /* Chart colors - neon palette */
-  --chart-1: oklch(0.65 0.25 330);
-  --chart-2: oklch(0.68 0.24 200);
-  --chart-3: oklch(0.70 0.20 280);
-  --chart-4: oklch(0.60 0.22 350);
-  --chart-5: oklch(0.75 0.18 210);
+  --card: #ffffff;
+  --card-foreground: var(--text-main);
   
-  --radius: 0.25rem;
-  --background: var(--deep-black);
-  --foreground: var(--neon-green);
-  --card: var(--dark-bg);
-  --card-foreground: var(--neon-green);
-  --popover: var(--dark-bg);
-  --popover-foreground: var(--neon-green);
-  --secondary: var(--neon-purple);
-  --secondary-foreground: oklch(1 0 0);
-  --muted: oklch(0.25 0.02 290);
-  --muted-foreground: oklch(0.50 0.05 200);
-  --accent: var(--neon-pink);
-  --accent-foreground: var(--deep-black);
-  --destructive: oklch(0.65 0.25 25);
-  --destructive-foreground: oklch(1 0 0);
-  --border: oklch(0.20 0.02 290);
-  --input: oklch(0.15 0.01 290);
-  --ring: var(--neon-cyan);
-  --sidebar: var(--dark-bg);
-  --sidebar-foreground: var(--neon-green);
-  --sidebar-accent: var(--neon-pink);
-  --sidebar-accent-foreground: var(--deep-black);
-  --sidebar-border: oklch(0.20 0.02 290);
-  --sidebar-ring: var(--neon-green);
+  --popover: #ffffff;
+  --popover-foreground: var(--text-main);
+  
+  --secondary: var(--off-white);
+  --secondary-foreground: var(--text-main);
+  
+  --muted: #f8f9fa;
+  --muted-foreground: var(--text-muted);
+  
+  --accent: #eef4ff;
+  --accent-foreground: var(--fidelity-blue);
+  
+  --destructive: #cc0000;
+  --destructive-foreground: #ffffff;
+  
+  --border: var(--border-gray);
+  --input: #ffffff;
+  --ring: var(--fidelity-blue);
+  
+  --radius: 0.375rem;
+
+  /* Chart colors - professional palette */
+  --chart-1: #004a99;
+  --chart-2: #3d8a3d;
+  --chart-3: #f2a900;
+  --chart-4: #cc0000;
+  --chart-5: #666666;
+
+  --sidebar: #ffffff;
+  --sidebar-foreground: var(--text-main);
+  --sidebar-primary: var(--fidelity-blue);
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #eef4ff;
+  --sidebar-accent-foreground: var(--fidelity-blue);
+  --sidebar-border: var(--border-gray);
+  --sidebar-ring: var(--fidelity-blue);
 }
 
+/* Keeping .dark for compatibility but making it look professional too */
 .dark {
-  --primary: var(--neon-pink);
-  --primary-foreground: var(--deep-black);
-  --sidebar-primary: var(--neon-green);
-  --sidebar-primary-foreground: var(--deep-black);
-  --background: var(--deep-black);
-  --foreground: var(--neon-green);
-  --card: var(--dark-bg);
-  --card-foreground: var(--neon-green);
-  --popover: var(--dark-bg);
-  --popover-foreground: var(--neon-green);
-  --secondary: var(--neon-purple);
-  --secondary-foreground: oklch(1 0 0);
-  --muted: oklch(0.25 0.02 290);
-  --muted-foreground: oklch(0.50 0.05 200);
-  --accent: var(--neon-pink);
-  --accent-foreground: var(--deep-black);
-  --destructive: oklch(0.65 0.25 25);
-  --destructive-foreground: oklch(1 0 0);
-  --border: oklch(0.20 0.02 290);
-  --input: oklch(0.15 0.01 290);
-  --ring: var(--neon-green);
-  --chart-1: oklch(0.65 0.25 330);
-  --chart-2: oklch(0.68 0.24 200);
-  --chart-3: oklch(0.70 0.20 280);
-  --chart-4: oklch(0.60 0.22 350);
-  --chart-5: oklch(0.75 0.18 210);
-  --sidebar: var(--dark-bg);
-  --sidebar-foreground: var(--neon-cyan);
-  --sidebar-accent: var(--neon-pink);
-  --sidebar-accent-foreground: var(--deep-black);
-  --sidebar-border: oklch(0.20 0.02 290);
-  --sidebar-ring: var(--neon-cyan);
+  --background: #0f172a;
+  --foreground: #f8fafc;
+  --card: #1e293b;
+  --card-foreground: #f8fafc;
+  --popover: #1e293b;
+  --popover-foreground: #f8fafc;
+  --primary: #38bdf8;
+  --primary-foreground: #0f172a;
+  --secondary: #334155;
+  --secondary-foreground: #f8fafc;
+  --muted: #334155;
+  --muted-foreground: #94a3b8;
+  --accent: #334155;
+  --accent-foreground: #f8fafc;
+  --destructive: #ef4444;
+  --destructive-foreground: #f8fafc;
+  --border: #334155;
+  --input: #334155;
+  --ring: #38bdf8;
+  --chart-1: #38bdf8;
+  --chart-2: #10b981;
+  --chart-3: #fbbf24;
+  --chart-4: #f87171;
+  --chart-5: #a78bfa;
 }
 
 @layer base {
@@ -130,213 +131,79 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground;
-  }
-  button:not(:disabled),
-  [role="button"]:not([aria-disabled="true"]),
-  [type="button"]:not(:disabled),
-  [type="submit"]:not(:disabled),
-  [type="reset"]:not(:disabled),
-  a[href],
-  select:not(:disabled),
-  input[type="checkbox"]:not(:disabled),
-  input[type="radio"]:not(:disabled) {
-    @apply cursor-pointer;
+    @apply bg-muted text-foreground;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   }
 }
 
 @layer components {
-  /* Cyberpunk Neon Glow Effect */
-  .neon-glow {
-    text-shadow: 0 0 10px currentColor, 0 0 20px currentColor, 0 0 30px currentColor;
-    filter: drop-shadow(0 0 8px currentColor);
-  }
-
-  /* Neon glow colors - use inline styles instead of classes */
-
-  /* HUD Corner Brackets */
-  .hud-corner {
-    position: relative;
-  }
-
-  .hud-corner::before,
-  .hud-corner::after {
-    content: '';
-    position: absolute;
-    width: 20px;
-    height: 20px;
-    border: 2px solid currentColor;
-  }
-
-  .hud-corner::before {
-    top: -8px;
-    left: -8px;
-    border-right: none;
-    border-bottom: none;
-  }
-
-  .hud-corner::after {
-    bottom: -8px;
-    right: -8px;
-    border-left: none;
-    border-top: none;
-  }
-
-  /* HUD Panel with borders */
-  .hud-panel {
-    @apply bg-card text-card-foreground border border-border;
-    position: relative;
-    background: linear-gradient(135deg, rgba(0, 217, 255, 0.05) 0%, rgba(255, 0, 110, 0.05) 100%);
-  }
-
-  .hud-panel::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 1px;
-    background: linear-gradient(90deg, transparent, var(--neon-cyan), transparent);
-  }
-
-  /* Neon Button */
-  .btn-neon {
-    @apply relative px-6 py-2 font-bold text-sm uppercase tracking-wider;
-    background: transparent;
-    border: 2px solid currentColor;
-    color: var(--neon-pink);
-    transition: all 0.3s ease;
-  }
-
-  .btn-neon:hover {
-    color: var(--neon-pink);
-    text-shadow: 0 0 10px #ff006e, 0 0 20px #ff006e, 0 0 30px #ff006e;
-    filter: drop-shadow(0 0 8px #ff006e);
-    box-shadow: 0 0 20px rgba(255, 0, 110, 0.6), inset 0 0 20px rgba(255, 0, 110, 0.1);
-  }
-
-  .btn-neon-cyan {
-    color: var(--neon-cyan);
-  }
-
-  .btn-neon-cyan:hover {
-    color: var(--neon-cyan);
-    text-shadow: 0 0 10px #00d9ff, 0 0 20px #00d9ff, 0 0 30px #00d9ff;
-    filter: drop-shadow(0 0 8px #00d9ff);
-    box-shadow: 0 0 20px rgba(0, 217, 255, 0.6), inset 0 0 20px rgba(0, 217, 255, 0.1);
-  }
-
-  /* Divider line */
-  .divider-neon {
-    @apply border-t border-border;
-    background: linear-gradient(90deg, transparent, var(--neon-cyan), transparent);
-    height: 1px;
-  }
-
-  /* Data display card */
+  /* Financial Data Display Card */
   .data-card {
-    @apply rounded-sm p-4 bg-card text-card-foreground border border-border;
-    position: relative;
-    background: linear-gradient(135deg, rgba(0, 217, 255, 0.05) 0%, rgba(255, 0, 110, 0.05) 100%);
-  }
-
-  .data-card::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 1px;
-    background: linear-gradient(90deg, transparent, var(--neon-cyan), transparent);
+    @apply rounded-lg p-6 bg-white border border-border shadow-sm;
   }
 
   .data-card-title {
-    @apply text-xs font-bold uppercase tracking-widest text-muted-foreground mb-2;
+    @apply text-sm font-semibold text-muted-foreground mb-1 uppercase tracking-wider;
   }
 
   .data-card-value {
-    @apply text-2xl font-bold;
-    color: #ffffff;  /* Bright white for maximum readability */
-    text-shadow: 0 0 10px rgba(0, 217, 255, 0.5), 0 0 20px rgba(0, 217, 255, 0.3);  /* Subtle cyan glow */
-    filter: drop-shadow(0 0 4px rgba(0, 217, 255, 0.4));
+    @apply text-3xl font-bold text-foreground;
   }
 
   .data-card-subtitle {
-    @apply text-xs text-muted-foreground mt-1;
+    @apply text-sm text-muted-foreground mt-1;
   }
 
-  /* Container utility */
-  .container {
-    width: 100%;
-    margin-left: auto;
-    margin-right: auto;
-    padding-left: 1rem;
-    padding-right: 1rem;
+  /* Professional Button styles */
+  .btn-neon, .btn-neon-cyan {
+    @apply px-4 py-2 bg-primary text-white rounded font-semibold transition-colors hover:bg-primary/90 disabled:opacity-50;
   }
 
-  .flex {
-    min-height: 0;
-    min-width: 0;
+  /* Table styling */
+  table {
+    @apply w-full border-collapse;
   }
 
-  @media (min-width: 640px) {
-    .container {
-      padding-left: 1.5rem;
-      padding-right: 1.5rem;
-    }
+  th {
+    @apply text-left py-3 px-4 bg-muted border-b border-border text-xs font-bold text-muted-foreground uppercase tracking-wider;
   }
 
-  @media (min-width: 1024px) {
-    .container {
-      padding-left: 2rem;
-      padding-right: 2rem;
-      max-width: 1280px;
-    }
+  td {
+    @apply py-3 px-4 border-b border-border text-sm;
+  }
+
+  tr:hover td {
+    @apply bg-muted/50;
+  }
+
+  /* Custom scrollbar */
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    @apply bg-border rounded-full;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    @apply bg-muted-foreground/30;
   }
 }
 
-/* Global animations */
-@keyframes pulse-neon {
-  0%, 100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.7;
-  }
-}
-
-.animate-pulse-neon {
-  animation: pulse-neon 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-}
-
-@keyframes scan-lines {
-  0% {
-    transform: translateY(-100%);
-  }
-  100% {
-    transform: translateY(100%);
-  }
-}
-
-.scan-lines {
-  position: relative;
-  overflow: hidden;
+/* Remove cyberpunk specific animations and classes */
+.neon-glow, .hud-corner, .hud-panel, .scan-lines {
+  /* Reset to base styles */
+  text-shadow: none !important;
+  filter: none !important;
+  background: white !important;
+  position: static !important;
 }
 
 .scan-lines::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: repeating-linear-gradient(
-    0deg,
-    rgba(0, 217, 255, 0.03) 0px,
-    rgba(0, 217, 255, 0.03) 1px,
-    transparent 1px,
-    transparent 2px
-  );
-  pointer-events: none;
-  animation: scan-lines 8s linear infinite;
+  display: none !important;
 }
