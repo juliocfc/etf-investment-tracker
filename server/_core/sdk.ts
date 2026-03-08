@@ -174,7 +174,7 @@ class SDKServer {
       {
         openId,
         appId: getEnv().appId,
-        name: options.name || "",
+        name: options.name || "User",
       },
       options
     );
@@ -192,7 +192,7 @@ class SDKServer {
     return new SignJWT({
       openId: payload.openId,
       appId: payload.appId,
-      name: payload.name,
+      name: payload.name || "User",
     })
       .setProtectedHeader({ alg: "HS256", typ: "JWT" })
       .setExpirationTime(expirationSeconds)
@@ -214,19 +214,15 @@ class SDKServer {
       });
       const { openId, appId, name } = payload as Record<string, unknown>;
 
-      if (
-        !isNonEmptyString(openId) ||
-        !isNonEmptyString(appId) ||
-        !isNonEmptyString(name)
-      ) {
-        console.warn("[Auth] Session payload missing required fields");
+      if (!isNonEmptyString(openId)) {
+        console.warn("[Auth] Session payload missing openId");
         return null;
       }
 
       return {
         openId,
-        appId,
-        name,
+        appId: (appId as string) || getEnv().appId,
+        name: (name as string) || "User",
       };
     } catch (error) {
       console.warn("[Auth] Session verification failed", String(error));
