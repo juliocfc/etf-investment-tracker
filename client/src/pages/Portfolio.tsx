@@ -7,6 +7,8 @@ import { Plus, Trash2, RefreshCw, ShoppingCart, History, FolderPlus, FileUp, Wal
 import { toast } from "sonner";
 import React, { useEffect, useRef, useState, useMemo } from "react";
 
+const CHART_COLORS = ["#004a99", "#3d8a3d", "#f2a900", "#cc0000", "#666666", "#94a3b8", "#38bdf8", "#10b981", "#fbbf24"];
+
 export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId: number }) {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isBuyDialogOpen, setIsBuyDialogOpen] = useState<number | null>(null);
@@ -28,6 +30,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
   const [cashAmount, setCashAmount] = useState("");
   const [isEditingCash, setIsEditingCash] = useState(false);
   const [isCSVImportOpen, setIsCSVImportOpen] = useState<number | null>(null);
+  const lookupTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const utils = trpc.useUtils();
 
@@ -137,22 +140,29 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
   });
 
   // Handlers
-  const handleSymbolChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleSymbolChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const symbol = e.target.value.toUpperCase();
-    setFormData({ ...formData, symbol });
+    
+    // Update symbol immediately for smooth typing
+    setFormData(prev => ({ ...prev, symbol }));
+
+    // Clear existing timeout
+    if (lookupTimeoutRef.current) {
+      clearTimeout(lookupTimeoutRef.current);
+    }
 
     if (symbol.length >= 2) {
-      const timeout = setTimeout(async () => {
+      lookupTimeoutRef.current = setTimeout(async () => {
         try {
           const name = await utils.etf.lookupETFName.fetch({ symbol });
           if (name) {
-            setFormData((prev) => ({ ...formData, symbol, name }));
+            // Use functional update to ensure we don't overwrite newer symbol typing
+            setFormData(prev => ({ ...prev, name }));
           }
         } catch (error) {
           console.error("Error looking up ETF name:", error);
         }
       }, 500);
-      return () => clearTimeout(timeout);
     }
   };
 
@@ -307,21 +317,21 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                   </div>
                   <div className="grid gap-2">
                     <label className="text-xs font-bold text-slate-500 uppercase">ETF Name</label>
-                    <Input placeholder="Vanguard S&P 500 ETF" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} />
+                    <Input placeholder="Vanguard S&P 500 ETF" value={formData.name} onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))} />
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="grid gap-2">
                       <label className="text-xs font-bold text-slate-500 uppercase">Quantity</label>
-                      <Input type="number" step="0.001" value={formData.quantity} onChange={(e) => setFormData({ ...formData, quantity: e.target.value })} />
+                      <Input type="number" step="0.001" value={formData.quantity} onChange={(e) => setFormData(prev => ({ ...prev, quantity: e.target.value }))} />
                     </div>
                     <div className="grid gap-2">
                       <label className="text-xs font-bold text-slate-500 uppercase">Price</label>
-                      <Input type="number" step="0.01" value={formData.purchasePrice} onChange={(e) => setFormData({ ...formData, purchasePrice: e.target.value })} />
+                      <Input type="number" step="0.01" value={formData.purchasePrice} onChange={(e) => setFormData(prev => ({ ...prev, purchasePrice: e.target.value }))} />
                     </div>
                   </div>
                   <div className="grid gap-2">
                     <label className="text-xs font-bold text-slate-500 uppercase">Date</label>
-                    <Input type="date" value={formData.purchaseDate} onChange={(e) => setFormData({ ...formData, purchaseDate: e.target.value })} />
+                    <Input type="date" value={formData.purchaseDate} onChange={(e) => setFormData(prev => ({ ...prev, purchaseDate: e.target.value }))} />
                   </div>
                   <Button onClick={handleAddHolding} className="w-full mt-2" disabled={addHoldingMutation.isPending}>
                     Add Asset
@@ -436,9 +446,13 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
               <PortfolioAllocationChart data={summary.allocationBreakdown} cashPercent={summary.cashAllocationPercent} />
               <div className="flex-1 w-full">
                 <div className="space-y-2">
-                  {summary.allocationBreakdown.map((item: any) => (
+                  {summary.allocationBreakdown.map((item: any, index: number) => (
                     <div key={item.symbol} className="flex justify-between items-center text-sm p-2 hover:bg-slate-50 rounded transition-colors">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-3">
+                        <div 
+                          className="w-3 h-3 rounded-full shrink-0" 
+                          style={{ backgroundColor: CHART_COLORS[index % CHART_COLORS.length] }}
+                        />
                         <span className="font-bold text-primary w-12">{item.symbol}</span>
                         <span className="text-slate-500 text-xs truncate max-w-[150px]">{item.name}</span>
                       </div>
@@ -446,7 +460,10 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                     </div>
                   ))}
                   <div className="border-t border-slate-100 pt-2 mt-2 flex justify-between items-center text-sm p-2 bg-slate-50 rounded">
-                    <span className="font-bold text-slate-600">Cash Reserve</span>
+                    <div className="flex items-center gap-3">
+                      <div className="w-3 h-3 rounded-full shrink-0 bg-slate-200" />
+                      <span className="font-bold text-slate-600">Cash Reserve</span>
+                    </div>
                     <span className="font-mono font-bold text-slate-700">{summary.cashAllocationPercent}%</span>
                   </div>
                 </div>
@@ -513,15 +530,15 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
             <div className="space-y-4 pt-4">
               <div className="grid gap-2">
                 <label className="text-xs font-bold text-slate-500 uppercase">Quantity</label>
-                <Input type="number" step="0.001" value={buyData.quantity} onChange={(e) => setBuyData({ ...buyData, quantity: e.target.value })} />
+                <Input type="number" step="0.001" value={buyData.quantity} onChange={(e) => setBuyData(prev => ({ ...prev, quantity: e.target.value }))} />
               </div>
               <div className="grid gap-2">
                 <label className="text-xs font-bold text-slate-500 uppercase">Execution Price</label>
-                <Input type="number" step="0.01" value={buyData.price} onChange={(e) => setBuyData({ ...buyData, price: e.target.value })} />
+                <Input type="number" step="0.01" value={buyData.price} onChange={(e) => setBuyData(prev => ({ ...prev, price: e.target.value }))} />
               </div>
               <div className="grid gap-2">
                 <label className="text-xs font-bold text-slate-500 uppercase">Date of Purchase</label>
-                <Input type="date" value={buyData.purchaseDate} onChange={(e) => setBuyData({ ...buyData, purchaseDate: e.target.value })} />
+                <Input type="date" value={buyData.purchaseDate} onChange={(e) => setBuyData(prev => ({ ...prev, purchaseDate: e.target.value }))} />
               </div>
               <Button onClick={() => handleBuyMoreShares(isBuyDialogOpen)} className="w-full" disabled={buyMoreSharesMutation.isPending}>
                 Execute Order
@@ -560,8 +577,6 @@ function PortfolioAllocationChart({ data, cashPercent }: { data: any[], cashPerc
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const totalWithCash = parseFloat(cashPercent) + data.reduce((acc, item) => acc + parseFloat(item.percentage), 0);
   
-  const colors = ["#004a99", "#3d8a3d", "#f2a900", "#cc0000", "#666666", "#94a3b8", "#38bdf8", "#10b981", "#fbbf24"];
-
   useEffect(() => {
     if (canvasRef.current && data.length > 0) {
       const ctx = canvasRef.current.getContext("2d");
@@ -586,7 +601,7 @@ function PortfolioAllocationChart({ data, cashPercent }: { data: any[], cashPerc
         ctx.moveTo(centerX, centerY);
         ctx.arc(centerX, centerY, radius, startAngle, startAngle + sliceAngle);
         ctx.closePath();
-        ctx.fillStyle = item.symbol === "Cash" ? "#e2e8f0" : colors[index % colors.length];
+        ctx.fillStyle = item.symbol === "Cash" ? "#e2e8f0" : CHART_COLORS[index % CHART_COLORS.length];
         ctx.fill();
         ctx.strokeStyle = "white";
         ctx.lineWidth = 2;
