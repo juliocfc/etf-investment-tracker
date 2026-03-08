@@ -13,6 +13,7 @@ export function useAuth(options: UseAuthOptions = {}) {
     redirectOnUnauthenticated = false,
     redirectPath = getGoogleLoginUrl(),
   } = options;
+  const utils = trpc.useUtils();
   const meQuery = trpc.auth.me.useQuery(undefined, {
     retry: 1,
     refetchOnWindowFocus: true,
