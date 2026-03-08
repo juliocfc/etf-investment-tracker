@@ -27,11 +27,6 @@ class GoogleOAuthService {
 
   constructor() {
     const env = getEnv();
-    console.log("[Google OAuth] Constructor called, env:", {
-      clientId: env.googleOAuthClientId ? "SET" : "UNDEFINED",
-      clientSecret: env.googleOAuthClientSecret ? "SET" : "UNDEFINED",
-      allEnv: process.env
-  });
     this.clientId = env.googleOAuthClientId;
     this.clientSecret = env.googleOAuthClientSecret;
 

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
+import { etfHoldings } from "../drizzle/schema";
 import {
   getUserEtfHoldings,
   createEtfHolding,
@@ -19,6 +20,9 @@ import {
   deletePurchase,
   parseCSVContent,
   bulkImportPurchases,
+  getDb,
+  and,
+  eq,
 } from "./db";
 import {
   fetchEtfPrice,
@@ -120,7 +124,18 @@ export const etfRouter = router({
 
   deleteHolding: protectedProcedure
     .input(z.object({ id: z.number() }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
+      const dbInstance = await getDb();
+      const holding = await dbInstance
+        .select()
+        .from(etfHoldings)
+        .where(and(eq(etfHoldings.id, input.id), eq(etfHoldings.userId, ctx.user.id)))
+        .then((rows: any[]) => rows[0]);
+
+      if (!holding) {
+        throw new Error("Holding not found or unauthorized");
+      }
+
       return deleteEtfHolding(input.id);
     }),
 
@@ -439,15 +454,15 @@ export const etfRouter = router({
         throw new Error("Holding not found");
       }
 
-      await addPurchase(
-        ctx.user.id,
-        input.portfolioId,
-        input.holdingId,
-        holding.symbol,
-        input.quantity,
-        input.price,
-        input.purchaseDate
-      );
+      await addPurchase({
+        userId: ctx.user.id,
+        portfolioId: input.portfolioId,
+        holdingId: input.holdingId,
+        symbol: holding.symbol,
+        quantity: input.quantity,
+        price: input.price,
+        purchaseDate: input.purchaseDate,
+      });
 
       const newQuantity = parseFloat(holding.quantity.toString()) + parseFloat(input.quantity);
       const averageCost = await calculateAverageCost(input.holdingId);
@@ -460,7 +475,7 @@ export const etfRouter = router({
       return {
         success: true,
         newQuantity: newQuantity.toFixed(3),
-        averageCost: averageCost?.toFixed(3) || input.price,
+        averageCost: parseFloat(averageCost || input.price).toFixed(3),
       };
     }),
 
@@ -479,11 +494,15 @@ export const etfRouter = router({
   deletePurchase: protectedProcedure
     .input(z.object({ purchaseId: z.number(), holdingId: z.number() }))
     .mutation(async ({ ctx, input }) => {
-      const holdings = await getUserEtfHoldings(ctx.user.id);
-      const holding = holdings.find((h) => h.id === input.holdingId);
+      const dbInstance = await getDb();
+      const holding = await dbInstance
+        .select()
+        .from(etfHoldings)
+        .where(and(eq(etfHoldings.id, input.holdingId), eq(etfHoldings.userId, ctx.user.id)))
+        .then((rows: any[]) => rows[0]);
       
       if (!holding) {
-        throw new Error("Holding not found");
+        throw new Error("Holding not found or unauthorized");
       }
 
       await deletePurchase(input.purchaseId);

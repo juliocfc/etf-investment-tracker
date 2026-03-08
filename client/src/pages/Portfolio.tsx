@@ -114,10 +114,15 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
   });
 
   const deletePurchaseMutation = trpc.etf.deletePurchase.useMutation({
-    onSuccess: () => {
+    onSuccess: (data, variables) => {
       toast.success("Purchase deleted!");
       refetchHoldings();
       refetchSummary();
+      // Invalidate the specific holding's purchases to update the Audit Trail dialog
+      utils.etf.getPurchases.invalidate({ holdingId: variables.holdingId });
+    },
+    onError: (error) => {
+      toast.error(error.message || "Failed to delete purchase");
     },
   });
 
@@ -567,7 +572,11 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
             <DialogHeader>
               <DialogTitle>Bulk Data Ingestion</DialogTitle>
             </DialogHeader>
-            <CSVImportForm holdingId={isCSVImportOpen} onImport={handleImportCSV} />
+            <CSVImportForm 
+              holdingId={isCSVImportOpen} 
+              onImport={handleImportCSV} 
+              isLoading={importCSVMutation.isPending}
+            />
           </DialogContent>
         </Dialog>
       )}
@@ -669,7 +678,15 @@ function PurchaseHistoryTable({ holdingId, onDelete }: { holdingId: number, onDe
   );
 }
 
-function CSVImportForm({ holdingId, onImport }: { holdingId: number, onImport: (holdingId: number, csv: string) => void }) {
+function CSVImportForm({ 
+  holdingId, 
+  onImport, 
+  isLoading 
+}: { 
+  holdingId: number, 
+  onImport: (holdingId: number, csv: string) => void,
+  isLoading: boolean 
+}) {
   const [file, setFile] = useState<File | null>(null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -726,8 +743,19 @@ function CSVImportForm({ holdingId, onImport }: { holdingId: number, onImport: (
         </div>
       </div>
       
-      <Button onClick={handleUpload} className="w-full py-6 text-sm font-bold shadow-lg shadow-primary/10" disabled={!file}>
-        Initiate Data Import
+      <Button 
+        onClick={handleUpload} 
+        className="w-full py-6 text-sm font-bold shadow-lg shadow-primary/10" 
+        disabled={!file || isLoading}
+      >
+        {isLoading ? (
+          <div className="flex items-center gap-2">
+            <RefreshCw className="w-4 h-4 animate-spin" />
+            Processing Ledger...
+          </div>
+        ) : (
+          "Initiate Data Import"
+        )}
       </Button>
     </div>
   );
