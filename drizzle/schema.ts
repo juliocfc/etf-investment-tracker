@@ -34,6 +34,7 @@ export const etfHoldings = sqliteTable("etfHoldings", {
   quantity: text("quantity").notNull(),
   purchasePrice: text("purchasePrice").notNull(),
   currentPrice: text("currentPrice").notNull(),
+  desiredAllocation: text("desiredAllocation").default("0").notNull(),
   purchaseDate: integer("purchaseDate", { mode: "timestamp" }).notNull(),
   lastPriceUpdate: integer("lastPriceUpdate", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
   createdAt: integer("createdAt", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),

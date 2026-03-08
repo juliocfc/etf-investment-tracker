@@ -3,7 +3,7 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import { formatCurrency } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Menu, X, LogOut, TrendingUp, PieChart, Activity, DollarSign, Wallet, Briefcase, Plus } from "lucide-react";
+import { Menu, X, LogOut, TrendingUp, PieChart, Activity, DollarSign, Wallet, Briefcase, Plus, Trash2 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 
@@ -15,6 +15,7 @@ interface DashboardLayoutProps {
   selectedPortfolioId: number | null;
   onPortfolioChange: (id: number) => void;
   onCreatePortfolio: (name: string) => void;
+  onDeletePortfolio: (id: number) => void;
 }
 
 export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
@@ -25,6 +26,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
   selectedPortfolioId,
   onPortfolioChange,
   onCreatePortfolio,
+  onDeletePortfolio,
 }) => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [isAddPortfolioOpen, setIsAddPortfolioOpen] = useState(false);
@@ -117,6 +119,16 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
                     </div>
                   </DialogContent>
                 </Dialog>
+
+                {selectedPortfolioId && (
+                  <button 
+                    onClick={() => onDeletePortfolio(selectedPortfolioId)}
+                    className="p-1 text-slate-400 hover:text-red-600 transition-colors rounded-md hover:bg-red-50" 
+                    title="Delete Current Portfolio"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
             </div>
 

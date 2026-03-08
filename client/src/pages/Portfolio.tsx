@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, Trash2, RefreshCw, ShoppingCart, History, FolderPlus, FileUp, Wallet, TrendingUp, Info } from "lucide-react";
+import { Plus, Trash2, RefreshCw, ShoppingCart, History, FolderPlus, FileUp, Wallet, TrendingUp, Info, ArrowUpCircle, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import { formatCurrency, formatNumber } from "@/lib/utils";
 import React, { useEffect, useRef, useState, useMemo } from "react";
@@ -52,6 +52,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
       toast.success("Prices updated!");
       refetchHoldings();
       refetchSummary();
+      utils.portfolio.getConsolidatedSummary.invalidate();
     },
     onError: (error) => {
       toast.error(error.message || "Failed to update prices");
@@ -63,6 +64,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
       toast.success("ETF added successfully!");
       refetchHoldings();
       refetchSummary();
+      utils.portfolio.getConsolidatedSummary.invalidate();
       setFormData({
         symbol: "",
         name: "",
@@ -82,6 +84,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
       toast.success("ETF deleted successfully!");
       refetchHoldings();
       refetchSummary();
+      utils.portfolio.getConsolidatedSummary.invalidate();
     },
     onError: () => {
       toast.error("Failed to delete ETF");
@@ -93,6 +96,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
       toast.success("Shares purchased successfully!");
       refetchHoldings();
       refetchSummary();
+      utils.portfolio.getConsolidatedSummary.invalidate();
       setBuyData({
         quantity: "",
         price: "",
@@ -109,6 +113,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
     onSuccess: () => {
       toast.success("Cash balance updated!");
       refetchSummary();
+      utils.portfolio.getConsolidatedSummary.invalidate();
       setIsEditingCash(false);
     },
   });
@@ -118,6 +123,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
       toast.success("Purchase deleted!");
       refetchHoldings();
       refetchSummary();
+      utils.portfolio.getConsolidatedSummary.invalidate();
       // Invalidate the specific holding's purchases to update the Audit Trail dialog
       utils.etf.getPurchases.invalidate({ holdingId: variables.holdingId });
     },
@@ -135,6 +141,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
         }
         refetchHoldings();
         refetchSummary();
+        utils.portfolio.getConsolidatedSummary.invalidate();
         setIsCSVImportOpen(null);
       } else {
         toast.error("Failed to import CSV");
@@ -142,6 +149,16 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
     },
     onError: (error) => {
       toast.error(error.message || "Import failed");
+    },
+  });
+
+  const updateHoldingMutation = trpc.etf.updateHolding.useMutation({
+    onSuccess: () => {
+      refetchHoldings();
+      refetchSummary();
+    },
+    onError: (error) => {
+      toast.error(error.message || "Failed to update holding");
     },
   });
 
@@ -359,6 +376,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                 <th className="text-right py-3 px-6 text-slate-600">Gain/Loss</th>
                 <th className="text-right py-3 px-6 text-slate-600">Return</th>
                 <th className="text-right py-3 px-6 text-slate-600">Alloc %</th>
+                <th className="text-right py-3 px-6 text-slate-600">Desired Alloc %</th>
                 <th className="text-center py-3 px-6 text-slate-600">Actions</th>
               </tr>
             </thead>
@@ -384,6 +402,31 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                     </td>
                     <td className="text-right py-4 px-6 font-mono text-slate-500 font-medium">
                       {allocation?.percentage || "0.00"}%
+                    </td>
+                    <td className="text-right py-4 px-6 font-mono">
+                      <div className="flex items-center justify-end gap-2">
+                        {parseFloat(allocation?.percentage || "0") < (parseFloat(holding.desiredAllocation) || 0) && (
+                          <div className="flex items-center gap-1 text-[9px] font-bold text-green-600 bg-green-50 px-1.5 py-0.5 rounded border border-green-100 animate-pulse shrink-0">
+                            <ArrowUpCircle className="w-2.5 h-2.5" />
+                            BUY
+                          </div>
+                        )}
+                        <input
+                          type="number"
+                          step="0.1"
+                          defaultValue={holding.desiredAllocation || "0"}
+                          onBlur={(e) => {
+                            if (e.target.value !== holding.desiredAllocation) {
+                              updateHoldingMutation.mutate({
+                                id: holding.id,
+                                desiredAllocation: e.target.value,
+                              });
+                            }
+                          }}
+                          className="w-14 bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 text-right text-xs focus:outline-none focus:border-primary transition-colors"
+                        />
+                        <span className="text-slate-400 text-[10px]">%</span>
+                      </div>
                     </td>
                     <td className="text-center py-4 px-6">
                       <div className="flex items-center justify-center gap-1">
@@ -430,6 +473,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                     ).toFixed(2)}%
                   </td>
                   <td className="text-right py-4 px-6 font-mono text-slate-500">100%</td>
+                  <td></td>
                   <td></td>
                 </tr>
               </tfoot>

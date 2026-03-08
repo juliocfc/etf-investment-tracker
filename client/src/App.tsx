@@ -37,6 +37,23 @@ function DashboardRouter() {
     },
   });
 
+  const deletePortfolioMutation = trpc.portfolio.delete.useMutation({
+    onSuccess: () => {
+      toast.success("Portfolio deleted!");
+      utils.portfolio.getAll.invalidate();
+      setSelectedPortfolioId(null);
+    },
+    onError: (error) => {
+      toast.error(error.message || "Failed to delete portfolio");
+    },
+  });
+
+  const handleDeletePortfolio = (id: number) => {
+    if (confirm("Are you sure you want to delete this portfolio and ALL its data? This cannot be undone.")) {
+      deletePortfolioMutation.mutate({ portfolioId: id });
+    }
+  };
+
   const renderContent = () => {
     if (!selectedPortfolioId) {
       return (
@@ -72,6 +89,7 @@ function DashboardRouter() {
       selectedPortfolioId={selectedPortfolioId}
       onPortfolioChange={setSelectedPortfolioId}
       onCreatePortfolio={(name) => createPortfolioMutation.mutate({ name })}
+      onDeletePortfolio={handleDeletePortfolio}
     >
       {renderContent()}
     </DashboardLayout>

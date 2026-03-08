@@ -57,6 +57,7 @@ export const etfRouter = router({
         quantity: z.string(),
         purchasePrice: z.string(),
         purchaseDate: z.date(),
+        desiredAllocation: z.string().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -76,6 +77,7 @@ export const etfRouter = router({
         quantity: input.quantity,
         purchasePrice: input.purchasePrice,
         purchaseDate: input.purchaseDate,
+        desiredAllocation: input.desiredAllocation || "0",
         currentPrice,
         lastPriceUpdate: new Date(),
       });
@@ -105,6 +107,7 @@ export const etfRouter = router({
         quantity: z.string().optional(),
         purchasePrice: z.string().optional(),
         purchaseDate: z.date().optional(),
+        desiredAllocation: z.string().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {

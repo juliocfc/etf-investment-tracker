@@ -180,7 +180,22 @@ export const portfolioRouter = router({
         });
       }
 
-      // Delete the portfolio (cascade will handle related records)
+      // Manually delete related records if cascade is not set
+      const { purchases, etfHoldings, cashBalance, balanceHistory } = await import("../drizzle/schema");
+
+      // 1. Delete all purchases for all holdings in this portfolio
+      await db.delete(purchases).where(eq(purchases.portfolioId, input.portfolioId));
+
+      // 2. Delete all holdings in this portfolio
+      await db.delete(etfHoldings).where(eq(etfHoldings.portfolioId, input.portfolioId));
+
+      // 3. Delete cash balance
+      await db.delete(cashBalance).where(eq(cashBalance.portfolioId, input.portfolioId));
+
+      // 4. Delete balance history
+      await db.delete(balanceHistory).where(eq(balanceHistory.portfolioId, input.portfolioId));
+
+      // 5. Finally delete the portfolio
       await db.delete(portfolios).where(eq(portfolios.id, input.portfolioId));
 
       return { success: true };
