@@ -106,7 +106,7 @@ export default function Dividends({ selectedPortfolioId }: { selectedPortfolioId
             onChange={(e) => setAllTimeFilterSymbol(e.target.value)}
             className="w-full bg-slate-50 border border-slate-200 rounded px-2 py-1 text-[10px] font-bold text-slate-600 focus:outline-none"
           >
-            <option value="ALL">Entire Portfolio</option>
+            <option value="ALL">All Investments</option>
             {report?.etfBreakdown.map((etf: any) => (
               <option key={etf.symbol} value={etf.symbol}>{etf.symbol}</option>
             ))}
@@ -131,7 +131,7 @@ export default function Dividends({ selectedPortfolioId }: { selectedPortfolioId
             onChange={(e) => setMonthlyFilterSymbol(e.target.value)}
             className="w-full bg-slate-50 border border-slate-200 rounded px-2 py-1 text-[10px] font-bold text-slate-600 focus:outline-none"
           >
-            <option value="ALL">Entire Portfolio</option>
+            <option value="ALL">All Investments</option>
             {report?.etfBreakdown.map((etf: any) => (
               <option key={etf.symbol} value={etf.symbol}>{etf.symbol}</option>
             ))}
@@ -192,7 +192,7 @@ export default function Dividends({ selectedPortfolioId }: { selectedPortfolioId
                 onChange={(e) => setChartFilterSymbol(e.target.value)}
                 className="bg-slate-50 border border-slate-200 rounded px-3 py-1 text-xs font-bold text-slate-600 focus:outline-none focus:border-primary"
               >
-                <option value="ALL">Entire Portfolio</option>
+                <option value="ALL">All Investments</option>
                 {report?.etfBreakdown.map((etf: any) => (
                   <option key={etf.symbol} value={etf.symbol}>{etf.symbol}</option>
                 ))}
@@ -269,7 +269,7 @@ export default function Dividends({ selectedPortfolioId }: { selectedPortfolioId
               onChange={(e) => setFilterSymbol(e.target.value)}
               className="bg-white border border-slate-200 rounded px-3 py-1.5 text-xs font-bold text-slate-600 focus:outline-none focus:border-primary"
             >
-              <option value="ALL">All Asset Symbols</option>
+              <option value="ALL">All Investment Symbols</option>
               {report?.etfBreakdown.map((etf: any) => (
                 <option key={etf.symbol} value={etf.symbol}>{etf.symbol}</option>
               ))}

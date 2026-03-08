@@ -151,7 +151,7 @@ export default function Performance({ selectedPortfolioId }: { selectedPortfolio
                 onChange={(e) => setEvolutionHoldingId(e.target.value === "ALL" ? "ALL" : parseInt(e.target.value))}
                 className="bg-slate-50 border border-slate-200 rounded px-3 py-1 text-xs font-bold text-slate-600 focus:outline-none focus:border-primary"
               >
-                <option value="ALL">Entire Portfolio</option>
+                <option value="ALL">All Investments</option>
                 {holdings?.map((h) => (
                   <option key={h.id} value={h.id}>{h.symbol}</option>
                 ))}
@@ -417,7 +417,7 @@ export default function Performance({ selectedPortfolioId }: { selectedPortfolio
           </div>
           <div className="space-y-2">
             <div className="text-[10px] text-white/50 uppercase font-bold tracking-widest">Position Count</div>
-            <div className="text-sm font-semibold">{holdings?.length || 0} Assets Successfully Indexed</div>
+            <div className="text-sm font-semibold">{holdings?.length || 0} Investments Successfully Indexed</div>
           </div>
         </div>
       </Card>

@@ -63,7 +63,7 @@ function DashboardRouter() {
           </div>
           <div className="space-y-2">
             <h3 className="text-xl font-bold text-slate-800">No Portfolio Selected</h3>
-            <p className="text-slate-500 max-w-sm">Create your first investment portfolio to start tracking your ETF assets and performance.</p>
+            <p className="text-slate-500 max-w-sm">Create your first investment portfolio to start tracking your assets and performance.</p>
           </div>
         </div>
       );
@@ -106,7 +106,7 @@ function Router() {
           <div className="bg-white p-4 rounded-2xl shadow-xl border border-slate-100 animate-bounce">
             <TrendingUp className="w-10 h-10 text-[#004a99]" />
           </div>
-          <div className="text-lg font-bold text-slate-800 tracking-tight">ETF INSIGHTS</div>
+          <div className="text-lg font-bold text-slate-800 tracking-tight">INVESTMENT INSIGHTS</div>
           <div className="text-xs font-bold text-slate-400 uppercase tracking-widest">Establishing Secure Uplink...</div>
         </div>
       </div>
@@ -124,13 +124,13 @@ function Router() {
                 <div className="bg-white/20 p-2 rounded-lg backdrop-blur-sm">
                   <TrendingUp className="w-6 h-6 text-white" />
                 </div>
-                <span className="font-bold tracking-tighter text-xl">ETF INSIGHTS</span>
+                <span className="font-bold tracking-tighter text-xl">INVESTMENT INSIGHTS</span>
               </div>
               <h1 className="text-4xl font-bold leading-tight">
                 Professional Portfolio Intelligence.
               </h1>
               <p className="text-white/70 text-lg">
-                High-fidelity ETF tracking with real-time market data, historical performance audit, and detailed dividend ledger analysis.
+                High-fidelity asset tracking with real-time market data, historical performance audit, and detailed dividend ledger analysis.
               </p>
             </div>
             <div className="space-y-4 hidden md:block">

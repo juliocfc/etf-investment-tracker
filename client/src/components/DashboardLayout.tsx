@@ -64,7 +64,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
                 <TrendingUp className="w-5 h-5 text-white" />
               </div>
               <h1 className="text-lg font-bold tracking-tight text-[#004a99] uppercase hidden sm:block">
-                ETF Insights
+                Investment Insights
               </h1>
             </div>
 
@@ -247,7 +247,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
               </div>
               
               <div className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">
-                &copy; 2026 ETF Portfolio Insights &bull; Professional Grade Investment Tracking
+                &copy; 2026 Investment Portfolio Insights &bull; Professional Grade Asset Tracking
               </div>
             </div>
           </footer>

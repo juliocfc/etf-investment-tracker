@@ -70,7 +70,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
 
   const addHoldingMutation = trpc.etf.addHolding.useMutation({
     onSuccess: () => {
-      toast.success("ETF added successfully!");
+      toast.success("Investment added successfully!");
       refetchHoldings();
       refetchSummary();
       utils.portfolio.getConsolidatedSummary.invalidate();
@@ -84,19 +84,19 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
       setIsAddDialogOpen(false);
     },
     onError: (error) => {
-      toast.error(error.message || "Failed to add ETF");
+      toast.error(error.message || "Failed to add Investment");
     },
   });
 
   const deleteHoldingMutation = trpc.etf.deleteHolding.useMutation({
     onSuccess: () => {
-      toast.success("ETF deleted successfully!");
+      toast.success("Investment deleted successfully!");
       refetchHoldings();
       refetchSummary();
       utils.portfolio.getConsolidatedSummary.invalidate();
     },
     onError: () => {
-      toast.error("Failed to delete ETF");
+      toast.error("Failed to delete Investment");
     },
   });
 
@@ -238,7 +238,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
   };
 
   const handleDeleteHolding = (id: number) => {
-    if (confirm("Are you sure you want to delete this ETF?")) {
+    if (confirm("Are you sure you want to delete this investment?")) {
       deleteHoldingMutation.mutate({ id });
     }
   };
@@ -281,7 +281,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
         <div className="data-card border-l-4 border-l-green-600">
           <div className="data-card-title">Investment Value</div>
           <div className="data-card-value">{formatCurrency(summary?.investmentValue)}</div>
-          <div className="data-card-subtitle text-slate-500">Current ETF Market Value</div>
+          <div className="data-card-subtitle text-slate-500">Current Market Value</div>
         </div>
 
         <div className="data-card border-l-4 border-l-slate-400">
@@ -335,12 +335,12 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
               <DialogTrigger asChild>
                 <Button size="sm" className="flex-1 sm:flex-none bg-primary hover:bg-primary/90 text-white shadow-md shadow-primary/10 text-xs font-bold uppercase tracking-wider h-9">
                   <Plus className="mr-2 h-3.5 w-3.5" />
-                  Add ETF
+                  Add Investment
                 </Button>
               </DialogTrigger>
               <DialogContent className="sm:max-w-[425px]">
                 <DialogHeader>
-                  <DialogTitle>Add New ETF Holding</DialogTitle>
+                  <DialogTitle>Add New Investment</DialogTitle>
                 </DialogHeader>
                 <div className="space-y-4 pt-4">
                   <div className="grid gap-2">
@@ -348,7 +348,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                     <Input placeholder="e.g., VOO" value={formData.symbol} onChange={handleSymbolChange} />
                   </div>
                   <div className="grid gap-2">
-                    <label className="text-xs font-bold text-slate-500 uppercase">ETF Name</label>
+                    <label className="text-xs font-bold text-slate-500 uppercase">Investment Name</label>
                     <Input placeholder="Vanguard S&P 500 ETF" value={formData.name} onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))} />
                   </div>
                   <div className="grid grid-cols-2 gap-4">
@@ -479,7 +479,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                             className="text-red-600 focus:text-red-600 focus:bg-red-50"
                           >
                             <Trash2 className="mr-2 h-4 w-4" />
-                            <span>Delete Asset</span>
+                            <span>Delete Investment</span>
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
