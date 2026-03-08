@@ -113,6 +113,12 @@ async function fetchPriceFromAlphaVantage(symbol: string): Promise<PriceData | n
     const url = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${symbol}&apikey=${env.alphaVantageApiKey}`;
     
     const response = await axios.get(url);
+    console.log(`[FinancialApi] Alpha Vantage response for ${symbol}:`, JSON.stringify(response.data));
+    
+    if (response.data['Note'] || response.data['Information']) {
+      console.warn(`[FinancialApi] Alpha Vantage potential rate limit:`, response.data['Note'] || response.data['Information']);
+    }
+
     const data = response.data['Global Quote'];
     
     if (data && data['05. price']) {
