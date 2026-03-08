@@ -70,15 +70,15 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
             </div>
 
             {/* Global Portfolio Selector */}
-            <div className="ml-4 pl-4 border-l border-slate-200 hidden md:flex items-center gap-3">
-              <div className="p-1.5 bg-slate-50 rounded text-slate-400">
+            <div className="ml-2 sm:ml-4 pl-2 sm:pl-4 border-l border-slate-200 flex items-center gap-2 sm:gap-3">
+              <div className="p-1.5 bg-slate-50 rounded text-slate-400 hidden sm:block">
                 <Briefcase className="w-4 h-4" />
               </div>
               <div className="flex items-center gap-1">
                 <select
                   value={selectedPortfolioId || ""}
                   onChange={(e) => onPortfolioChange(parseInt(e.target.value))}
-                  className="bg-transparent border-none focus:ring-0 font-bold text-slate-700 cursor-pointer hover:text-[#004a99] transition-colors"
+                  className="bg-transparent border-none focus:ring-0 font-bold text-slate-700 cursor-pointer hover:text-[#004a99] transition-colors text-xs sm:text-sm max-w-[100px] sm:max-w-none truncate"
                 >
                   {portfolios.map((p) => (
                     <option key={p.id} value={p.id}>{p.name}</option>
@@ -87,9 +87,9 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
                 
                 <Dialog open={isAddPortfolioOpen} onOpenChange={setIsAddPortfolioOpen}>
                   <DialogTrigger asChild>
-                    <button className="flex items-center gap-1.5 ml-2 px-2 py-1 text-slate-400 hover:text-primary transition-colors rounded-md hover:bg-slate-100" title="New Portfolio">
+                    <button className="flex items-center gap-1.5 ml-1 sm:ml-2 px-1.5 py-1 text-slate-400 hover:text-primary transition-colors rounded-md hover:bg-slate-100" title="New Portfolio">
                       <Plus className="w-3.5 h-3.5" />
-                      <span className="text-[10px] font-bold uppercase tracking-wider">New Portfolio</span>
+                      <span className="text-[10px] font-bold uppercase tracking-wider hidden md:block">New Portfolio</span>
                     </button>
                   </DialogTrigger>
                   <DialogContent>
@@ -164,8 +164,8 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
             )}
           </div>
 
-          <div className="flex items-center gap-6">
-            <div className="flex flex-col items-end">
+          <div className="flex items-center gap-2 sm:gap-6">
+            <div className="flex flex-col items-end hidden sm:flex">
               <span className="text-sm font-semibold text-slate-700">
                 {user?.name || "User"}
               </span>
@@ -175,11 +175,11 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
             </div>
             <button
               onClick={() => logout()}
-              className="flex items-center gap-2 text-sm text-slate-500 hover:text-red-600 transition-colors font-medium border-l border-slate-200 pl-6"
+              className="flex items-center gap-2 text-sm text-slate-500 hover:text-red-600 transition-colors font-medium border-l border-slate-200 pl-2 sm:pl-6"
               title="Logout"
             >
               <LogOut className="w-4 h-4" />
-              <span>Sign Out</span>
+              <span className="hidden sm:inline">Sign Out</span>
             </button>
           </div>
         </div>
