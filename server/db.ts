@@ -1,4 +1,5 @@
-import { eq, and, gte, desc } from "drizzle-orm";
+import { eq, and, gte, desc, sql } from "drizzle-orm";
+export { eq, and };
 import { drizzle } from "drizzle-orm/libsql";
 import { createClient } from "@libsql/client";
 import { InsertUser, users, portfolios, etfHoldings, purchases, priceHistory, balanceHistory, dividendHistory, cashBalance } from "../drizzle/schema";
@@ -36,6 +37,22 @@ export async function getUserByOpenId(openId: string) {
 export async function createUser(user: InsertUser) {
   const db = await getDb();
   return db.insert(users).values(user);
+}
+
+export async function upsertUser(user: InsertUser) {
+  const db = await getDb();
+  return db
+    .insert(users)
+    .values(user)
+    .onConflictDoUpdate({
+      target: users.openId,
+      set: {
+        name: user.name,
+        email: user.email,
+        lastSignedIn: user.lastSignedIn,
+        updatedAt: sql`CURRENT_TIMESTAMP`,
+      },
+    });
 }
 
 // ETF Holdings queries
@@ -158,17 +175,13 @@ export async function updateCashBalance(userId: number, portfolioId: number, amo
   }
 }
 
-// Bulk CSV Import Helper
-export async function processCSVImport(userId: number, portfolioId: number, holdingId: number, csvContent: string) {
-  const lines = csvContent.split('\n');
-  const results = [];
-  const errors = [];
-  let successCount = 0;
+// CSV Parsing and Bulk Import
+export function parseCSVContent(csvContent: string) {
+  const lines = csvContent.split("\n");
+  const records = [];
 
-  // Simple CSV parser (assuming date,quantity,cost)
-  // Skip header if it exists
   let startIndex = 0;
-  if (lines.length > 0 && lines[0].toLowerCase().includes('date')) {
+  if (lines.length > 0 && lines[0].toLowerCase().includes("date")) {
     startIndex = 1;
   }
 
@@ -176,9 +189,11 @@ export async function processCSVImport(userId: number, portfolioId: number, hold
     const line = lines[i].trim();
     if (!line) continue;
 
-    const parts = line.split(',').map(p => p.trim().replace('$', ''));
+    const parts = line.split(",").map((p) => p.trim().replace("$", ""));
     if (parts.length < 3) {
-      errors.push(`Row ${i + 1}: Invalid format (expected 3 columns)`);
+      records.push({
+        error: `Row ${i + 1}: Invalid format (expected 3 columns)`,
+      });
       continue;
     }
 
@@ -188,36 +203,56 @@ export async function processCSVImport(userId: number, portfolioId: number, hold
     const date = new Date(dateStr);
 
     if (isNaN(quantity) || isNaN(cost) || isNaN(date.getTime())) {
-      errors.push(`Row ${i + 1}: Invalid data types`);
+      records.push({
+        error: `Row ${i + 1}: Invalid data types`,
+      });
       continue;
     }
 
-    results.push({
-      userId,
-      portfolioId,
-      holdingId,
+    records.push({
+      date,
       quantity: quantity.toString(),
-      price: cost.toString(),
-      purchaseDate: date,
+      cost: cost.toString(),
     });
   }
 
-  if (results.length > 0) {
-    const db = await getDb();
-    for (const record of results) {
-      await db.insert(purchases).values(record);
+  return records;
+}
+
+export async function bulkImportPurchases(
+  userId: number,
+  portfolioId: number,
+  holdingId: number,
+  symbol: string,
+  records: any[]
+) {
+  const db = await getDb();
+  let successCount = 0;
+  const errors = [];
+
+  for (const record of records) {
+    try {
+      await db.insert(purchases).values({
+        userId,
+        portfolioId,
+        holdingId,
+        quantity: record.quantity,
+        price: record.cost,
+        purchaseDate: record.date,
+      });
       successCount++;
+    } catch (error) {
+      errors.push(`Failed to insert record: ${(error as Error).message}`);
     }
   }
 
-  return { success: successCount, failed: errors.length, errors };
+  return { success: successCount, failed: records.length - successCount, errors };
 }
 
-// Helper to update average cost after import
-export async function recalculateAverageCost(holdingId: number) {
+export async function calculateAverageCost(holdingId: number) {
   const db = await getDb();
   const allPurchases = await getPurchases(holdingId);
-  
+
   if (allPurchases.length === 0) return "0";
 
   let totalQty = 0;
@@ -227,16 +262,19 @@ export async function recalculateAverageCost(holdingId: number) {
     const qty = parseFloat(p.quantity.toString());
     const price = parseFloat(p.price.toString());
     totalQty += qty;
-    totalCost += (qty * price);
+    totalCost += qty * price;
   }
 
   const avgCost = totalQty > 0 ? (totalCost / totalQty).toString() : "0";
   const totalQtyStr = totalQty.toString();
 
-  await db.update(etfHoldings).set({ 
-    purchasePrice: avgCost, // average price
-    quantity: totalQtyStr 
-  }).where(eq(etfHoldings.id, holdingId));
+  await db
+    .update(etfHoldings)
+    .set({
+      purchasePrice: avgCost,
+      quantity: totalQtyStr,
+    })
+    .where(eq(etfHoldings.id, holdingId));
 
   return avgCost;
 }
