@@ -41,6 +41,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
   const [isEditingCash, setIsEditingCash] = useState(false);
   const [isCSVImportOpen, setIsCSVImportOpen] = useState<number | null>(null);
   const lookupTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const quantityInputRef = useRef<HTMLInputElement>(null);
 
   const utils = trpc.useUtils();
 
@@ -208,6 +209,13 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
       return;
     }
 
+    // Check for duplicates in current portfolio
+    const isDuplicate = holdings?.some(h => h.symbol.toUpperCase() === formData.symbol.toUpperCase());
+    if (isDuplicate) {
+      toast.error(`'${formData.symbol.toUpperCase()}' is already in this portfolio. Use 'Add Shares' to increase your position.`);
+      return;
+    }
+
     addHoldingMutation.mutate({
       portfolioId: selectedPortfolioId,
       symbol: formData.symbol,
@@ -354,7 +362,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                   <div className="grid grid-cols-2 gap-4">
                     <div className="grid gap-2">
                       <label className="text-xs font-bold text-slate-500 uppercase">Quantity</label>
-                      <Input type="number" step="0.001" value={formData.quantity} onChange={(e) => setFormData(prev => ({ ...prev, quantity: e.target.value }))} />
+                      <Input ref={quantityInputRef} type="number" step="0.001" value={formData.quantity} onChange={(e) => setFormData(prev => ({ ...prev, quantity: e.target.value }))} />
                     </div>
                     <div className="grid gap-2">
                       <label className="text-xs font-bold text-slate-500 uppercase">Price</label>
@@ -623,7 +631,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                 <Input type="number" step="0.001" value={buyData.quantity} onChange={(e) => setBuyData(prev => ({ ...prev, quantity: e.target.value }))} />
               </div>
               <div className="grid gap-2">
-                <label className="text-xs font-bold text-slate-500 uppercase">Execution Price</label>
+                <label className="text-xs font-bold text-slate-500 uppercase">Purchase Price</label>
                 <Input type="number" step="0.01" value={buyData.price} onChange={(e) => setBuyData(prev => ({ ...prev, price: e.target.value }))} />
               </div>
               <div className="grid gap-2">
@@ -631,7 +639,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                 <Input type="date" value={buyData.purchaseDate} onChange={(e) => setBuyData(prev => ({ ...prev, purchaseDate: e.target.value }))} />
               </div>
               <Button onClick={() => handleBuyMoreShares(isBuyDialogOpen)} className="w-full" disabled={buyMoreSharesMutation.isPending}>
-                Execute Order
+                Add Purchase
               </Button>
             </div>
           </DialogContent>
