@@ -754,6 +754,71 @@ export const etfRouter = router({
         volatility: metrics.volatility,
       };
     }),
+
+  getInvestmentActivities: protectedProcedure
+    .input(
+      z.object({
+        portfolioId: z.number(),
+        range: z.enum(["7d", "1m", "ytd", "1y"]),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const holdings = await getUserEtfHoldings(ctx.user.id, input.portfolioId);
+      
+      const now = new Date();
+      let startDate = new Date();
+      
+      if (input.range === "7d") {
+        startDate.setDate(now.getDate() - 7);
+      } else if (input.range === "1m") {
+        startDate.setMonth(now.getMonth() - 1);
+      } else if (input.range === "ytd") {
+        startDate = new Date(now.getFullYear(), 0, 1);
+      } else if (input.range === "1y") {
+        startDate.setFullYear(now.getFullYear() - 1);
+      }
+
+      const activities = [];
+
+      for (const holding of holdings) {
+        const allPurchases = await getPurchases(holding.id);
+        const filteredPurchases = allPurchases.filter(p => new Date(p.purchaseDate) >= startDate);
+
+        if (filteredPurchases.length > 0) {
+          let totalQty = 0;
+          let totalCost = 0;
+
+          filteredPurchases.forEach(p => {
+            const qty = parseFloat(p.quantity.toString());
+            const price = parseFloat(p.price.toString());
+            totalQty += qty;
+            totalCost += (qty * price);
+          });
+
+          const currentPrice = holding.currentPrice ? parseFloat(holding.currentPrice.toString()) : 0;
+          const currentValue = totalQty * currentPrice;
+          const gain = currentValue - totalCost;
+          const gainPercent = totalCost > 0 ? (gain / totalCost) * 100 : 0;
+
+          activities.push({
+            holdingId: holding.id,
+            symbol: holding.symbol,
+            name: holding.name,
+            totalQuantity: totalQty.toFixed(3),
+            totalCost: totalCost.toFixed(2),
+            averagePrice: (totalCost / totalQty).toFixed(2),
+            currentPrice: currentPrice.toFixed(2),
+            currentValue: currentValue.toFixed(2),
+            gain: gain.toFixed(2),
+            gainPercent: gainPercent.toFixed(2),
+            purchaseCount: filteredPurchases.length,
+            purchases: filteredPurchases
+          });
+        }
+      }
+
+      return activities;
+    }),
 });
 
 function calculateDailyReturn(

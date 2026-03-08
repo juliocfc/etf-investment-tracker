@@ -6,6 +6,7 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import DashboardLayout from "./components/DashboardLayout";
 import Holdings from "./pages/Portfolio";
+import Activities from "./pages/Activities";
 import Performance from "./pages/Performance";
 import Dividends from "./pages/Dividends";
 import { trpc } from "@/lib/trpc";
@@ -72,6 +73,8 @@ function DashboardRouter() {
     switch (activeTab) {
       case "portfolio":
         return <Holdings selectedPortfolioId={selectedPortfolioId} />;
+      case "activities":
+        return <Activities selectedPortfolioId={selectedPortfolioId} />;
       case "performance":
         return <Performance selectedPortfolioId={selectedPortfolioId} />;
       case "dividends":
