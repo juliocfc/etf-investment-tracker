@@ -1,24 +1,36 @@
 import React, { useState } from "react";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
-import { Menu, X, LogOut, TrendingUp, PieChart, Activity, DollarSign, Wallet } from "lucide-react";
+import { Menu, X, LogOut, TrendingUp, PieChart, Activity, DollarSign, Wallet, Briefcase, Plus } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
   activeTab?: string;
   onTabChange?: (tab: string) => void;
+  portfolios: any[];
+  selectedPortfolioId: number | null;
+  onPortfolioChange: (id: number) => void;
+  onCreatePortfolio: (name: string) => void;
 }
 
 export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
   children,
   activeTab = "portfolio",
   onTabChange,
+  portfolios,
+  selectedPortfolioId,
+  onPortfolioChange,
+  onCreatePortfolio,
 }) => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [isAddPortfolioOpen, setIsAddPortfolioOpen] = useState(false);
+  const [newPortfolioName, setNewPortfolioName] = useState("");
   const { user, logout } = useAuth();
 
   const navItems = [
-    { id: "portfolio", label: "Portfolio", icon: <Wallet className="w-4 h-4" /> },
+    { id: "portfolio", label: "Holdings & Cash", icon: <Wallet className="w-4 h-4" /> },
     { id: "performance", label: "Performance", icon: <Activity className="w-4 h-4" /> },
     { id: "dividends", label: "Dividends", icon: <DollarSign className="w-4 h-4" /> },
   ];
@@ -43,9 +55,63 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
               <div className="bg-[#004a99] p-1.5 rounded">
                 <TrendingUp className="w-5 h-5 text-white" />
               </div>
-              <h1 className="text-lg font-bold tracking-tight text-[#004a99] uppercase">
+              <h1 className="text-lg font-bold tracking-tight text-[#004a99] uppercase hidden sm:block">
                 ETF Insights
               </h1>
+            </div>
+
+            {/* Global Portfolio Selector */}
+            <div className="ml-4 pl-4 border-l border-slate-200 hidden md:flex items-center gap-3">
+              <div className="p-1.5 bg-slate-50 rounded text-slate-400">
+                <Briefcase className="w-4 h-4" />
+              </div>
+              <div className="flex items-center gap-1">
+                <select
+                  value={selectedPortfolioId || ""}
+                  onChange={(e) => onPortfolioChange(parseInt(e.target.value))}
+                  className="bg-transparent border-none focus:ring-0 font-bold text-slate-700 cursor-pointer hover:text-[#004a99] transition-colors"
+                >
+                  {portfolios.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+                
+                <Dialog open={isAddPortfolioOpen} onOpenChange={setIsAddPortfolioOpen}>
+                  <DialogTrigger asChild>
+                    <button className="flex items-center gap-1.5 ml-2 px-2 py-1 text-slate-400 hover:text-primary transition-colors rounded-md hover:bg-slate-100" title="New Portfolio">
+                      <Plus className="w-3.5 h-3.5" />
+                      <span className="text-[10px] font-bold uppercase tracking-wider">New Portfolio</span>
+                    </button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Create New Portfolio</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4 pt-4">
+                      <div className="space-y-2">
+                        <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Portfolio Name</label>
+                        <Input
+                          placeholder="e.g., Retirement, Growth, Dividend"
+                          value={newPortfolioName}
+                          onChange={(e) => setNewPortfolioName(e.target.value)}
+                          autoFocus
+                        />
+                      </div>
+                      <Button 
+                        onClick={() => {
+                          onCreatePortfolio(newPortfolioName);
+                          setIsAddPortfolioOpen(false);
+                          setNewPortfolioName("");
+                        }}
+                        className="w-full bg-[#004a99] hover:bg-[#003d7a]"
+                        disabled={!newPortfolioName}
+                      >
+                        Create Portfolio
+                      </Button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              </div>
             </div>
           </div>
 

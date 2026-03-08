@@ -7,10 +7,7 @@ import { Plus, Trash2, RefreshCw, ShoppingCart, History, FolderPlus, FileUp, Wal
 import { toast } from "sonner";
 import React, { useEffect, useRef, useState, useMemo } from "react";
 
-export default function Portfolio() {
-  const [selectedPortfolioId, setSelectedPortfolioId] = useState<number | null>(null);
-  const [isAddPortfolioOpen, setIsAddPortfolioOpen] = useState(false);
-  const [newPortfolioName, setNewPortfolioName] = useState("");
+export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId: number }) {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isBuyDialogOpen, setIsBuyDialogOpen] = useState<number | null>(null);
   const [purchaseHistoryOpen, setPurchaseHistoryOpen] = useState<number | null>(null);
@@ -35,35 +32,17 @@ export default function Portfolio() {
   const utils = trpc.useUtils();
 
   // Queries
-  const { data: portfolios } = trpc.portfolio.getAll.useQuery();
   const { data: summary, refetch: refetchSummary } = trpc.etf.getPortfolioSummary.useQuery(
-    { portfolioId: selectedPortfolioId || 0 },
-    { enabled: selectedPortfolioId !== null }
+    { portfolioId: selectedPortfolioId },
+    { enabled: !!selectedPortfolioId }
   );
 
   const { data: holdings, refetch: refetchHoldings } = trpc.etf.getHoldings.useQuery(
-    { portfolioId: selectedPortfolioId || 0 },
-    { enabled: selectedPortfolioId !== null }
+    { portfolioId: selectedPortfolioId },
+    { enabled: !!selectedPortfolioId }
   );
 
-  // Initialize selected portfolio
-  useEffect(() => {
-    if (portfolios && portfolios.length > 0 && !selectedPortfolioId) {
-      setSelectedPortfolioId(portfolios[0].id);
-    }
-  }, [portfolios, selectedPortfolioId]);
-
   // Mutations
-  const createPortfolioMutation = trpc.portfolio.create.useMutation({
-    onSuccess: (newPortfolio) => {
-      toast.success("Portfolio created!");
-      setIsAddPortfolioOpen(false);
-      setNewPortfolioName("");
-      utils.portfolio.getAll.invalidate();
-      setSelectedPortfolioId(newPortfolio.id);
-    },
-  });
-
   const updatePricesMutation = trpc.etf.updatePrices.useMutation({
     onSuccess: () => {
       toast.success("Prices updated!");
@@ -237,7 +216,7 @@ export default function Portfolio() {
     });
   };
 
-  if (!portfolios) {
+  if (!selectedPortfolioId) {
     return (
       <div className="flex items-center justify-center h-64">
         <RefreshCw className="w-8 h-8 animate-spin text-primary" />
@@ -247,55 +226,6 @@ export default function Portfolio() {
 
   return (
     <div className="space-y-8">
-      {/* Top Bar: Portfolio Selection */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-lg shadow-sm border border-border">
-        <div className="flex items-center gap-4">
-          <div className="p-2 bg-slate-100 rounded-lg">
-            <Wallet className="w-5 h-5 text-slate-600" />
-          </div>
-          <div>
-            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block mb-1">Select Portfolio</label>
-            <div className="flex items-center gap-2">
-              <select
-                value={selectedPortfolioId || ""}
-                onChange={(e) => setSelectedPortfolioId(parseInt(e.target.value))}
-                className="min-w-[200px] px-3 py-1.5 bg-transparent border-b-2 border-slate-200 focus:border-primary focus:outline-none font-semibold text-slate-800 transition-colors"
-              >
-                {portfolios.map((p) => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
-                ))}
-              </select>
-              <Dialog open={isAddPortfolioOpen} onOpenChange={setIsAddPortfolioOpen}>
-                <DialogTrigger asChild>
-                  <Button variant="ghost" size="icon" className="text-primary hover:bg-primary/5 rounded-full">
-                    <Plus className="w-4 h-4" />
-                  </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Create Portfolio</DialogTitle>
-                  </DialogHeader>
-                  <div className="space-y-4 pt-4">
-                    <Input
-                      placeholder="Portfolio Name"
-                      value={newPortfolioName}
-                      onChange={(e) => setNewPortfolioName(e.target.value)}
-                    />
-                    <Button 
-                      onClick={() => createPortfolioMutation.mutate({ name: newPortfolioName })}
-                      className="w-full"
-                      disabled={!newPortfolioName}
-                    >
-                      Create
-                    </Button>
-                  </div>
-                </DialogContent>
-              </Dialog>
-            </div>
-          </div>
-        </div>
-      </div>
-
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <div className="data-card border-l-4 border-l-primary">

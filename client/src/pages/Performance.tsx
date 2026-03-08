@@ -12,30 +12,19 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
-import { TrendingUp, Activity, BarChart3, Database, Filter, RefreshCw, Calendar, ArrowUpRight, ArrowDownRight } from "lucide-react";
+import { TrendingUp, Activity, BarChart3, Database, RefreshCw, ArrowUpRight, ArrowDownRight } from "lucide-react";
 
-export default function Performance() {
+export default function Performance({ selectedPortfolioId }: { selectedPortfolioId: number }) {
   const [timePeriod, setTimePeriod] = useState<"1m" | "1y" | "5y">("1y");
-  const [selectedPortfolioId, setSelectedPortfolioId] = useState<number | null>(null);
 
   // Independent asset selectors for each chart
   const [evolutionHoldingId, setEvolutionHoldingId] = useState<number | "ALL">("ALL");
   const [priceHoldingId, setPriceHoldingId] = useState<number | null>(null);
   const [quantityHoldingId, setQuantityHoldingId] = useState<number | null>(null);
 
-  // Get portfolios
-  const { data: portfolios } = trpc.portfolio.getAll.useQuery();
-
-  // Initialize selected portfolio
-  useEffect(() => {
-    if (portfolios && portfolios.length > 0 && !selectedPortfolioId) {
-      setSelectedPortfolioId(portfolios[0].id);
-    }
-  }, [portfolios, selectedPortfolioId]);
-
   const { data: holdings } = trpc.etf.getHoldings.useQuery(
-    selectedPortfolioId ? { portfolioId: selectedPortfolioId } : { portfolioId: 0 },
-    { enabled: selectedPortfolioId !== null }
+    { portfolioId: selectedPortfolioId },
+    { enabled: !!selectedPortfolioId }
   );
 
   // Initialize independent holding selectors when holdings are loaded
@@ -49,11 +38,11 @@ export default function Performance() {
   // Queries
   const { data: evolution, isLoading: isLoadingEvolution } = trpc.etf.getPortfolioEvolution.useQuery(
     { 
-      portfolioId: selectedPortfolioId || 0, 
+      portfolioId: selectedPortfolioId, 
       range: timePeriod,
       holdingId: evolutionHoldingId === "ALL" ? undefined : evolutionHoldingId
     },
-    { enabled: selectedPortfolioId !== null }
+    { enabled: !!selectedPortfolioId }
   );
 
   const selectedPriceHolding = holdings?.find(h => h.id === priceHoldingId) || holdings?.[0];
@@ -105,14 +94,6 @@ export default function Performance() {
     shares: parseFloat(item.quantity),
   })) || [];
 
-  if (!portfolios) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <RefreshCw className="w-8 h-8 animate-spin text-primary" />
-      </div>
-    );
-  }
-
   const getEvolutionChange = () => {
     if (evolutionChartData.length < 2) return { val: 0, percent: 0, isPositive: true };
     const first = evolutionChartData[0].value;
@@ -126,20 +107,15 @@ export default function Performance() {
 
   return (
     <div className="space-y-8">
-      {/* Portfolio Selector & Time Period */}
+      {/* Action Bar */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-lg shadow-sm border border-border">
         <div className="flex items-center gap-4">
+          <div className="p-2 bg-slate-100 rounded-lg text-primary">
+            <Activity className="w-5 h-5" />
+          </div>
           <div>
-            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest block mb-1">Active Portfolio</label>
-            <select
-              value={selectedPortfolioId || ""}
-              onChange={(e) => setSelectedPortfolioId(parseInt(e.target.value))}
-              className="min-w-[200px] px-3 py-1.5 bg-transparent border-b-2 border-slate-200 focus:border-primary focus:outline-none font-semibold text-slate-800 transition-colors"
-            >
-              {portfolios.map((p) => (
-                <option key={p.id} value={p.id}>{p.name}</option>
-              ))}
-            </select>
+            <h2 className="text-lg font-bold text-slate-800">Performance Analytics</h2>
+            <p className="text-xs text-slate-500 font-medium">Historical growth and individual asset tracking</p>
           </div>
         </div>
 
@@ -148,7 +124,7 @@ export default function Performance() {
             <button
               key={period}
               onClick={() => setTimePeriod(period)}
-              className={`px-6 py-2 rounded text-xs font-bold uppercase transition-all ${
+              className={`px-6 py-2 rounded text-xs font-bold uppercase transition-all duration-300 ${
                 timePeriod === period
                   ? "bg-white text-primary shadow-sm"
                   : "text-slate-500 hover:text-slate-800"

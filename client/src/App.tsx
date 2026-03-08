@@ -5,30 +5,74 @@ import { getGoogleLoginUrl } from "./const";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import DashboardLayout from "./components/DashboardLayout";
-import Portfolio from "./pages/Portfolio";
+import Holdings from "./pages/Portfolio";
 import Performance from "./pages/Performance";
 import Dividends from "./pages/Dividends";
-import { useState } from "react";
-import { TrendingUp, ShieldCheck, Globe, Zap, BarChart3 } from "lucide-react";
+import { trpc } from "@/lib/trpc";
+import { useState, useEffect } from "react";
+import { TrendingUp, ShieldCheck, Globe, Zap, BarChart3, Briefcase } from "lucide-react";
+import { toast } from "sonner";
 
 function DashboardRouter() {
   const [activeTab, setActiveTab] = useState("portfolio");
+  const [selectedPortfolioId, setSelectedPortfolioId] = useState<number | null>(null);
+  const utils = trpc.useUtils();
+
+  // Global portfolios query
+  const { data: portfolios } = trpc.portfolio.getAll.useQuery();
+
+  // Initialize selected portfolio
+  useEffect(() => {
+    if (portfolios && portfolios.length > 0 && !selectedPortfolioId) {
+      setSelectedPortfolioId(portfolios[0].id);
+    }
+  }, [portfolios, selectedPortfolioId]);
+
+  // Global mutations
+  const createPortfolioMutation = trpc.portfolio.create.useMutation({
+    onSuccess: (newPortfolio) => {
+      toast.success("Portfolio created!");
+      utils.portfolio.getAll.invalidate();
+      setSelectedPortfolioId(newPortfolio.id);
+    },
+  });
 
   const renderContent = () => {
+    if (!selectedPortfolioId) {
+      return (
+        <div className="flex flex-col items-center justify-center h-[60vh] gap-6 text-center bg-white rounded-2xl border-2 border-dashed border-slate-200">
+          <div className="p-4 bg-slate-50 rounded-full">
+            <TrendingUp className="w-12 h-12 text-slate-300" />
+          </div>
+          <div className="space-y-2">
+            <h3 className="text-xl font-bold text-slate-800">No Portfolio Selected</h3>
+            <p className="text-slate-500 max-w-sm">Create your first investment portfolio to start tracking your ETF assets and performance.</p>
+          </div>
+        </div>
+      );
+    }
+
     switch (activeTab) {
       case "portfolio":
-        return <Portfolio />;
+        return <Holdings selectedPortfolioId={selectedPortfolioId} />;
       case "performance":
-        return <Performance />;
+        return <Performance selectedPortfolioId={selectedPortfolioId} />;
       case "dividends":
-        return <Dividends />;
+        return <Dividends selectedPortfolioId={selectedPortfolioId} />;
       default:
-        return <Portfolio />;
+        return <Holdings selectedPortfolioId={selectedPortfolioId} />;
     }
   };
 
   return (
-    <DashboardLayout activeTab={activeTab} onTabChange={setActiveTab}>
+    <DashboardLayout 
+      activeTab={activeTab} 
+      onTabChange={setActiveTab}
+      portfolios={portfolios || []}
+      selectedPortfolioId={selectedPortfolioId}
+      onPortfolioChange={setSelectedPortfolioId}
+      onCreatePortfolio={(name) => createPortfolioMutation.mutate({ name })}
+    >
       {renderContent()}
     </DashboardLayout>
   );

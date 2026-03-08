@@ -11,24 +11,12 @@ import {
   ResponsiveContainer,
   Cell
 } from "recharts";
-import { DollarSign, Calendar, ListFilter, Trophy, RefreshCw, Briefcase, TrendingUp, BarChart3 } from "lucide-react";
+import { DollarSign, Calendar, ListFilter, Trophy, RefreshCw, Briefcase, BarChart3, TrendingUp } from "lucide-react";
 
-export default function Dividends() {
-  const [selectedPortfolioId, setSelectedPortfolioId] = useState<number | null>(null);
-
-  // Get portfolios
-  const { data: portfolios } = trpc.portfolio.getAll.useQuery();
-
-  // Initialize selected portfolio
-  useEffect(() => {
-    if (portfolios && portfolios.length > 0 && !selectedPortfolioId) {
-      setSelectedPortfolioId(portfolios[0].id);
-    }
-  }, [portfolios, selectedPortfolioId]);
-
+export default function Dividends({ selectedPortfolioId }: { selectedPortfolioId: number }) {
   const { data: report, isLoading } = trpc.etf.getDetailedDividendReport.useQuery(
-    { portfolioId: selectedPortfolioId || 0 },
-    { enabled: selectedPortfolioId !== null }
+    { portfolioId: selectedPortfolioId },
+    { enabled: !!selectedPortfolioId }
   );
 
   const [filterSymbol, setFilterSymbol] = useState<string>("ALL");
@@ -61,14 +49,6 @@ export default function Dividends() {
       .sort((a, b) => a.date.localeCompare(b.date));
   }, [report?.history, chartFilterSymbol]);
 
-  if (!portfolios) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <RefreshCw className="w-8 h-8 animate-spin text-primary" />
-      </div>
-    );
-  }
-
   if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center h-96 gap-4">
@@ -92,23 +72,15 @@ export default function Dividends() {
 
   return (
     <div className="space-y-8">
-      {/* Portfolio Selector */}
+      {/* Action Bar */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-lg shadow-sm border border-border">
         <div className="flex items-center gap-4">
-          <div className="p-2 bg-slate-100 rounded-lg">
-            <Briefcase className="w-5 h-5 text-slate-600" />
+          <div className="p-2 bg-slate-100 rounded-lg text-primary">
+            <DollarSign className="w-5 h-5" />
           </div>
           <div>
-            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest block mb-1">Select Portfolio</label>
-            <select
-              value={selectedPortfolioId || ""}
-              onChange={(e) => setSelectedPortfolioId(parseInt(e.target.value))}
-              className="min-w-[200px] px-3 py-1.5 bg-transparent border-b-2 border-slate-200 focus:border-primary focus:outline-none font-semibold text-slate-800 transition-colors"
-            >
-              {portfolios.map((p) => (
-                <option key={p.id} value={p.id}>{p.name}</option>
-              ))}
-            </select>
+            <h2 className="text-lg font-bold text-slate-800">Dividend Analytics</h2>
+            <p className="text-xs text-slate-500 font-medium">Passive income audit and payout timelines</p>
           </div>
         </div>
       </div>
