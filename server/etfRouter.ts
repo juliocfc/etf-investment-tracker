@@ -194,9 +194,27 @@ export const etfRouter = router({
         days: z.number().default(365),
       })
     )
-    .query(async ({ input }) => {
+    .query(async ({ ctx, input }) => {
       const interval = input.days <= 30 ? "1d" : "1wk";
-      return fetchHistoricalPrices(input.symbol, input.days, interval);
+      const history = await fetchHistoricalPrices(input.symbol, input.days, interval);
+      
+      // Find current price in our DB for this symbol
+      const db = await getDb();
+      const holding = await db.select({ currentPrice: etfHoldings.currentPrice })
+        .from(etfHoldings)
+        .where(and(eq(etfHoldings.symbol, input.symbol.toUpperCase()), eq(etfHoldings.userId, ctx.user.id)))
+        .limit(1)
+        .then((rows: any[]) => rows[0]);
+
+      if (holding && holding.currentPrice) {
+        history.push({
+          symbol: input.symbol.toUpperCase(),
+          price: parseFloat(holding.currentPrice),
+          timestamp: new Date(),
+        });
+      }
+
+      return history;
     }),
 
   getPriceHistory: protectedProcedure
@@ -684,63 +702,107 @@ export const etfRouter = router({
         holdings = holdings.filter(h => h.id === input.holdingId);
       }
 
+      const emptyMetrics = { m1: "0", ytd: "0", y1: "0", y5: "0" };
       if (!holdings || holdings.length === 0) {
-        return { m1: "0", ytd: "0", y1: "0", y5: "0" };
+        return { marketGrowth: emptyMetrics, pricePerformance: emptyMetrics };
       }
-
-      // To calculate all metrics, we need 5 years of history
-      const days = 365 * 5;
-      const interval = "1wk";
-
-      const evolution: Record<string, number> = {};
-      const dates: Date[] = [];
-
-      for (const holding of holdings) {
-        const priceHistory = await fetchHistoricalPrices(holding.symbol, days, interval);
-        const purchases = await getPurchases(holding.id);
-
-        for (const pricePoint of priceHistory) {
-          const dateKey = pricePoint.timestamp.toISOString().split("T")[0];
-          if (!evolution[dateKey]) {
-            evolution[dateKey] = 0;
-            dates.push(pricePoint.timestamp);
-          }
-
-          let quantityOwned = 0;
-          for (const purchase of purchases) {
-            if (new Date(purchase.purchaseDate) <= pricePoint.timestamp) {
-              quantityOwned += parseFloat(purchase.quantity.toString());
-            }
-          }
-          evolution[dateKey] += quantityOwned * pricePoint.price;
-        }
-      }
-
-      const sortedDates = dates.sort((a, b) => a.getTime() - b.getTime());
-      if (sortedDates.length < 2) return { m1: "0", ytd: "0", y1: "0", y5: "0" };
-
-      const latestValue = evolution[sortedDates[sortedDates.length - 1].toISOString().split("T")[0]];
-      
-      const calculateGrowth = (targetDate: Date) => {
-        const closestDate = sortedDates
-          .filter(d => d <= targetDate)
-          .sort((a, b) => b.getTime() - a.getTime())[0] || sortedDates[0];
-        
-        const startValue = evolution[closestDate.toISOString().split("T")[0]];
-        return startValue > 0 ? ((latestValue - startValue) / startValue) * 100 : 0;
-      };
 
       const now = new Date();
-      const m1Date = new Date(); m1Date.setMonth(now.getMonth() - 1);
-      const ytdDate = new Date(now.getFullYear(), 0, 1);
-      const y1Date = new Date(); y1Date.setFullYear(now.getFullYear() - 1);
-      const y5Date = new Date(); y5Date.setFullYear(now.getFullYear() - 5);
+      const m1Days = 30;
+      const ytdDays = Math.ceil((now.getTime() - new Date(now.getFullYear(), 0, 1).getTime()) / (1000 * 60 * 60 * 24)) + 1;
+      const y1Days = 365;
+      const y5Days = 365 * 5;
+
+      // Helper to get historical evolution data
+      const getEvolutionData = async (days: number, interval: "1d" | "1wk") => {
+        const evolution: Record<string, number> = {};
+        const currentQtyEvolution: Record<string, number> = {};
+        const dates: Date[] = [];
+
+        for (const holding of holdings) {
+          const priceHistory = await fetchHistoricalPrices(holding.symbol, days, interval);
+          const purchases = await getPurchases(holding.id);
+          const currentQty = parseFloat(holding.quantity.toString());
+
+          for (const pricePoint of priceHistory) {
+            const dateKey = pricePoint.timestamp.toISOString().split("T")[0];
+            if (!evolution[dateKey]) {
+              evolution[dateKey] = 0;
+              currentQtyEvolution[dateKey] = 0;
+              dates.push(pricePoint.timestamp);
+            }
+
+            let quantityOwnedOnDate = 0;
+            for (const purchase of purchases) {
+              if (new Date(purchase.purchaseDate) <= pricePoint.timestamp) {
+                quantityOwnedOnDate += parseFloat(purchase.quantity.toString());
+              }
+            }
+            evolution[dateKey] += quantityOwnedOnDate * pricePoint.price;
+            currentQtyEvolution[dateKey] += currentQty * pricePoint.price;
+          }
+          
+          // Always add "Today" as the final point using current DB price
+          const todayKey = now.toISOString().split("T")[0];
+          const currentPrice = parseFloat(holding.currentPrice || "0");
+          if (evolution[todayKey] === undefined) {
+            evolution[todayKey] = 0;
+            currentQtyEvolution[todayKey] = 0;
+            dates.push(now);
+          }
+          evolution[todayKey] += parseFloat(holding.quantity) * currentPrice;
+          currentQtyEvolution[todayKey] += currentQty * currentPrice;
+        }
+
+        const sortedDates = dates.sort((a, b) => a.getTime() - b.getTime());
+        return { evolution, currentQtyEvolution, sortedDates };
+      };
+
+      // Fetch data for all ranges
+      const m1Data = await getEvolutionData(m1Days, "1d");
+      const ytdData = await getEvolutionData(ytdDays, "1d");
+      const y1Data = await getEvolutionData(y1Days, "1d");
+      const y5Data = await getEvolutionData(y5Days, "1wk");
+
+      const calculateTotalGrowth = (data: any) => {
+        const { evolution, sortedDates } = data;
+        if (sortedDates.length < 2) return 0;
+
+        const firstDateKey = sortedDates[0].toISOString().split("T")[0];
+        const lastDateKey = sortedDates[sortedDates.length - 1].toISOString().split("T")[0];
+        
+        const startValue = evolution[firstDateKey];
+        const endValue = evolution[lastDateKey];
+
+        return startValue > 0 ? ((endValue - startValue) / startValue) * 100 : 0;
+      };
+
+      const calculatePriceGrowth = (data: any) => {
+        const { currentQtyEvolution, sortedDates } = data;
+        if (sortedDates.length < 2) return 0;
+
+        const firstDateKey = sortedDates[0].toISOString().split("T")[0];
+        const lastDateKey = sortedDates[sortedDates.length - 1].toISOString().split("T")[0];
+        
+        const startValue = currentQtyEvolution[firstDateKey];
+        const endValue = currentQtyEvolution[lastDateKey];
+
+        return startValue > 0 ? ((endValue - startValue) / startValue) * 100 : 0;
+      };
 
       return {
-        m1: calculateGrowth(m1Date).toFixed(2),
-        ytd: calculateGrowth(ytdDate).toFixed(2),
-        y1: calculateGrowth(y1Date).toFixed(2),
-        y5: calculateGrowth(y5Date).toFixed(2),
+        marketGrowth: {
+          m1: calculateTotalGrowth(m1Data).toFixed(2),
+          ytd: calculateTotalGrowth(ytdData).toFixed(2),
+          y1: calculateTotalGrowth(y1Data).toFixed(2),
+          y5: calculateTotalGrowth(y5Data).toFixed(2),
+        },
+        pricePerformance: {
+          m1: calculatePriceGrowth(m1Data).toFixed(2),
+          ytd: calculatePriceGrowth(ytdData).toFixed(2),
+          y1: calculatePriceGrowth(y1Data).toFixed(2),
+          y5: calculatePriceGrowth(y5Data).toFixed(2),
+        }
       };
     }),
 
@@ -761,17 +823,27 @@ export const etfRouter = router({
       }
 
       let days = 365;
-      if (input.range === "1m") days = 30;
-      else if (input.range === "ytd") {
+      let interval: "1d" | "1wk" = "1wk";
+
+      if (input.range === "1m") {
+        days = 30;
+        interval = "1d";
+      } else if (input.range === "ytd") {
         const now = new Date();
         const startOfYear = new Date(now.getFullYear(), 0, 1);
-        days = Math.ceil((now.getTime() - startOfYear.getTime()) / (1000 * 60 * 60 * 24));
-      } else if (input.range === "5y") days = 365 * 5;
-
-      const interval = input.range === "1m" ? "1d" : "1wk";
+        days = Math.ceil((now.getTime() - startOfYear.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+        interval = "1d";
+      } else if (input.range === "1y") {
+        days = 400; // Match lookback of metrics calculation
+        interval = "1d";
+      } else if (input.range === "5y") {
+        days = 365 * 5;
+        interval = "1wk";
+      }
 
       const evolution: Record<string, number> = {};
       const dates: Date[] = [];
+      const now = new Date();
 
       // Fetch history for each holding
       for (const holding of holdings) {
@@ -795,6 +867,15 @@ export const etfRouter = router({
 
           evolution[dateKey] += quantityOwned * pricePoint.price;
         }
+
+        // Always add "Today" as the final point using current DB price
+        const todayKey = now.toISOString().split("T")[0];
+        const currentPrice = parseFloat(holding.currentPrice || "0");
+        if (evolution[todayKey] === undefined) {
+          evolution[todayKey] = 0;
+          dates.push(now);
+        }
+        evolution[todayKey] += parseFloat(holding.quantity) * currentPrice;
       }
 
       // Sort dates and format result

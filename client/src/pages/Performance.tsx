@@ -164,28 +164,60 @@ export default function Performance({ selectedPortfolioId }: { selectedPortfolio
       </div>
 
       {/* Performance Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-        {[
-          { label: "1 Month", value: growthMetrics?.m1, id: "m1" },
-          { label: "YTD", value: growthMetrics?.ytd, id: "ytd" },
-          { label: "1 Year", value: growthMetrics?.y1, id: "y1" },
-          { label: "5 Years", value: growthMetrics?.y5, id: "y5" },
-        ].map((metric) => {
-          const val = parseFloat(metric.value || "0");
-          const isPositive = val >= 0;
-          return (
-            <Card key={metric.id} className="p-4 bg-white shadow-sm border border-border flex flex-col items-center justify-center text-center">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">{metric.label}</span>
-              {isLoadingMetrics ? (
-                <div className="h-8 w-16 bg-slate-100 animate-pulse rounded" />
-              ) : (
-                <div className={`text-2xl font-bold font-mono ${isPositive ? "text-green-600" : "text-red-600"}`}>
-                  {isPositive ? "+" : ""}{val.toFixed(2)}%
-                </div>
-              )}
-            </Card>
-          );
-        })}
+      <div className="space-y-6">
+        <div>
+          <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 px-1">Market Performance (Pure Price Movement)</div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+            {[
+              { label: "1 Month", value: growthMetrics?.pricePerformance.m1, id: "pp-m1" },
+              { label: "YTD", value: growthMetrics?.pricePerformance.ytd, id: "pp-ytd" },
+              { label: "1 Year", value: growthMetrics?.pricePerformance.y1, id: "pp-y1" },
+              { label: "5 Years", value: growthMetrics?.pricePerformance.y5, id: "pp-pp5" },
+            ].map((metric) => {
+              const val = parseFloat(metric.value || "0");
+              const isPositive = val >= 0;
+              return (
+                <Card key={metric.id} className="p-4 bg-white shadow-sm border border-border flex flex-col items-center justify-center text-center">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">{metric.label}</span>
+                  {isLoadingMetrics ? (
+                    <div className="h-8 w-16 bg-slate-100 animate-pulse rounded" />
+                  ) : (
+                    <div className={`text-2xl font-bold font-mono ${isPositive ? "text-green-600" : "text-red-600"}`}>
+                      {isPositive ? "+" : ""}{val.toFixed(2)}%
+                    </div>
+                  )}
+                </Card>
+              );
+            })}
+          </div>
+        </div>
+
+        <div>
+          <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 px-1">Portfolio Growth (Total Value Change)</div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+            {[
+              { label: "1 Month", value: growthMetrics?.marketGrowth.m1, id: "mg-m1" },
+              { label: "YTD", value: growthMetrics?.marketGrowth.ytd, id: "mg-ytd" },
+              { label: "1 Year", value: growthMetrics?.marketGrowth.y1, id: "mg-y1" },
+              { label: "5 Years", value: growthMetrics?.marketGrowth.y5, id: "mg-y5" },
+            ].map((metric) => {
+              const val = parseFloat(metric.value || "0");
+              const isPositive = val >= 0;
+              return (
+                <Card key={metric.id} className="p-4 bg-white shadow-sm border border-border flex flex-col items-center justify-center text-center border-t-2 border-t-primary/20">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">{metric.label}</span>
+                  {isLoadingMetrics ? (
+                    <div className="h-8 w-16 bg-slate-100 animate-pulse rounded" />
+                  ) : (
+                    <div className={`text-2xl font-bold font-mono ${isPositive ? "text-green-600" : "text-red-600"}`}>
+                      {isPositive ? "+" : ""}{val.toFixed(2)}%
+                    </div>
+                  )}
+                </Card>
+              );
+            })}
+          </div>
+        </div>
       </div>
 
       {/* Main Portfolio Evolution Chart */}
