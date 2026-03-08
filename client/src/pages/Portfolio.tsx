@@ -353,9 +353,18 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                 <div className="space-y-4 pt-4">
                   <div className="grid gap-2">
                     <label className="text-xs font-bold text-slate-500 uppercase">Symbol</label>
-                    <Input placeholder="e.g., VOO" value={formData.symbol} onChange={handleSymbolChange} />
-                  </div>
-                  <div className="grid gap-2">
+                    <Input 
+                      placeholder="e.g., VOO, AAPL" 
+                      value={formData.symbol} 
+                      onChange={handleSymbolChange}
+                      onKeyDown={(e) => {
+                        if (e.key === "Tab" && !e.shiftKey) {
+                          e.preventDefault();
+                          quantityInputRef.current?.focus();
+                        }
+                      }}
+                    />
+                  </div>                  <div className="grid gap-2">
                     <label className="text-xs font-bold text-slate-500 uppercase">Investment Name</label>
                     <Input placeholder="Vanguard S&P 500 ETF" value={formData.name} onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))} />
                   </div>
