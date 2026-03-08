@@ -236,6 +236,7 @@ export async function bulkImportPurchases(
         userId,
         portfolioId,
         holdingId,
+        symbol,
         quantity: record.quantity,
         price: record.cost,
         purchaseDate: record.date,
