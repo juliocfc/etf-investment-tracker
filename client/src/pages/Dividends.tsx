@@ -1,3 +1,4 @@
+import { formatCurrency, formatNumber } from "@/lib/utils";
 import React, { useState, useEffect, useMemo } from "react";
 import { trpc } from "@/lib/trpc";
 import { Card } from "@/components/ui/card";
@@ -93,7 +94,7 @@ export default function Dividends({ selectedPortfolioId }: { selectedPortfolioId
             <div>
               <div className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Received (All Time)</div>
               <div className="text-3xl font-bold text-slate-800 font-mono">
-                ${displayAllTimeTotal}
+                {formatCurrency(displayAllTimeTotal)}
               </div>
             </div>
             <div className="p-2 bg-yellow-50 rounded-lg">
@@ -118,7 +119,7 @@ export default function Dividends({ selectedPortfolioId }: { selectedPortfolioId
             <div>
               <div className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Monthly Avg (L12M)</div>
               <div className="text-3xl font-bold text-slate-800 font-mono">
-                ${displayMonthlyAverage}
+                {formatCurrency(displayMonthlyAverage)}
               </div>
             </div>
             <div className="p-2 bg-green-50 rounded-lg">
@@ -142,7 +143,7 @@ export default function Dividends({ selectedPortfolioId }: { selectedPortfolioId
           <div className="flex justify-between items-start mb-4">
             <div>
               <div className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Total (Last 12M)</div>
-              <div className="text-3xl font-bold text-slate-800 font-mono">${report?.totalLastYear}</div>
+              <div className="text-3xl font-bold text-slate-800 font-mono">{formatCurrency(report?.totalLastYear)}</div>
             </div>
             <div className="p-2 bg-slate-50 rounded-lg">
               <Calendar className="w-5 h-5 text-slate-600" />
@@ -152,7 +153,7 @@ export default function Dividends({ selectedPortfolioId }: { selectedPortfolioId
             {report?.quarterlyBreakdown.map((q: any) => (
               <div key={q.quarter} className="text-center p-1 bg-slate-50 rounded border border-slate-100">
                 <div className="text-[8px] font-bold text-slate-400 uppercase truncate">{q.quarter.split(' ')[1]}</div>
-                <div className="text-[10px] font-bold text-slate-700">${parseFloat(q.amount).toFixed(0)}</div>
+                <div className="text-[10px] font-bold text-slate-700">{formatCurrency(q.amount, 0)}</div>
               </div>
             ))}
           </div>
@@ -170,7 +171,7 @@ export default function Dividends({ selectedPortfolioId }: { selectedPortfolioId
             {report?.etfBreakdown.map((etf: any) => (
               <div key={etf.symbol} className="flex justify-between items-center pb-1 border-b border-slate-100 last:border-0">
                 <div className="font-bold text-slate-700 text-[10px]">{etf.symbol}</div>
-                <div className="font-mono text-green-600 text-[10px] font-bold">${etf.totalLastYear}</div>
+                <div className="font-mono text-green-600 text-[10px] font-bold">{formatCurrency(etf.totalLastYear)}</div>
               </div>
             ))}
           </div>
@@ -202,7 +203,7 @@ export default function Dividends({ selectedPortfolioId }: { selectedPortfolioId
           <div className="text-right">
             <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Total Period Value</div>
             <div className="text-3xl font-bold text-slate-800 font-mono">
-              ${barChartData.reduce((acc, curr) => acc + curr.amount, 0).toFixed(2)}
+              {formatCurrency(barChartData.reduce((acc, curr) => acc + curr.amount, 0))}
             </div>
           </div>
         </div>
@@ -236,7 +237,7 @@ export default function Dividends({ selectedPortfolioId }: { selectedPortfolioId
                     fontSize: "12px",
                   }}
                   cursor={{ fill: '#f8fafc' }}
-                  formatter={(value) => [`$${value}`, "Received"]}
+                  formatter={(value) => [formatCurrency(value as number), "Received"]}
                 />
                 <Bar dataKey="amount" fill="#004a99" radius={[4, 4, 0, 0]}>
                   {barChartData.map((entry, index) => (
@@ -296,13 +297,13 @@ export default function Dividends({ selectedPortfolioId }: { selectedPortfolioId
                     </td>
                     <td className="py-4 px-6 font-bold text-primary">{dividend.symbol}</td>
                     <td className="py-4 px-6 text-right font-mono text-slate-500">
-                      ${parseFloat(dividend.dividendPerShare.toString()).toFixed(4)}
+                      {formatCurrency(dividend.dividendPerShare, 4)}
                     </td>
                     <td className="py-4 px-6 text-right font-mono text-slate-500">
-                      {parseFloat(dividend.quantityOwned.toString()).toFixed(3)}
+                      {formatNumber(dividend.quantityOwned, 3)}
                     </td>
                     <td className="py-4 px-6 text-right font-mono font-bold text-green-600 bg-green-50/30">
-                      ${parseFloat(dividend.totalAmount.toString()).toFixed(2)}
+                      {formatCurrency(dividend.totalAmount)}
                     </td>
                   </tr>
                 ))}

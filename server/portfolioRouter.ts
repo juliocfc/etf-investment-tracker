@@ -18,6 +18,52 @@ export const portfolioRouter = router({
     return userPortfolios;
   }),
 
+  // Get consolidated summary for all portfolios
+  getConsolidatedSummary: protectedProcedure.query(async ({ ctx }) => {
+    const db = await getDb();
+    if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database unavailable" });
+
+    const { getUserEtfHoldings } = await import("./db");
+
+    const userPortfolios = await db
+      .select()
+      .from(portfolios)
+      .where(eq(portfolios.userId, ctx.user.id));
+
+    const cashBalances = await db
+      .select()
+      .from(cashBalance)
+      .where(eq(cashBalance.userId, ctx.user.id));
+
+    let totalInvestmentValue = 0;
+    let totalCashBalance = 0;
+
+    // Calculate total ETF value across all portfolios
+    for (const portfolio of userPortfolios) {
+      const holdings = await getUserEtfHoldings(ctx.user.id, portfolio.id);
+      for (const holding of holdings) {
+        const currentPrice = holding.currentPrice ? parseFloat(holding.currentPrice.toString()) : 0;
+        const quantity = parseFloat(holding.quantity.toString());
+        totalInvestmentValue += currentPrice * quantity;
+      }
+    }
+
+    // Calculate total cash
+    for (const cash of cashBalances) {
+      totalCashBalance += parseFloat(cash.amount.toString());
+    }
+
+    const totalValue = totalInvestmentValue + totalCashBalance;
+
+    return {
+      totalValue: totalValue.toFixed(2),
+      investmentValue: totalInvestmentValue.toFixed(2),
+      cashBalance: totalCashBalance.toFixed(2),
+      investmentPercent: totalValue > 0 ? ((totalInvestmentValue / totalValue) * 100).toFixed(1) : "0",
+      cashPercent: totalValue > 0 ? ((totalCashBalance / totalValue) * 100).toFixed(1) : "0",
+    };
+  }),
+
   // Get a specific portfolio by ID
   getById: protectedProcedure
     .input(z.object({ portfolioId: z.number() }))

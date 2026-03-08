@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Plus, Trash2, RefreshCw, ShoppingCart, History, FolderPlus, FileUp, Wallet, TrendingUp, Info } from "lucide-react";
 import { toast } from "sonner";
+import { formatCurrency, formatNumber } from "@/lib/utils";
 import React, { useEffect, useRef, useState, useMemo } from "react";
 
 const CHART_COLORS = ["#004a99", "#3d8a3d", "#f2a900", "#cc0000", "#666666", "#94a3b8", "#38bdf8", "#10b981", "#fbbf24"];
@@ -240,7 +241,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <div className="data-card border-l-4 border-l-primary">
           <div className="data-card-title">Total Portfolio</div>
-          <div className="data-card-value">${summary?.totalValue || "0.00"}</div>
+          <div className="data-card-value">{formatCurrency(summary?.totalValue)}</div>
           <div className="data-card-subtitle flex items-center gap-1 text-slate-500">
             <Info className="w-3 h-3" /> Includes Cash
           </div>
@@ -248,13 +249,13 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
 
         <div className="data-card border-l-4 border-l-green-600">
           <div className="data-card-title">Investment Value</div>
-          <div className="data-card-value">${summary?.investmentValue || "0.00"}</div>
+          <div className="data-card-value">{formatCurrency(summary?.investmentValue)}</div>
           <div className="data-card-subtitle text-slate-500">Current ETF Market Value</div>
         </div>
 
         <div className="data-card border-l-4 border-l-slate-400">
           <div className="data-card-title">Cash Reserve</div>
-          <div className="data-card-value">${summary?.cashBalance || "0.00"}</div>
+          <div className="data-card-value">{formatCurrency(summary?.cashBalance)}</div>
           <div className="data-card-subtitle text-slate-500">Available Liquid Funds</div>
         </div>
 
@@ -366,12 +367,12 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                       <div className="font-bold text-primary text-base leading-tight">{holding.symbol}</div>
                       <div className="text-slate-500 text-[10px] leading-tight max-w-[180px] truncate">{holding.name}</div>
                     </td>
-                    <td className="text-right py-4 px-6 font-mono font-medium">{parseFloat(holding.quantity).toFixed(3)}</td>
-                    <td className="text-right py-4 px-6 font-mono text-slate-600">${holding.averageCost?.toFixed(2) || "0.00"}</td>
-                    <td className="text-right py-4 px-6 font-mono text-slate-600">${parseFloat(holding.currentPrice || 0).toFixed(2)}</td>
-                    <td className="text-right py-4 px-6 font-mono font-bold">${holding.currentValue}</td>
+                    <td className="text-right py-4 px-6 font-mono font-medium">{formatNumber(holding.quantity, 3)}</td>
+                    <td className="text-right py-4 px-6 font-mono text-slate-600">{formatCurrency(holding.averageCost)}</td>
+                    <td className="text-right py-4 px-6 font-mono text-slate-600">{formatCurrency(holding.currentPrice)}</td>
+                    <td className="text-right py-4 px-6 font-mono font-bold">{formatCurrency(holding.currentValue)}</td>
                     <td className={`text-right py-4 px-6 font-mono font-bold ${isGain ? "text-green-600" : "text-red-600"}`}>
-                      {isGain ? "+" : ""}${holding.gain}
+                      {isGain ? "+" : ""}{formatCurrency(holding.gain)}
                     </td>
                     <td className={`text-right py-4 px-6 font-mono font-bold ${isGain ? "text-green-600" : "text-red-600"}`}>
                       {isGain ? "+" : ""}{holding.gainPercent}%
@@ -403,13 +404,14 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
               <tfoot className="bg-slate-50 border-t-2 border-slate-200">
                 <tr className="font-bold text-slate-800">
                   <td colSpan={4} className="py-4 px-6 uppercase text-[10px] tracking-widest text-slate-500">Total Portfolio Performance</td>
-                  <td className="text-right py-4 px-6 font-mono text-lg">${summary.investmentValue}</td>
+                  <td className="text-right py-4 px-6 font-mono text-lg">{formatCurrency(summary.investmentValue)}</td>
                   <td className={`text-right py-4 px-6 font-mono text-lg ${
                     summary.holdings.reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0) >= 0 
                       ? "text-green-600" 
                       : "text-red-600"
                   }`}>
-                    ${summary.holdings.reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0).toFixed(2)}
+                    {summary.holdings.reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0) >= 0 ? "+" : ""}
+                    {formatCurrency(summary.holdings.reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0))}
                   </td>
                   <td className={`text-right py-4 px-6 font-mono text-lg ${
                     (summary.holdings.reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0) / 
@@ -495,7 +497,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
             <div className="text-center">
               <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Current Liquid Assets</p>
               {!isEditingCash ? (
-                <p className="text-5xl font-bold text-slate-800 font-mono tracking-tighter">${summary?.cashBalance || "0.00"}</p>
+                <p className="text-5xl font-bold text-slate-800 font-mono tracking-tighter">{formatCurrency(summary?.cashBalance)}</p>
               ) : (
                 <div className="flex flex-col gap-4 max-w-xs mx-auto">
                   <Input
@@ -646,8 +648,8 @@ function PurchaseHistoryTable({ holdingId, onDelete }: { holdingId: number, onDe
             return (
               <tr key={purchase.id} className="border-b border-border hover:bg-white transition-colors">
                 <td className="py-3 px-4 font-mono">{dateStr}</td>
-                <td className="text-right py-3 px-4 font-mono">{parseFloat(purchase.quantity).toFixed(3)}</td>
-                <td className="text-right py-3 px-4 font-mono font-medium">${parseFloat(purchase.price).toFixed(2)}</td>
+                <td className="text-right py-3 px-4 font-mono">{formatNumber(purchase.quantity, 3)}</td>
+                <td className="text-right py-3 px-4 font-mono font-medium">{formatCurrency(purchase.price)}</td>
                 <td className="text-center py-3 px-4">
                   <Button
                     size="sm"

@@ -1,3 +1,4 @@
+import { formatCurrency } from "@/lib/utils";
 import React, { useState, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
 import { Card } from "@/components/ui/card";
@@ -163,7 +164,7 @@ export default function Performance({ selectedPortfolioId }: { selectedPortfolio
               <div className="text-right">
                 <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Selected Value</div>
                 <div className="text-3xl font-bold text-slate-800 font-mono">
-                  ${evolutionChartData[evolutionChartData.length - 1].value}
+                  {formatCurrency(evolutionChartData[evolutionChartData.length - 1].value)}
                 </div>
               </div>
               <div className={`text-right px-4 py-2 rounded-lg ${evolutionChange.isPositive ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
@@ -217,7 +218,7 @@ export default function Performance({ selectedPortfolioId }: { selectedPortfolio
                     fontSize: "12px",
                   }}
                   itemStyle={{ color: "#004a99", fontWeight: "bold" }}
-                  formatter={(value) => [`$${value}`, "Portfolio Value"]}
+                  formatter={(value) => [formatCurrency(value as number), "Portfolio Value"]}
                 />
                 <Area
                   type="monotone"
@@ -291,7 +292,7 @@ export default function Performance({ selectedPortfolioId }: { selectedPortfolio
                       borderRadius: "6px",
                       fontSize: "11px",
                     }}
-                    formatter={(value) => [`$${value}`, "Price"]}
+                    formatter={(value) => [formatCurrency(value as number), "Price"]}
                   />
                   <Line
                     type="monotone"

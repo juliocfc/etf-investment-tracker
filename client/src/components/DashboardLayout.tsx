@@ -1,5 +1,7 @@
 import React, { useState } from "react";
 import { useAuth } from "@/_core/hooks/useAuth";
+import { trpc } from "@/lib/trpc";
+import { formatCurrency } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Menu, X, LogOut, TrendingUp, PieChart, Activity, DollarSign, Wallet, Briefcase, Plus } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -28,6 +30,10 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
   const [isAddPortfolioOpen, setIsAddPortfolioOpen] = useState(false);
   const [newPortfolioName, setNewPortfolioName] = useState("");
   const { user, logout } = useAuth();
+
+  const { data: consolidated } = trpc.portfolio.getConsolidatedSummary.useQuery(undefined, {
+    staleTime: 30000,
+  });
 
   const navItems = [
     { id: "portfolio", label: "Holdings & Cash", icon: <Wallet className="w-4 h-4" /> },
@@ -113,6 +119,36 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
                 </Dialog>
               </div>
             </div>
+
+            {/* Consolidated Totals */}
+            {consolidated && (
+              <div className="ml-6 pl-6 border-l border-slate-200 hidden lg:flex items-center gap-8">
+                <div className="flex flex-col">
+                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-tight">Consolidated Total</span>
+                  <span className="text-sm font-bold text-slate-800 font-mono leading-none">
+                    {formatCurrency(consolidated.totalValue)}
+                  </span>
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-tight">Investments</span>
+                  <div className="flex items-baseline gap-1.5 leading-none">
+                    <span className="text-xs font-bold text-green-600 font-mono">
+                      {formatCurrency(consolidated.investmentValue)}
+                    </span>
+                    <span className="text-[9px] font-bold text-slate-400">({consolidated.investmentPercent}%)</span>
+                  </div>
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-tight">Total Cash</span>
+                  <div className="flex items-baseline gap-1.5 leading-none">
+                    <span className="text-xs font-bold text-slate-600 font-mono">
+                      {formatCurrency(consolidated.cashBalance)}
+                    </span>
+                    <span className="text-[9px] font-bold text-slate-400">({consolidated.cashPercent}%)</span>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="flex items-center gap-6">
