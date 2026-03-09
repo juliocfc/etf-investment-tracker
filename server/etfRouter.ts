@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
-import { etfHoldings } from "../drizzle/schema";
+import { etfHoldings, purchases } from "../drizzle/schema";
 import {
   getUserEtfHoldings,
   createEtfHolding,
@@ -23,6 +23,7 @@ import {
   getDb,
   and,
   eq,
+  desc,
 } from "./db";
 import {
   fetchEtfPrice,
@@ -35,16 +36,45 @@ import { calculatePerformanceMetrics } from "./performanceMetrics";
 
 export const etfRouter = router({
   getHoldings: protectedProcedure
-    .input(z.object({ portfolioId: z.number() }))
+    .input(z.object({ portfolioId: z.number(), accountId: z.number().optional() }))
     .query(async ({ ctx, input }) => {
-      const holdings = await getUserEtfHoldings(ctx.user.id, input.portfolioId);
+      const holdings = await getUserEtfHoldings(ctx.user.id, input.portfolioId, input.accountId);
       if (!holdings || holdings.length === 0) return [];
       const holdingsWithAvgCost = await Promise.all(
-        holdings.map(async (holding) => {
+        holdings.map(async (holding: any) => {
           const avgCost = await calculateAverageCost(holding.id);
           return { ...holding, averageCost: avgCost };
         })
       );
+
+      if (input.accountId === undefined) {
+        // Consolidate by symbol
+        const consolidatedMap = new Map<string, any>();
+        for (const h of holdingsWithAvgCost) {
+          if (!consolidatedMap.has(h.symbol)) {
+            consolidatedMap.set(h.symbol, {
+              ...h,
+              id: -1,
+              isConsolidated: true,
+              quantity: 0,
+              totalCost: 0,
+            });
+          }
+          const existing = consolidatedMap.get(h.symbol);
+          const qty = parseFloat(h.quantity.toString());
+          const avgCost = parseFloat(h.averageCost || h.purchasePrice || "0");
+          existing.quantity += qty;
+          existing.totalCost += qty * avgCost;
+        }
+
+        return Array.from(consolidatedMap.values()).map((h) => ({
+          ...h,
+          quantity: h.quantity.toString(),
+          averageCost: h.quantity > 0 ? (h.totalCost / h.quantity).toString() : "0",
+          totalCost: undefined, // Remove temporary field
+        }));
+      }
+
       return holdingsWithAvgCost;
     }),
 
@@ -52,6 +82,7 @@ export const etfRouter = router({
     .input(
       z.object({
         portfolioId: z.number(),
+        accountId: z.number(),
         symbol: z.string().min(1).max(20),
         name: z.string().min(1).max(255),
         quantity: z.string(),
@@ -72,6 +103,7 @@ export const etfRouter = router({
       const holdingId = await createEtfHolding({
         userId: ctx.user.id,
         portfolioId: input.portfolioId,
+        accountId: input.accountId,
         symbol: input.symbol.toUpperCase(),
         name: input.name,
         quantity: input.quantity,
@@ -87,6 +119,7 @@ export const etfRouter = router({
         await addPurchase({
           userId: ctx.user.id,
           portfolioId: input.portfolioId,
+          accountId: input.accountId,
           holdingId: Number(holdingId),
           symbol: input.symbol.toUpperCase(),
           quantity: input.quantity,
@@ -246,16 +279,16 @@ export const etfRouter = router({
     }),
 
   getCashBalance: protectedProcedure
-    .input(z.object({ portfolioId: z.number() }))
+    .input(z.object({ portfolioId: z.number(), accountId: z.number().optional() }))
     .query(async ({ ctx, input }) => {
-      const balance = await getCashBalance(ctx.user.id, input.portfolioId);
+      const balance = await getCashBalance(ctx.user.id, input.portfolioId, input.accountId);
       return balance?.amount || "0";
     }),
 
   updateCashBalance: protectedProcedure
-    .input(z.object({ portfolioId: z.number(), amount: z.string() }))
+    .input(z.object({ portfolioId: z.number(), accountId: z.number(), amount: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      return updateCashBalance(ctx.user.id, input.portfolioId, input.amount);
+      return updateCashBalance(ctx.user.id, input.portfolioId, input.amount, input.accountId);
     }),
 
   getBalanceHistory: protectedProcedure
@@ -466,47 +499,99 @@ export const etfRouter = router({
       z.object({
         portfolioId: z.number(),
         holdingId: z.number(),
+        symbol: z.string(),
+        accountId: z.number().optional(),
         quantity: z.string(),
         price: z.string(),
         purchaseDate: z.date(),
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const holdings = await getUserEtfHoldings(ctx.user.id, input.portfolioId);
-      const holding = holdings.find((h) => h.id === input.holdingId);
-      
-      if (!holding) {
-        throw new Error("Holding not found");
+      let holdingId = input.holdingId;
+      let holding: any;
+
+      if (holdingId === -1) {
+        const holdings = await getUserEtfHoldings(ctx.user.id, input.portfolioId, input.accountId);
+        holding = holdings.find((h: any) => h.symbol === input.symbol.toUpperCase());
+
+        if (!holding) {
+          const name = (await fetchETFName(input.symbol.toUpperCase())) || input.symbol.toUpperCase();
+          const isValid = await validateEtfSymbol(input.symbol);
+          if (!isValid) {
+            throw new Error(`Invalid ETF symbol: ${input.symbol}`);
+          }
+          const priceData = await fetchEtfPrice(input.symbol);
+          const currentPrice = priceData?.price.toString();
+
+          holdingId = await createEtfHolding({
+            userId: ctx.user.id,
+            portfolioId: input.portfolioId,
+            accountId: input.accountId,
+            symbol: input.symbol.toUpperCase(),
+            name: name,
+            quantity: "0",
+            purchasePrice: input.price,
+            purchaseDate: input.purchaseDate,
+            desiredAllocation: "0",
+            currentPrice: currentPrice || input.price,
+            lastPriceUpdate: new Date(),
+          });
+          holding = { symbol: input.symbol.toUpperCase(), accountId: input.accountId };
+        } else {
+          holdingId = holding.id;
+        }
+      } else {
+        const holdings = await getUserEtfHoldings(ctx.user.id, input.portfolioId);
+        holding = holdings.find((h: any) => h.id === holdingId);
+        if (!holding) {
+          throw new Error("Holding not found");
+        }
       }
 
       await addPurchase({
         userId: ctx.user.id,
         portfolioId: input.portfolioId,
-        holdingId: input.holdingId,
+        accountId: input.accountId || (holding as any).accountId,
+        holdingId: Number(holdingId),
         symbol: holding.symbol,
         quantity: input.quantity,
         price: input.price,
         purchaseDate: input.purchaseDate,
       });
 
-      const newQuantity = parseFloat(holding.quantity.toString()) + parseFloat(input.quantity);
-      const averageCost = await calculateAverageCost(input.holdingId);
-
-      await updateEtfHolding(input.holdingId, {
-        quantity: newQuantity.toString(),
-        purchasePrice: averageCost?.toString() || input.price,
-      });
+      const averageCost = await calculateAverageCost(Number(holdingId));
+      
+      const db = await getDb();
+      const updatedHolding = await db.select()
+        .from(etfHoldings)
+        .where(eq(etfHoldings.id, Number(holdingId)))
+        .then((rows: any[]) => rows[0]);
 
       return {
         success: true,
-        newQuantity: newQuantity.toFixed(3),
+        newQuantity: parseFloat(updatedHolding.quantity).toFixed(3),
         averageCost: parseFloat(averageCost || input.price).toFixed(3),
       };
     }),
 
   getPurchases: protectedProcedure
-    .input(z.object({ holdingId: z.number() }))
-    .query(async ({ input }) => {
+    .input(z.object({ 
+      holdingId: z.number(), 
+      symbol: z.string().optional(),
+      portfolioId: z.number().optional()
+    }))
+    .query(async ({ ctx, input }) => {
+      if (input.holdingId === -1 && input.symbol && input.portfolioId) {
+        // Return all purchases for this symbol in this portfolio across all accounts
+        const db = await getDb();
+        return db.select().from(purchases).where(
+          and(
+            eq(purchases.userId, ctx.user.id),
+            eq(purchases.portfolioId, input.portfolioId),
+            eq(purchases.symbol, input.symbol.toUpperCase())
+          )
+        ).orderBy(desc(purchases.purchaseDate));
+      }
       return getPurchases(input.holdingId);
     }),
 
@@ -517,13 +602,29 @@ export const etfRouter = router({
     }),
 
   deletePurchase: protectedProcedure
-    .input(z.object({ purchaseId: z.number(), holdingId: z.number() }))
+    .input(z.object({ purchaseId: z.number(), holdingId: z.number(), symbol: z.string().optional() }))
     .mutation(async ({ ctx, input }) => {
       const dbInstance = await getDb();
+      
+      // If holdingId is -1 (consolidated), we need to find the real holdingId from the purchase record
+      let actualHoldingId = input.holdingId;
+      if (actualHoldingId === -1) {
+        const purchaseRecord = await dbInstance
+          .select()
+          .from(purchases)
+          .where(and(eq(purchases.id, input.purchaseId), eq(purchases.userId, ctx.user.id)))
+          .then((rows: any[]) => rows[0]);
+        
+        if (!purchaseRecord) {
+          throw new Error("Purchase record not found or unauthorized");
+        }
+        actualHoldingId = purchaseRecord.holdingId;
+      }
+
       const holding = await dbInstance
         .select()
         .from(etfHoldings)
-        .where(and(eq(etfHoldings.id, input.holdingId), eq(etfHoldings.userId, ctx.user.id)))
+        .where(and(eq(etfHoldings.id, actualHoldingId), eq(etfHoldings.userId, ctx.user.id)))
         .then((rows: any[]) => rows[0]);
       
       if (!holding) {
@@ -531,7 +632,7 @@ export const etfRouter = router({
       }
 
       await deletePurchase(input.purchaseId);
-      const newAvgCost = await calculateAverageCost(input.holdingId);
+      const newAvgCost = await calculateAverageCost(actualHoldingId);
       
       return {
         success: true,
@@ -539,52 +640,114 @@ export const etfRouter = router({
       };
     }),
 
+  deleteHoldingBySymbol: protectedProcedure
+    .input(z.object({ portfolioId: z.number(), symbol: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const db = await getDb();
+      const symbol = input.symbol.toUpperCase();
+      
+      const holdings = await db.select()
+        .from(etfHoldings)
+        .where(and(
+          eq(etfHoldings.userId, ctx.user.id),
+          eq(etfHoldings.portfolioId, input.portfolioId),
+          eq(etfHoldings.symbol, symbol)
+        ));
+
+      for (const holding of holdings) {
+        await db.delete(purchases).where(eq(purchases.holdingId, holding.id));
+        await deleteEtfHolding(holding.id);
+      }
+
+      return { success: true, deletedCount: holdings.length };
+    }),
+
   getPortfolioSummary: protectedProcedure
-    .input(z.object({ portfolioId: z.number() }))
+    .input(z.object({ portfolioId: z.number(), accountId: z.number().optional() }))
     .query(async ({ ctx, input }) => {
-      const holdings = await getUserEtfHoldings(ctx.user.id, input.portfolioId);
-      const cashBalance = await getCashBalance(ctx.user.id, input.portfolioId);
+      const holdings = await getUserEtfHoldings(ctx.user.id, input.portfolioId, input.accountId);
+      const cashBalance = await getCashBalance(ctx.user.id, input.portfolioId, input.accountId);
 
       let totalInvestmentValue = 0;
       const holdingsWithValues = await Promise.all(
-        holdings.map(async (holding) => {
+        holdings.map(async (holding: any) => {
           const currentPrice = holding.currentPrice
             ? parseFloat(holding.currentPrice.toString())
             : 0;
           const quantity = parseFloat(holding.quantity.toString());
           const value = currentPrice * quantity;
-          
+
           // Calculate average cost from purchases
           const avgCost = await calculateAverageCost(holding.id);
-          const avgCostValue = avgCost || parseFloat(holding.purchasePrice.toString());
+          const avgCostValue = avgCost
+            ? parseFloat(avgCost.toString())
+            : parseFloat(holding.purchasePrice.toString());
           const purchaseValue = avgCostValue * quantity;
           const gain = value - purchaseValue;
-          const gainPercent = purchaseValue > 0 ? (gain / purchaseValue) * 100 : 0;
 
           totalInvestmentValue += value;
 
           return {
             ...holding,
             averageCost: avgCost,
-            totalCost: purchaseValue.toFixed(2),
-            currentValue: value.toFixed(2),
-            gain: gain.toFixed(2),
-            gainPercent: gainPercent.toFixed(2),
+            totalCostNum: purchaseValue,
+            currentValueNum: value,
+            gainNum: gain,
           };
         })
       );
 
-      const cashAmount = cashBalance
-        ? parseFloat(cashBalance.amount.toString())
-        : 0;
+      let processedHoldings: any[];
+      if (input.accountId === undefined) {
+        const consolidatedMap = new Map<string, any>();
+        for (const h of holdingsWithValues) {
+          if (!consolidatedMap.has(h.symbol)) {
+            consolidatedMap.set(h.symbol, {
+              ...h,
+              id: -1,
+              isConsolidated: true,
+              quantity: 0,
+              currentValueNum: 0,
+              totalCostNum: 0,
+              gainNum: 0,
+            });
+          }
+          const existing = consolidatedMap.get(h.symbol);
+          existing.quantity += parseFloat(h.quantity.toString());
+          existing.currentValueNum += h.currentValueNum;
+          existing.totalCostNum += h.totalCostNum;
+          existing.gainNum += h.gainNum;
+        }
+        processedHoldings = Array.from(consolidatedMap.values()).map((h) => ({
+          ...h,
+          quantity: h.quantity.toString(),
+          averageCost: h.quantity > 0 ? (h.totalCostNum / h.quantity).toString() : "0",
+          totalCost: h.totalCostNum.toFixed(2),
+          currentValue: h.currentValueNum.toFixed(2),
+          gain: h.gainNum.toFixed(2),
+          gainPercent:
+            h.totalCostNum > 0 ? ((h.gainNum / h.totalCostNum) * 100).toFixed(2) : "0",
+        }));
+      } else {
+        processedHoldings = holdingsWithValues.map((h) => ({
+          ...h,
+          totalCost: h.totalCostNum.toFixed(2),
+          currentValue: h.currentValueNum.toFixed(2),
+          gain: h.gainNum.toFixed(2),
+          gainPercent:
+            h.totalCostNum > 0 ? ((h.gainNum / h.totalCostNum) * 100).toFixed(2) : "0",
+        }));
+      }
+
+      const cashAmount = cashBalance ? parseFloat(cashBalance.amount.toString()) : 0;
       const totalValue = totalInvestmentValue + cashAmount;
 
       return {
-        holdings: holdingsWithValues,
+        holdings: processedHoldings,
         cashBalance: cashAmount.toFixed(2),
         investmentValue: totalInvestmentValue.toFixed(2),
         totalValue: totalValue.toFixed(2),
-        allocationBreakdown: holdingsWithValues.map((h) => ({
+        allocationBreakdown: processedHoldings.map((h: any) => ({
           symbol: h.symbol,
           name: h.name,
           percentage:
@@ -592,7 +755,7 @@ export const etfRouter = router({
               ? ((parseFloat(h.currentValue) / totalValue) * 100).toFixed(2)
               : "0",
         })),
-        investmentAllocationBreakdown: holdingsWithValues.map((h) => ({
+        investmentAllocationBreakdown: processedHoldings.map((h: any) => ({
           symbol: h.symbol,
           name: h.name,
           percentage:
@@ -600,10 +763,7 @@ export const etfRouter = router({
               ? ((parseFloat(h.currentValue) / totalInvestmentValue) * 100).toFixed(2)
               : "0",
         })),
-        cashAllocationPercent:
-          totalValue > 0
-            ? ((cashAmount / totalValue) * 100).toFixed(2)
-            : "0",
+        cashAllocationPercent: totalValue > 0 ? ((cashAmount / totalValue) * 100).toFixed(2) : "0",
       };
     }),
 
@@ -612,30 +772,73 @@ export const etfRouter = router({
       z.object({
         portfolioId: z.number(),
         holdingId: z.number(),
+        symbol: z.string(),
         csvContent: z.string(),
+        accountId: z.number().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const holdings = await getUserEtfHoldings(ctx.user.id, input.portfolioId);
-      const holding = holdings.find((h) => h.id === input.holdingId);
-      
-      if (!holding) {
-        throw new Error("Holding not found");
+      let holdingId = input.holdingId;
+      let holding: any;
+
+      if (holdingId === -1) {
+        const holdings = await getUserEtfHoldings(ctx.user.id, input.portfolioId, input.accountId);
+        holding = holdings.find((h: any) => h.symbol === input.symbol.toUpperCase());
+
+        if (!holding) {
+          const name = (await fetchETFName(input.symbol.toUpperCase())) || input.symbol.toUpperCase();
+          const isValid = await validateEtfSymbol(input.symbol);
+          if (!isValid) {
+            throw new Error(`Invalid ETF symbol: ${input.symbol}`);
+          }
+          const priceData = await fetchEtfPrice(input.symbol);
+          
+          holdingId = await createEtfHolding({
+            userId: ctx.user.id,
+            portfolioId: input.portfolioId,
+            accountId: input.accountId,
+            symbol: input.symbol.toUpperCase(),
+            name: name,
+            quantity: "0",
+            purchasePrice: "0",
+            purchaseDate: new Date(),
+            desiredAllocation: "0",
+            currentPrice: priceData?.price.toString() || "0",
+            lastPriceUpdate: new Date(),
+          });
+          holding = { symbol: input.symbol.toUpperCase(), accountId: input.accountId };
+        } else {
+          holdingId = holding.id;
+        }
+      } else {
+        const holdings = await getUserEtfHoldings(ctx.user.id, input.portfolioId);
+        holding = holdings.find((h: any) => h.id === holdingId);
+        if (!holding) {
+          throw new Error("Holding not found");
+        }
       }
 
+      const targetAccountId = input.accountId || (holding as any).accountId;
+
       const records = parseCSVContent(input.csvContent);
-      const validRecords = records.filter((r) => !r.error);
-      const invalidRecords = records.filter((r) => r.error);
+      const validRecords = records.filter((r: any) => !r.error);
+      const invalidRecords = records.filter((r: any) => r.error);
 
       const result = await bulkImportPurchases(
         ctx.user.id,
         input.portfolioId,
-        input.holdingId,
+        Number(holdingId),
         holding.symbol,
-        validRecords
+        validRecords,
+        targetAccountId
       );
 
-      const newAvgCost = await calculateAverageCost(input.holdingId);
+      // Update holding account if it was null
+      if (!(holding as any).accountId && targetAccountId) {
+        await updateEtfHolding(Number(holdingId), { accountId: targetAccountId });
+      }
+
+      const newAvgCost = await calculateAverageCost(Number(holdingId));
 
       return {
         success: result.success > 0,
@@ -699,7 +902,7 @@ export const etfRouter = router({
     .query(async ({ ctx, input }) => {
       let holdings = await getUserEtfHoldings(ctx.user.id, input.portfolioId);
       if (input.holdingId) {
-        holdings = holdings.filter(h => h.id === input.holdingId);
+        holdings = holdings.filter((h: any) => h.id === input.holdingId);
       }
 
       const emptyMetrics = { m1: "0", ytd: "0", y1: "0", y5: "0" };
@@ -752,7 +955,7 @@ export const etfRouter = router({
     .query(async ({ ctx, input }) => {
       let holdings = await getUserEtfHoldings(ctx.user.id, input.portfolioId);
       if (input.holdingId) {
-        holdings = holdings.filter(h => h.id === input.holdingId);
+        holdings = holdings.filter((h: any) => h.id === input.holdingId);
       }
       
       const data = await getProcessedEvolution(ctx.user.id, holdings, input.range);
@@ -825,13 +1028,13 @@ export const etfRouter = router({
 
       for (const holding of holdings) {
         const allPurchases = await getPurchases(holding.id);
-        const filteredPurchases = allPurchases.filter(p => new Date(p.purchaseDate) >= startDate);
+        const filteredPurchases = allPurchases.filter((p: any) => new Date(p.purchaseDate) >= startDate);
 
         if (filteredPurchases.length > 0) {
           let totalQty = 0;
           let totalCost = 0;
 
-          filteredPurchases.forEach(p => {
+          filteredPurchases.forEach((p: any) => {
             const qty = parseFloat(p.quantity.toString());
             const price = parseFloat(p.price.toString());
             totalQty += qty;

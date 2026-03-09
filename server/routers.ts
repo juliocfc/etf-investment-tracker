@@ -4,6 +4,7 @@ import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, router } from "./_core/trpc";
 import { etfRouter } from "./etfRouter";
 import { portfolioRouter } from "./portfolioRouter";
+import { accountRouter } from "./accountRouter";
 
 export const appRouter = router({
   system: systemRouter,
@@ -18,6 +19,7 @@ export const appRouter = router({
     }),
   }),
   portfolio: portfolioRouter,
+  account: accountRouter,
   etf: etfRouter,
 });
 

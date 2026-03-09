@@ -1,6 +1,6 @@
 import { router, protectedProcedure } from "./_core/trpc";
 import { z } from "zod";
-import { getDb, eq, and } from "./db";
+import { getDb, eq, and, desc } from "./db";
 import { portfolios, cashBalance, InsertPortfolio } from "../drizzle/schema";
 import { TRPCError } from "@trpc/server";
 
@@ -75,7 +75,7 @@ export const portfolioRouter = router({
         .select()
         .from(portfolios)
         .where(and(eq(portfolios.id, input.portfolioId), eq(portfolios.userId, ctx.user.id)))
-        .then((rows) => rows[0]);
+        .then((rows: any[]) => rows[0]);
 
       if (!portfolio) {
         throw new TRPCError({
@@ -106,18 +106,29 @@ export const portfolioRouter = router({
       };
 
       const result = await db.insert(portfolios).values(newPortfolio);
-      const portfolioId = (result as any).insertId || result[0];
+      let portfolioId = (result as any).lastInsertRowid;
+      
+      if (portfolioId === undefined) {
+        // Fallback for drivers that don't return lastInsertRowid
+        const row = await db.select({ id: portfolios.id })
+          .from(portfolios)
+          .where(eq(portfolios.userId, ctx.user.id))
+          .orderBy(desc(portfolios.id))
+          .limit(1)
+          .then((rows: any[]) => rows[0]);
+        portfolioId = row?.id;
+      }
 
       // Create a cash balance entry for the new portfolio
       if (portfolioId) {
         await db.insert(cashBalance).values({
           userId: ctx.user.id,
-          portfolioId: portfolioId,
+          portfolioId: Number(portfolioId),
           amount: "0",
         });
       }
 
-      return { id: portfolioId, ...newPortfolio };
+      return { id: Number(portfolioId), ...newPortfolio };
     }),
 
   // Update a portfolio
@@ -138,7 +149,7 @@ export const portfolioRouter = router({
         .select()
         .from(portfolios)
         .where(and(eq(portfolios.id, input.portfolioId), eq(portfolios.userId, ctx.user.id)))
-        .then((rows) => rows[0]);
+        .then((rows: any[]) => rows[0]);
 
       if (!portfolio) {
         throw new TRPCError({
@@ -171,7 +182,7 @@ export const portfolioRouter = router({
         .select()
         .from(portfolios)
         .where(and(eq(portfolios.id, input.portfolioId), eq(portfolios.userId, ctx.user.id)))
-        .then((rows) => rows[0]);
+        .then((rows: any[]) => rows[0]);
 
       if (!portfolio) {
         throw new TRPCError({

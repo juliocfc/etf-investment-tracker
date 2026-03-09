@@ -25,10 +25,27 @@ export const portfolios = sqliteTable("portfolios", {
   updatedAt: integer("updatedAt", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
+export type Portfolio = typeof portfolios.$inferSelect;
+export type InsertPortfolio = typeof portfolios.$inferInsert;
+
+export const accounts = sqliteTable("accounts", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("userId").notNull(),
+  portfolioId: integer("portfolioId").notNull(),
+  name: text("name").notNull(),
+  number: text("number"),
+  createdAt: integer("createdAt", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+  updatedAt: integer("updatedAt", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+export type Account = typeof accounts.$inferSelect;
+export type InsertAccount = typeof accounts.$inferInsert;
+
 export const etfHoldings = sqliteTable("etfHoldings", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   userId: integer("userId").notNull(),
   portfolioId: integer("portfolioId").notNull(),
+  accountId: integer("accountId"),
   symbol: text("symbol").notNull(),
   name: text("name").notNull(),
   quantity: text("quantity").notNull(),
@@ -45,6 +62,7 @@ export const purchases = sqliteTable("purchases", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   userId: integer("userId").notNull(),
   portfolioId: integer("portfolioId").notNull(),
+  accountId: integer("accountId"),
   holdingId: integer("holdingId").notNull(),
   symbol: text("symbol").notNull(),
   quantity: text("quantity").notNull(),
@@ -66,6 +84,7 @@ export const cashBalance = sqliteTable("cashBalance", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   userId: integer("userId").notNull(),
   portfolioId: integer("portfolioId").notNull(),
+  accountId: integer("accountId"),
   amount: text("amount").notNull(),
   createdAt: integer("createdAt", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
   updatedAt: integer("updatedAt", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),

@@ -32,9 +32,13 @@ const getLastTradingDay = () => {
 };
 
 export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId: number }) {
+  const [selectedAccountId, setSelectedAccountId] = useState<number | undefined>(undefined);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
-  const [isBuyDialogOpen, setIsBuyDialogOpen] = useState<number | null>(null);
-  const [purchaseHistoryOpen, setPurchaseHistoryOpen] = useState<number | null>(null);
+  const [isBuyDialogOpen, setIsBuyDialogOpen] = useState<{ id: number, symbol: string } | null>(null);
+  const [purchaseHistoryOpen, setPurchaseHistoryOpen] = useState<{ id: number, symbol: string } | null>(null);
+  const [isAccountsDialogOpen, setIsAccountsDialogOpen] = useState(false);
+  const [isAdjustCashDialogOpen, setIsAdjustCashDialogOpen] = useState(false);
+  const [adjustCashData, setAdjustCashData] = useState({ accountId: "", amount: "" });
   
   const defaultDate = useMemo(() => getLastTradingDay(), []);
 
@@ -44,44 +48,80 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
     quantity: "",
     purchasePrice: "",
     purchaseDate: defaultDate,
+    accountId: "",
+  });
+
+  const [accountFormData, setAccountFormData] = useState({
+    name: "",
+    number: "",
   });
 
   const [buyData, setBuyData] = useState({
     quantity: "",
     price: "",
     purchaseDate: defaultDate,
+    accountId: "",
   });
 
   // Automatically fetch price when Buy dialog opens
   useEffect(() => {
     if (isBuyDialogOpen) {
-      const holding = holdings?.find(h => h.id === isBuyDialogOpen);
-      if (holding) {
-        fetchAndSetPrice(holding.symbol, buyData.purchaseDate, true);
+      fetchAndSetPrice(isBuyDialogOpen.symbol, buyData.purchaseDate, true);
+      const holding = holdings?.find(h => h.id === isBuyDialogOpen.id);
+      if (holding && (holding as any).accountId) {
+        setBuyData(prev => ({ ...prev, accountId: (holding as any).accountId.toString() }));
       }
     }
   }, [isBuyDialogOpen]);
 
-  const [cashAmount, setCashAmount] = useState("");
-  const [isEditingCash, setIsEditingCash] = useState(false);
-  const [isCSVImportOpen, setIsCSVImportOpen] = useState<number | null>(null);
+  const [isCSVImportOpen, setIsCSVImportOpen] = useState<{ id: number, symbol: string } | null>(null);
   const lookupTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const quantityInputRef = useRef<HTMLInputElement>(null);
 
   const utils = trpc.useUtils();
 
   // Queries
-  const { data: summary, refetch: refetchSummary } = trpc.etf.getPortfolioSummary.useQuery(
+  const { data: accounts, refetch: refetchAccounts } = trpc.account.getAccounts.useQuery(
     { portfolioId: selectedPortfolioId },
+    { enabled: !!selectedPortfolioId }
+  );
+
+  const { data: summary, refetch: refetchSummary } = trpc.etf.getPortfolioSummary.useQuery(
+    { portfolioId: selectedPortfolioId, accountId: selectedAccountId },
     { enabled: !!selectedPortfolioId }
   );
 
   const { data: holdings, refetch: refetchHoldings } = trpc.etf.getHoldings.useQuery(
-    { portfolioId: selectedPortfolioId },
+    { portfolioId: selectedPortfolioId, accountId: selectedAccountId },
     { enabled: !!selectedPortfolioId }
   );
 
   // Mutations
+  const addAccountMutation = trpc.account.addAccount.useMutation({
+    onSuccess: () => {
+      toast.success("Account added successfully!");
+      refetchAccounts();
+      setAccountFormData({ name: "", number: "" });
+    },
+    onError: (error) => {
+      toast.error(error.message || "Failed to add account");
+    },
+  });
+
+  const deleteAccountMutation = trpc.account.deleteAccount.useMutation({
+    onSuccess: () => {
+      toast.success("Account deleted!");
+      refetchAccounts();
+      if (selectedAccountId) {
+        // Clear selection if current account was deleted
+        setSelectedAccountId(undefined);
+      }
+    },
+    onError: (error) => {
+      toast.error(error.message || "Failed to delete account");
+    },
+  });
+
   const updatePricesMutation = trpc.etf.updatePrices.useMutation({
     onSuccess: () => {
       toast.success("Prices updated!");
@@ -106,6 +146,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
         quantity: "",
         purchasePrice: "",
         purchaseDate: new Date().toISOString().split("T")[0],
+        accountId: "",
       });
       setIsAddDialogOpen(false);
     },
@@ -115,6 +156,18 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
   });
 
   const deleteHoldingMutation = trpc.etf.deleteHolding.useMutation({
+    onSuccess: () => {
+      toast.success("Investment deleted successfully!");
+      refetchHoldings();
+      refetchSummary();
+      utils.portfolio.getConsolidatedSummary.invalidate();
+    },
+    onError: () => {
+      toast.error("Failed to delete Investment");
+    },
+  });
+
+  const deleteHoldingBySymbolMutation = trpc.etf.deleteHoldingBySymbol.useMutation({
     onSuccess: () => {
       toast.success("Investment deleted successfully!");
       refetchHoldings();
@@ -136,6 +189,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
         quantity: "",
         price: "",
         purchaseDate: defaultDate,
+        accountId: "",
       });
       setIsBuyDialogOpen(null);
     },
@@ -149,7 +203,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
       toast.success("Cash balance updated!");
       refetchSummary();
       utils.portfolio.getConsolidatedSummary.invalidate();
-      setIsEditingCash(false);
+      setIsAdjustCashDialogOpen(false);
     },
   });
 
@@ -160,7 +214,11 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
       refetchSummary();
       utils.portfolio.getConsolidatedSummary.invalidate();
       // Invalidate the specific holding's purchases to update the Audit Trail dialog
-      utils.etf.getPurchases.invalidate({ holdingId: variables.holdingId });
+      utils.etf.getPurchases.invalidate({ 
+        holdingId: variables.holdingId, 
+        symbol: variables.symbol, 
+        portfolioId: selectedPortfolioId 
+      });
     },
     onError: (error) => {
       toast.error(error.message || "Failed to delete purchase");
@@ -196,6 +254,23 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
       toast.error(error.message || "Failed to update holding");
     },
   });
+
+  const handleAdjustCashAccountChange = async (accountId: string) => {
+    setAdjustCashData(prev => ({ ...prev, accountId }));
+    if (accountId) {
+      try {
+        const balance = await utils.etf.getCashBalance.fetch({
+          portfolioId: selectedPortfolioId!,
+          accountId: Number(accountId),
+        });
+        setAdjustCashData(prev => ({ ...prev, amount: balance || "0" }));
+      } catch (error) {
+        console.error("Error fetching cash balance:", error);
+      }
+    } else {
+      setAdjustCashData(prev => ({ ...prev, amount: "" }));
+    }
+  };
 
   // Helper to fetch and set price based on symbol and date
   const fetchAndSetPrice = async (symbol: string, date: string, isBuyForm: boolean = false) => {
@@ -262,14 +337,18 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
     const date = e.target.value;
     setBuyData(prev => ({ ...prev, purchaseDate: date }));
 
-    const holding = holdings?.find(h => h.id === isBuyDialogOpen);
-    if (holding) {
-      await fetchAndSetPrice(holding.symbol, date, true);
+    if (isBuyDialogOpen) {
+      await fetchAndSetPrice(isBuyDialogOpen.symbol, date, true);
     }
   };
 
-    const handleAddHolding = async () => {    if (!selectedPortfolioId) {
+    const handleAddHolding = async () => {
+    if (!selectedPortfolioId) {
       toast.error("Please select a portfolio");
+      return;
+    }
+    if (!formData.accountId) {
+      toast.error("Please select an account");
       return;
     }
     if (!formData.symbol || !formData.quantity || !formData.purchasePrice) {
@@ -277,15 +356,20 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
       return;
     }
 
-    // Check for duplicates in current portfolio
-    const isDuplicate = holdings?.some(h => h.symbol.toUpperCase() === formData.symbol.toUpperCase());
+    // Check for duplicates in the SELECTED account
+    // We already fetch holdings for the selected account if selectedAccountId is set
+    const isDuplicate = holdings?.some(h => 
+      h.symbol.toUpperCase() === formData.symbol.toUpperCase() && 
+      (h as any).accountId === Number(formData.accountId)
+    );
     if (isDuplicate) {
-      toast.error(`'${formData.symbol.toUpperCase()}' is already in this portfolio. Use 'Add Shares' to increase your position.`);
+      toast.error(`'${formData.symbol.toUpperCase()}' is already in this account. Use 'Add Shares' to increase your position.`);
       return;
     }
 
     addHoldingMutation.mutate({
       portfolioId: selectedPortfolioId,
+      accountId: Number(formData.accountId),
       symbol: formData.symbol,
       name: formData.name,
       quantity: formData.quantity,
@@ -294,9 +378,13 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
     });
   };
 
-  const handleBuyMoreShares = async (holdingId: number) => {
+  const handleBuyMoreShares = async (holdingId: number, symbol: string, accountId?: number) => {
     if (!selectedPortfolioId) {
       toast.error("Please select a portfolio");
+      return;
+    }
+    if (!accountId) {
+      toast.error("Please select an account");
       return;
     }
     if (!buyData.quantity || !buyData.price) {
@@ -307,30 +395,38 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
     buyMoreSharesMutation.mutate({
       portfolioId: selectedPortfolioId,
       holdingId,
+      symbol,
+      accountId,
       quantity: buyData.quantity,
       price: buyData.price,
       purchaseDate: new Date(buyData.purchaseDate + "T00:00:00"),
     });
   };
 
-  const handleDeleteHolding = (id: number) => {
+  const handleDeleteHolding = (id: number, symbol: string) => {
     if (confirm("Are you sure you want to delete this investment?")) {
-      deleteHoldingMutation.mutate({ id });
+      if (id === -1) {
+        deleteHoldingBySymbolMutation.mutate({ portfolioId: selectedPortfolioId, symbol });
+      } else {
+        deleteHoldingMutation.mutate({ id });
+      }
     }
   };
 
-  const handleDeletePurchase = (purchaseId: number, holdingId: number) => {
+  const handleDeletePurchase = (purchaseId: number, holdingId: number, symbol?: string) => {
     if (confirm("Are you sure you want to delete this purchase record?")) {
-      deletePurchaseMutation.mutate({ purchaseId, holdingId });
+      deletePurchaseMutation.mutate({ purchaseId, holdingId, symbol });
     }
   };
 
-  const handleImportCSV = (holdingId: number, csvContent: string) => {
+  const handleImportCSV = (holdingId: number, symbol: string, csvContent: string, accountId?: number) => {
     if (!selectedPortfolioId) return;
     importCSVMutation.mutate({
       portfolioId: selectedPortfolioId,
       holdingId,
+      symbol,
       csvContent,
+      accountId,
     });
   };
 
@@ -376,15 +472,103 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
       {/* Main Holdings Table */}
       <Card className="bg-white shadow-sm border border-border overflow-hidden">
         <div className="px-6 py-4 border-b border-border bg-slate-50/50 flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-3 min-w-fit">
-            <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-              <TrendingUp className="w-5 h-5 text-primary" />
-              Active Holdings
-            </h2>
-            <span className="text-[10px] font-bold text-slate-400 bg-slate-200/50 px-2 py-0.5 rounded-full uppercase tracking-widest">{summary?.holdings?.length || 0} Assets</span>
+          <div className="flex flex-col gap-1 min-w-fit">
+            <div className="flex items-center gap-3">
+              <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                <TrendingUp className="w-5 h-5 text-primary" />
+                Active Holdings
+              </h2>
+              <span className="text-[10px] font-bold text-slate-400 bg-slate-200/50 px-2 py-0.5 rounded-full uppercase tracking-widest">{summary?.holdings?.length || 0} Assets</span>
+            </div>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Account Filter:</span>
+              <select 
+                className="bg-white border border-slate-200 rounded px-2 py-1 text-[10px] font-bold text-slate-600 focus:outline-none focus:ring-1 focus:ring-primary h-7 min-w-[140px]"
+                value={selectedAccountId || ""}
+                onChange={(e) => setSelectedAccountId(e.target.value ? Number(e.target.value) : undefined)}
+              >
+                <option value="">All Accounts</option>
+                {accounts?.map((acc: any) => (
+                  <option key={acc.id} value={acc.id}>{acc.name} {acc.number ? `(${acc.number})` : ""}</option>
+                ))}
+              </select>
+            </div>
           </div>
           
           <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto sm:justify-end">
+            <Dialog open={isAccountsDialogOpen} onOpenChange={setIsAccountsDialogOpen}>
+              <DialogTrigger asChild>
+                <Button variant="outline" size="sm" className="flex-1 sm:flex-none h-9 text-xs font-bold uppercase tracking-wider border-slate-200 text-slate-600">
+                  Manage Accounts
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-[425px]">
+                <DialogHeader>
+                  <DialogTitle>Portfolio Accounts</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4 pt-4">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="grid gap-2">
+                      <label className="text-xs font-bold text-slate-500 uppercase">Account Name</label>
+                      <Input 
+                        placeholder="e.g. Robinhood" 
+                        value={accountFormData.name} 
+                        onChange={(e) => setAccountFormData(prev => ({ ...prev, name: e.target.value }))} 
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <label className="text-xs font-bold text-slate-500 uppercase">Number (optional)</label>
+                      <Input 
+                        placeholder="e.g. 1234" 
+                        value={accountFormData.number} 
+                        onChange={(e) => setAccountFormData(prev => ({ ...prev, number: e.target.value }))} 
+                      />
+                    </div>
+                  </div>
+                  <Button 
+                    className="w-full h-10 font-bold uppercase tracking-wider" 
+                    disabled={addAccountMutation.isPending || !accountFormData.name}
+                    onClick={() => addAccountMutation.mutate({ 
+                      portfolioId: selectedPortfolioId, 
+                      name: accountFormData.name, 
+                      number: accountFormData.number 
+                    })}
+                  >
+                    Add Account
+                  </Button>
+
+                  <div className="border-t pt-4">
+                    <h4 className="text-xs font-bold text-slate-500 uppercase mb-3">Existing Accounts</h4>
+                    <div className="space-y-2 max-h-[200px] overflow-y-auto pr-2">
+                      {accounts && accounts.length > 0 ? (
+                        accounts.map((acc: any) => (
+                          <div key={acc.id} className="flex items-center justify-between p-2 rounded bg-slate-50 border border-slate-100">
+                            <div>
+                              <p className="text-sm font-bold text-slate-800">{acc.name}</p>
+                              <p className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">{acc.number || "No number"}</p>
+                            </div>
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              className="h-8 w-8 text-slate-400 hover:text-red-500 hover:bg-red-50"
+                              onClick={() => {
+                                if (confirm("Delete this account? Associated holdings will remain but lose their account link.")) {
+                                  deleteAccountMutation.mutate({ id: acc.id });
+                                }
+                              }}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        ))
+                      ) : (
+                        <p className="text-xs text-slate-400 italic py-4 text-center">No accounts added yet</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
             <Button
               variant="outline"
               size="sm"
@@ -405,6 +589,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                   quantity: "",
                   purchasePrice: "",
                   purchaseDate: defaultDate,
+                  accountId: "",
                 });
               }
             }}>
@@ -419,6 +604,19 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                   <DialogTitle>Add New Investment</DialogTitle>
                 </DialogHeader>
                 <div className="space-y-4 pt-4">
+                  <div className="grid gap-2">
+                    <label className="text-xs font-bold text-slate-500 uppercase">Account</label>
+                    <select 
+                      className="bg-white border border-input rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary h-10"
+                      value={formData.accountId}
+                      onChange={(e) => setFormData(prev => ({ ...prev, accountId: e.target.value }))}
+                    >
+                      <option value="">Select Account</option>
+                      {accounts?.map((acc: any) => (
+                        <option key={acc.id} value={acc.id}>{acc.name} {acc.number ? `(${acc.number})` : ""}</option>
+                      ))}
+                    </select>
+                  </div>
                   <div className="grid gap-2">
                     <label className="text-xs font-bold text-slate-500 uppercase">Symbol</label>
                     <Input 
@@ -478,12 +676,13 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
             </thead>
             <tbody>
               {summary?.holdings?.map((holding: any) => {
-                const allocation = summary.investmentAllocationBreakdown?.find((a: any) => a.symbol === holding.symbol);
+                const allocation = summary?.investmentAllocationBreakdown?.find((a: any) => a.symbol === holding.symbol);
                 const isGain = parseFloat(holding.gain) >= 0;
                 const isUnderWeight = parseFloat(allocation?.percentage || "0") < (parseFloat(holding.desiredAllocation) || 0);
+                const isConsolidated = holding.isConsolidated || holding.id === -1;
                 
                 return (
-                  <tr key={holding.id} className="border-b border-border hover:bg-slate-50 transition-colors">
+                  <tr key={isConsolidated ? `consolidated-${holding.symbol}` : holding.id} className="border-b border-border hover:bg-slate-50 transition-colors">
                     <td className="py-3 px-3">
                       <div className="font-bold text-primary text-sm leading-tight">{holding.symbol}</div>
                       <Tooltip>
@@ -545,24 +744,24 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                             <MoreVertical className="h-4 w-4" />
                           </Button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-48">
+                        <DropdownMenuContent align="end" className="w-56">
                           <DropdownMenuLabel>Manage Asset</DropdownMenuLabel>
                           <DropdownMenuSeparator />
-                          <DropdownMenuItem onClick={() => setIsBuyDialogOpen(holding.id)}>
+                          <DropdownMenuItem onClick={() => setIsBuyDialogOpen({ id: holding.id, symbol: holding.symbol })}>
                             <ShoppingCart className="mr-2 h-4 w-4 text-slate-500" />
                             <span>Add Shares</span>
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => setIsCSVImportOpen(holding.id)}>
+                          <DropdownMenuItem onClick={() => setIsCSVImportOpen({ id: holding.id, symbol: holding.symbol })}>
                             <FileUp className="mr-2 h-4 w-4 text-slate-500" />
-                            <span>Batch Import</span>
+                            <span>Import Purchases</span>
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => setPurchaseHistoryOpen(holding.id)}>
+                          <DropdownMenuItem onClick={() => setPurchaseHistoryOpen({ id: holding.id, symbol: holding.symbol })}>
                             <History className="mr-2 h-4 w-4 text-slate-500" />
                             <span>View History</span>
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem 
-                            onClick={() => handleDeleteHolding(holding.id)}
+                            onClick={() => handleDeleteHolding(holding.id, holding.symbol)}
                             className="text-red-600 focus:text-red-600 focus:bg-red-50"
                           >
                             <Trash2 className="mr-2 h-4 w-4" />
@@ -575,28 +774,28 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                 );
               })}
             </tbody>
-            {summary?.holdings?.length > 0 && (
+            {summary?.holdings && summary.holdings.length > 0 && (
               <tfoot className="bg-slate-50 border-t-2 border-slate-200">
                 <tr className="font-bold text-slate-800">
                   <td colSpan={5} className="py-4 px-3 uppercase text-[10px] tracking-widest text-slate-500">Total Portfolio Performance</td>
                   <td className="text-right py-4 px-3 font-mono text-sm">{formatCurrency(summary.investmentValue)}</td>
                   <td className={`text-right py-4 px-3 font-mono text-sm ${
-                    summary.holdings.reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0) >= 0 
+                    (summary?.holdings?.reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0) || 0) >= 0 
                       ? "text-green-600" 
                       : "text-red-600"
                   }`}>
-                    {summary.holdings.reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0) >= 0 ? "+" : ""}
-                    {formatCurrency(summary.holdings.reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0))}
+                    {(summary?.holdings?.reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0) || 0) >= 0 ? "+" : ""}
+                    {formatCurrency(summary?.holdings?.reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0) || 0)}
                   </td>
                   <td className={`text-right py-4 px-3 font-mono text-sm ${
-                    (summary.holdings.reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0) / 
-                    summary.holdings.reduce((acc: number, h: any) => acc + (parseFloat(h.averageCost || h.purchasePrice) * parseFloat(h.quantity)), 0) * 100) >= 0
+                    ((summary?.holdings?.reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0) || 0) / 
+                    (summary?.holdings?.reduce((acc: number, h: any) => acc + (parseFloat(h.averageCost || h.purchasePrice) * parseFloat(h.quantity)), 0) || 1) * 100) >= 0
                       ? "text-green-600"
                       : "text-red-600"
                   }`}>
                     {(
-                      (summary.holdings.reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0) / 
-                      summary.holdings.reduce((acc: number, h: any) => acc + (parseFloat(h.averageCost || h.purchasePrice) * parseFloat(h.quantity)), 0)) * 100
+                      ((summary?.holdings?.reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0) || 0) / 
+                      (summary?.holdings?.reduce((acc: number, h: any) => acc + (parseFloat(h.averageCost || h.purchasePrice) * parseFloat(h.quantity)), 0) || 1)) * 100
                     ).toFixed(2)}%
                   </td>
                   <td className="text-right py-4 px-3 font-mono text-slate-500 text-xs">100%</td>
@@ -658,37 +857,28 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
               </div>
               <h3 className="text-lg font-bold text-slate-800">Cash Reserve Management</h3>
             </div>
-            {!isEditingCash && (
-              <Button variant="outline" size="sm" onClick={() => {
-                setCashAmount(summary?.cashBalance || "0");
-                setIsEditingCash(true);
-              }} className="text-xs uppercase font-bold border-slate-200">
-                Adjust Balance
-              </Button>
-            )}
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => {
+                setAdjustCashData({
+                  accountId: selectedAccountId?.toString() || "",
+                  amount: summary?.cashBalance?.toString() || "0",
+                });
+                setIsAdjustCashDialogOpen(true);
+              }} 
+              className="text-xs uppercase font-bold border-slate-200 hover:bg-slate-50"
+            >
+              Adjust Balance
+            </Button>
           </div>
           
           <div className="flex-1 flex flex-col justify-center bg-slate-50 rounded-lg p-8 border border-slate-100 border-dashed">
             <div className="text-center">
-              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Current Liquid Assets</p>
-              {!isEditingCash ? (
-                <p className="text-5xl font-bold text-slate-800 font-mono tracking-tighter">{formatCurrency(summary?.cashBalance)}</p>
-              ) : (
-                <div className="flex flex-col gap-4 max-w-xs mx-auto">
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={cashAmount}
-                    onChange={(e) => setCashAmount(e.target.value)}
-                    className="text-center text-2xl h-14 font-mono bg-white"
-                    autoFocus
-                  />
-                  <div className="flex gap-2">
-                    <Button onClick={() => updateCashMutation.mutate({ amount: cashAmount, portfolioId: selectedPortfolioId! })} className="flex-1">Save</Button>
-                    <Button variant="outline" onClick={() => setIsEditingCash(false)} className="flex-1">Cancel</Button>
-                  </div>
-                </div>
-              )}
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">
+                {selectedAccountId ? `Current Liquid Assets (${accounts?.find((a: any) => a.id === selectedAccountId)?.name})` : "Total Combined Liquid Assets"}
+              </p>
+              <p className="text-5xl font-bold text-slate-800 font-mono tracking-tighter">{formatCurrency(summary?.cashBalance)}</p>
             </div>
           </div>
           <p className="text-xs text-slate-400 mt-6 text-center italic">
@@ -698,13 +888,73 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
       </div>
 
       {/* Dialogs */}
+      <Dialog open={isAdjustCashDialogOpen} onOpenChange={setIsAdjustCashDialogOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Adjust Cash Balance</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-4">
+            <div className="grid gap-2">
+              <label className="text-xs font-bold text-slate-500 uppercase">Account</label>
+              <select 
+                className="bg-white border border-input rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary h-10"
+                value={adjustCashData.accountId}
+                onChange={(e) => handleAdjustCashAccountChange(e.target.value)}
+              >
+                <option value="">Select Account</option>
+                {accounts?.map((acc: any) => (
+                  <option key={acc.id} value={acc.id}>{acc.name} {acc.number ? `(${acc.number})` : ""}</option>
+                ))}
+              </select>
+            </div>
+            <div className="grid gap-2">
+              <label className="text-xs font-bold text-slate-500 uppercase">Cash Amount</label>
+              <Input 
+                type="number" 
+                step="0.01" 
+                value={adjustCashData.amount} 
+                onChange={(e) => setAdjustCashData(prev => ({ ...prev, amount: e.target.value }))} 
+              />
+            </div>
+            <Button 
+              onClick={() => {
+                if (adjustCashData.accountId && adjustCashData.amount) {
+                  updateCashMutation.mutate({
+                    portfolioId: selectedPortfolioId,
+                    accountId: Number(adjustCashData.accountId),
+                    amount: adjustCashData.amount
+                  });
+                }
+              }} 
+              className="w-full" 
+              disabled={updateCashMutation.isPending || !adjustCashData.accountId}
+            >
+              Save Changes
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {isBuyDialogOpen && (
         <Dialog open={!!isBuyDialogOpen} onOpenChange={() => setIsBuyDialogOpen(null)}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Add Shares</DialogTitle>
+              <DialogTitle>Add Shares for {isBuyDialogOpen.symbol}</DialogTitle>
             </DialogHeader>
             <div className="space-y-4 pt-4">
+              <div className="grid gap-2">
+                <label className="text-xs font-bold text-slate-500 uppercase">Target Account</label>
+                <select 
+                  className="bg-white border border-input rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary h-10 w-full"
+                  value={buyData.accountId}
+                  onChange={(e) => setBuyData(prev => ({ ...prev, accountId: e.target.value }))}
+                >
+                  <option value="">Select Account</option>
+                  {accounts?.map((acc: any) => (
+                    <option key={acc.id} value={acc.id}>{acc.name} {acc.number ? `(${acc.number})` : ""}</option>
+                  ))}
+                </select>
+              </div>
               <div className="grid gap-2">
                 <label className="text-xs font-bold text-slate-500 uppercase">Quantity</label>
                 <Input type="number" step="0.001" value={buyData.quantity} onChange={(e) => setBuyData(prev => ({ ...prev, quantity: e.target.value }))} />
@@ -717,7 +967,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                 <label className="text-xs font-bold text-slate-500 uppercase">Purchase Price</label>
                 <Input type="number" step="0.01" value={buyData.price} onChange={(e) => setBuyData(prev => ({ ...prev, price: e.target.value }))} />
               </div>
-              <Button onClick={() => handleBuyMoreShares(isBuyDialogOpen)} className="w-full" disabled={buyMoreSharesMutation.isPending}>
+              <Button onClick={() => handleBuyMoreShares(isBuyDialogOpen.id, isBuyDialogOpen.symbol, Number(buyData.accountId))} className="w-full" disabled={buyMoreSharesMutation.isPending}>
                 Add Purchase
               </Button>
             </div>
@@ -727,11 +977,17 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
 
       {purchaseHistoryOpen && (
         <Dialog open={!!purchaseHistoryOpen} onOpenChange={() => setPurchaseHistoryOpen(null)}>
-          <DialogContent className="sm:max-w-[600px]">
+          <DialogContent className="sm:max-w-[700px]">
             <DialogHeader>
-              <DialogTitle>Purchase Audit Trail</DialogTitle>
+              <DialogTitle>Purchase History for {purchaseHistoryOpen.symbol}</DialogTitle>
             </DialogHeader>
-            <PurchaseHistoryTable holdingId={purchaseHistoryOpen} onDelete={handleDeletePurchase} />
+            <PurchaseHistoryTable 
+              holdingId={purchaseHistoryOpen.id} 
+              symbol={purchaseHistoryOpen.symbol}
+              portfolioId={selectedPortfolioId}
+              onDelete={handleDeletePurchase} 
+              accounts={accounts || []}
+            />
           </DialogContent>
         </Dialog>
       )}
@@ -740,12 +996,15 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
         <Dialog open={!!isCSVImportOpen} onOpenChange={() => setIsCSVImportOpen(null)}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Bulk Data Ingestion</DialogTitle>
+              <DialogTitle>Import Purchase History for {isCSVImportOpen.symbol}</DialogTitle>
             </DialogHeader>
             <CSVImportForm 
-              holdingId={isCSVImportOpen} 
+              holdingId={isCSVImportOpen.id} 
+              symbol={isCSVImportOpen.symbol}
               onImport={handleImportCSV} 
               isLoading={importCSVMutation.isPending}
+              accounts={accounts || []}
+              currentAccountId={(holdings?.find((h: any) => h.id === isCSVImportOpen.id) as any)?.accountId}
             />
           </DialogContent>
         </Dialog>
@@ -756,7 +1015,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
 
 function PortfolioAllocationChart({ data, cashPercent }: { data: any[], cashPercent: string }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const totalWithCash = parseFloat(cashPercent) + data.reduce((acc, item) => acc + parseFloat(item.percentage), 0);
+  const totalWithCash = parseFloat(cashPercent) + data.reduce((acc: number, item: any) => acc + parseFloat(item.percentage), 0);
   
   useEffect(() => {
     if (canvasRef.current && data.length > 0) {
@@ -806,58 +1065,115 @@ function PortfolioAllocationChart({ data, cashPercent }: { data: any[], cashPerc
   );
 }
 
-function PurchaseHistoryTable({ holdingId, onDelete }: { holdingId: number, onDelete: (id: number, holdingId: number) => void }) {
-  const { data: purchases } = trpc.etf.getPurchases.useQuery({ holdingId });
+function PurchaseHistoryTable({ 
+  holdingId, 
+  symbol,
+  portfolioId,
+  onDelete,
+  accounts
+}: { 
+  holdingId: number, 
+  symbol: string,
+  portfolioId: number,
+  onDelete: (id: number, holdingId: number, symbol?: string) => void,
+  accounts: any[]
+}) {
+  const { data: purchases } = trpc.etf.getPurchases.useQuery({ holdingId, symbol, portfolioId });
+  const [filterAccountId, setFilterAccountId] = useState<string>("");
+
+  const filteredPurchases = useMemo(() => {
+    if (!purchases) return [];
+    if (!filterAccountId) return purchases;
+    return purchases.filter((p: any) => p.accountId === Number(filterAccountId));
+  }, [purchases, filterAccountId]);
 
   return (
-    <div className="overflow-auto max-h-[60vh] custom-scrollbar border border-border rounded-lg bg-slate-50/30">
-      <table className="w-full text-sm">
-        <thead className="sticky top-0 bg-slate-50 z-10 shadow-sm">
-          <tr className="border-b border-border">
-            <th className="text-left py-3 px-4">Date</th>
-            <th className="text-right py-3 px-4">Quantity</th>
-            <th className="text-right py-3 px-4">Price</th>
-            <th className="text-center py-3 px-4">Action</th>
-          </tr>
-        </thead>
-        <tbody>
-          {purchases?.map((purchase: any) => {
-            const date = new Date(purchase.purchaseDate);
-            const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-            return (
-              <tr key={purchase.id} className="border-b border-border hover:bg-white transition-colors">
-                <td className="py-3 px-4 font-mono">{dateStr}</td>
-                <td className="text-right py-3 px-4 font-mono">{formatNumber(purchase.quantity, 3)}</td>
-                <td className="text-right py-3 px-4 font-mono font-medium">{formatCurrency(purchase.price)}</td>
-                <td className="text-center py-3 px-4">
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => onDelete(purchase.id, holdingId)}
-                    className="text-slate-400 hover:text-destructive"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+    <div className="space-y-4">
+      <div className="flex items-center gap-2 bg-slate-50 p-3 rounded-lg border border-border">
+        <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Filter by Account:</span>
+        <select 
+          className="bg-white border border-slate-200 rounded px-2 py-1 text-xs font-bold text-slate-600 focus:outline-none h-8 min-w-[160px]"
+          value={filterAccountId}
+          onChange={(e) => setFilterAccountId(e.target.value)}
+        >
+          <option value="">All Accounts</option>
+          {accounts?.map((acc: any) => (
+            <option key={acc.id} value={acc.id}>{acc.name}</option>
+          ))}
+        </select>
+      </div>
+
+      <div className="overflow-auto max-h-[60vh] custom-scrollbar border border-border rounded-lg bg-slate-50/30">
+        <table className="w-full text-sm">
+          <thead className="sticky top-0 bg-slate-50 z-10 shadow-sm">
+            <tr className="border-b border-border">
+              <th className="text-left py-3 px-4">Date</th>
+              <th className="text-left py-3 px-4">Account</th>
+              <th className="text-right py-3 px-4">Quantity</th>
+              <th className="text-right py-3 px-4">Price</th>
+              <th className="text-center py-3 px-4">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredPurchases?.map((purchase: any) => {
+              const date = new Date(purchase.purchaseDate);
+              const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+              const accountName = accounts?.find((a: any) => a.id === purchase.accountId)?.name || "Default";
+              
+              return (
+                <tr key={purchase.id} className="border-b border-border hover:bg-white transition-colors">
+                  <td className="py-3 px-4 font-mono">{dateStr}</td>
+                  <td className="py-3 px-4">
+                    <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200">
+                      {accountName}
+                    </span>
+                  </td>
+                  <td className="text-right py-3 px-4 font-mono">{formatNumber(purchase.quantity, 3)}</td>
+                  <td className="text-right py-3 px-4 font-mono font-medium">{formatCurrency(purchase.price)}</td>
+                  <td className="text-center py-3 px-4">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => onDelete(purchase.id, holdingId, symbol)}
+                      className="text-slate-400 hover:text-destructive"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </td>
+                </tr>
+              );
+            })}
+            {filteredPurchases.length === 0 && (
+              <tr>
+                <td colSpan={5} className="py-8 text-center text-slate-400 italic">
+                  No purchase records found for this selection.
                 </td>
               </tr>
-            );
-          })}
-        </tbody>
-      </table>
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
 
 function CSVImportForm({ 
   holdingId, 
+  symbol,
   onImport, 
-  isLoading 
+  isLoading,
+  accounts,
+  currentAccountId
 }: { 
   holdingId: number, 
-  onImport: (holdingId: number, csv: string) => void,
-  isLoading: boolean 
+  symbol: string,
+  onImport: (holdingId: number, symbol: string, csv: string, accountId?: number) => void,
+  isLoading: boolean,
+  accounts: any[],
+  currentAccountId?: number
 }) {
   const [file, setFile] = useState<File | null>(null);
+  const [selectedAccountId, setSelectedAccountId] = useState<string>(currentAccountId?.toString() || "");
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
@@ -871,11 +1187,16 @@ function CSVImportForm({
       return;
     }
 
+    if (!selectedAccountId) {
+      toast.error("Please select an account for these purchases");
+      return;
+    }
+
     const reader = new FileReader();
     reader.onload = (e) => {
       const content = e.target?.result as string;
       if (content) {
-        onImport(holdingId, content);
+        onImport(holdingId, symbol, content, Number(selectedAccountId));
       }
     };
     reader.onerror = () => {
@@ -886,9 +1207,23 @@ function CSVImportForm({
 
   return (
     <div className="space-y-6 pt-4">
+      <div className="space-y-2">
+        <label className="text-xs font-bold text-slate-500 uppercase">Target Account</label>
+        <select 
+          className="bg-white border border-input rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary h-10 w-full"
+          value={selectedAccountId}
+          onChange={(e) => setSelectedAccountId(e.target.value)}
+        >
+          <option value="">Select Account</option>
+          {accounts?.map((acc: any) => (
+            <option key={acc.id} value={acc.id}>{acc.name} {acc.number ? `(${acc.number})` : ""}</option>
+          ))}
+        </select>
+      </div>
+
       <div className="bg-slate-50 p-4 rounded-lg border border-border">
         <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3 flex items-center gap-2">
-          <Info className="w-3 h-3" /> Data Specification
+          <Info className="w-3 h-3" /> CSV File Format
         </h4>
         <div className="text-xs text-slate-600 space-y-2">
           <p>File should include a header: <code>date,quantity,cost</code></p>
@@ -921,10 +1256,10 @@ function CSVImportForm({
         {isLoading ? (
           <div className="flex items-center gap-2">
             <RefreshCw className="w-4 h-4 animate-spin" />
-            Processing Ledger...
+            Importing Purchases...
           </div>
         ) : (
-          "Initiate Data Import"
+          "Import Purchases"
         )}
       </Button>
     </div>

@@ -17,6 +17,11 @@ export default function Activities({ selectedPortfolioId }: { selectedPortfolioI
     { enabled: !!selectedPortfolioId }
   );
 
+  const { data: accounts } = trpc.account.getAccounts.useQuery(
+    { portfolioId: selectedPortfolioId },
+    { enabled: !!selectedPortfolioId }
+  );
+
   if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center h-96 gap-4">
@@ -126,7 +131,7 @@ export default function Activities({ selectedPortfolioId }: { selectedPortfolioI
                           size="icon" 
                           className="h-8 w-8 text-slate-400 hover:text-primary"
                           onClick={() => setViewingPurchases(activity)}
-                          title="Audit Trail"
+                          title="Purchase History"
                         >
                           <History className="h-4 w-4" />
                         </Button>
@@ -164,13 +169,13 @@ export default function Activities({ selectedPortfolioId }: { selectedPortfolioI
         </div>
       </Card>
 
-      {/* Audit Trail Dialog */}
+      {/* Purchase History Dialog */}
       <Dialog open={!!viewingPurchases} onOpenChange={() => setViewingPurchases(null)}>
-        <DialogContent className="sm:max-w-[600px]">
+        <DialogContent className="sm:max-w-[700px]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <History className="w-5 h-5 text-primary" />
-              {viewingPurchases?.symbol} Purchase Audit Trail
+              {viewingPurchases?.symbol} Purchase History
             </DialogTitle>
           </DialogHeader>
           
@@ -191,6 +196,7 @@ export default function Activities({ selectedPortfolioId }: { selectedPortfolioI
                 <thead className="sticky top-0 bg-slate-50 z-10 shadow-sm">
                   <tr className="border-b border-border">
                     <th className="text-left py-3 px-4">Date</th>
+                    <th className="text-left py-3 px-4">Account</th>
                     <th className="text-right py-3 px-4">Qty</th>
                     <th className="text-right py-3 px-4">Unit Price</th>
                     <th className="text-right py-3 px-4">Total</th>
@@ -200,9 +206,11 @@ export default function Activities({ selectedPortfolioId }: { selectedPortfolioI
                   {viewingPurchases?.purchases.map((p: any, idx: number) => {
                     const qty = parseFloat(p.quantity.toString());
                     const price = parseFloat(p.price.toString());
+                    const account = accounts?.find((a: any) => a.id === p.accountId);
                     return (
                       <tr key={idx} className="border-b border-border hover:bg-slate-50 transition-colors">
                         <td className="py-3 px-4 font-mono text-slate-600">{formatDate(p.purchaseDate)}</td>
+                        <td className="py-3 px-4 text-slate-600 font-medium">{account?.name || "N/A"}</td>
                         <td className="text-right py-3 px-4 font-mono">{formatNumber(qty, 3)}</td>
                         <td className="text-right py-3 px-4 font-mono text-slate-500">{formatCurrency(price)}</td>
                         <td className="text-right py-3 px-4 font-mono font-bold text-slate-700">{formatCurrency(qty * price)}</td>

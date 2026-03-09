@@ -1,8 +1,8 @@
 import { eq, and, gte, desc, sql } from "drizzle-orm";
-export { eq, and };
+export { eq, and, desc };
 import { drizzle } from "drizzle-orm/libsql";
 import { createClient } from "@libsql/client";
-import { InsertUser, users, portfolios, etfHoldings, purchases, priceHistory, balanceHistory, dividendHistory, cashBalance } from "../drizzle/schema";
+import { InsertUser, users, portfolios, accounts, etfHoldings, purchases, priceHistory, balanceHistory, dividendHistory, cashBalance } from "../drizzle/schema";
 
 let _db: any = null;
 
@@ -55,15 +55,57 @@ export async function upsertUser(user: InsertUser) {
     });
 }
 
-// ETF Holdings queries
-export async function getUserEtfHoldings(userId: number, portfolioId: number) {
+// Account queries
+export async function getAccounts(userId: number, portfolioId: number) {
   const db = await getDb();
-  return db.select().from(etfHoldings).where(
+  return db.select().from(accounts).where(
     and(
-      eq(etfHoldings.userId, userId),
-      eq(etfHoldings.portfolioId, portfolioId)
+      eq(accounts.userId, userId),
+      eq(accounts.portfolioId, portfolioId)
     )
   );
+}
+
+export async function createAccount(data: any) {
+  const db = await getDb();
+  // Ensure we don't pass undefined for optional fields
+  const values = {
+    userId: data.userId,
+    portfolioId: data.portfolioId,
+    name: data.name,
+    number: data.number || null,
+  };
+  
+  const result = await db.insert(accounts).values(values);
+  if ((result as any).lastInsertRowid !== undefined) {
+    return (result as any).lastInsertRowid;
+  }
+  const row = await db.select({ id: accounts.id })
+    .from(accounts)
+    .where(eq(accounts.userId, data.userId))
+    .orderBy(desc(accounts.id))
+    .limit(1)
+    .then((rows: any[]) => rows[0]);
+    
+  return row?.id;
+}
+
+export async function deleteAccount(id: number) {
+  const db = await getDb();
+  return db.delete(accounts).where(eq(accounts.id, id));
+}
+
+// ETF Holdings queries
+export async function getUserEtfHoldings(userId: number, portfolioId: number, accountId?: number) {
+  const db = await getDb();
+  let conditions = [
+    eq(etfHoldings.userId, userId),
+    eq(etfHoldings.portfolioId, portfolioId)
+  ];
+  if (accountId) {
+    conditions.push(eq(etfHoldings.accountId, accountId));
+  }
+  return db.select().from(etfHoldings).where(and(...conditions));
 }
 
 export async function createEtfHolding(data: any) {
@@ -168,24 +210,42 @@ export async function getDividendHistory(userId: number, symbol?: string) {
 }
 
 // Cash Balance queries
-export async function getCashBalance(userId: number, portfolioId: number) {
+export async function getCashBalance(userId: number, portfolioId: number, accountId?: number) {
   const db = await getDb();
-  return db.select().from(cashBalance).where(
-    and(
-      eq(cashBalance.userId, userId),
-      eq(cashBalance.portfolioId, portfolioId)
-    )
-  ).then((rows: any[]) => rows[0]);
+  let conditions = [
+    eq(cashBalance.userId, userId),
+    eq(cashBalance.portfolioId, portfolioId)
+  ];
+  if (accountId) {
+    conditions.push(eq(cashBalance.accountId, accountId));
+  } else {
+    // If no accountId, we might want to sum all cash balances or return the global one (where accountId is null)
+    // Based on the requirement, we should probably return all and sum them if accountId is not provided
+    const rows = await db.select().from(cashBalance).where(and(...conditions));
+    if (rows.length === 0) return null;
+    
+    // Check if we have a global one (where accountId is null)
+    const globalRow = rows.find((r: any) => r.accountId === null);
+    if (rows.length === 1 && globalRow) return globalRow;
+    
+    // Sum them up for global view
+    const totalAmount = rows.reduce((sum: number, row: any) => sum + parseFloat(row.amount), 0);
+    return { ...(globalRow || rows[0]), amount: totalAmount.toString(), id: globalRow ? globalRow.id : 0, accountId: null };
+  }
+  return db.select().from(cashBalance).where(and(...conditions)).then((rows: any[]) => rows[0]);
 }
 
-export async function updateCashBalance(userId: number, portfolioId: number, amount: string) {
+export async function updateCashBalance(userId: number, portfolioId: number, amount: string, accountId?: number) {
   const db = await getDb();
-  const existing = await getCashBalance(userId, portfolioId);
+  const existing = await getCashBalance(userId, portfolioId, accountId);
   
-  if (existing) {
+  const targetAccountId = accountId || null;
+  
+  // If we are updating global (no accountId) and it doesn't exist, we should probably not allow it or create one with null accountId
+  if (existing && existing.accountId === targetAccountId) {
     return db.update(cashBalance).set({ amount }).where(eq(cashBalance.id, existing.id));
   } else {
-    return db.insert(cashBalance).values({ userId, portfolioId, amount });
+    return db.insert(cashBalance).values({ userId, portfolioId, amount, accountId: targetAccountId });
   }
 }
 
@@ -238,7 +298,8 @@ export async function bulkImportPurchases(
   portfolioId: number,
   holdingId: number,
   symbol: string,
-  records: any[]
+  records: any[],
+  accountId?: number
 ) {
   const db = await getDb();
   let successCount = 0;
@@ -249,6 +310,7 @@ export async function bulkImportPurchases(
       await db.insert(purchases).values({
         userId,
         portfolioId,
+        accountId,
         holdingId,
         symbol,
         quantity: record.quantity,
