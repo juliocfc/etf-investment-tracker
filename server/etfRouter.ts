@@ -135,6 +135,7 @@ export const etfRouter = router({
     .input(
       z.object({
         id: z.number(),
+        portfolioId: z.number().optional(),
         symbol: z.string().min(1).max(20).optional(),
         name: z.string().min(1).max(255).optional(),
         quantity: z.string().optional(),
@@ -144,7 +145,22 @@ export const etfRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { id, ...updates } = input;
+      const { id, portfolioId, ...updates } = input;
+
+      if (id === -1 && input.symbol && portfolioId) {
+        // Update all holdings with this symbol in this portfolio
+        const db = await getDb();
+        const symbol = input.symbol.toUpperCase();
+        
+        await db.update(etfHoldings)
+          .set({ desiredAllocation: updates.desiredAllocation })
+          .where(and(
+            eq(etfHoldings.userId, ctx.user.id),
+            eq(etfHoldings.portfolioId, portfolioId),
+            eq(etfHoldings.symbol, symbol)
+          ));
+        return { success: true };
+      }
 
       if (updates.symbol) {
         const isValid = await validateEtfSymbol(updates.symbol);

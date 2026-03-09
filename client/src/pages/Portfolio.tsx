@@ -726,6 +726,8 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                                 if (e.target.value !== holding.desiredAllocation) {
                                   updateHoldingMutation.mutate({
                                     id: holding.id,
+                                    symbol: holding.symbol,
+                                    portfolioId: selectedPortfolioId,
                                     desiredAllocation: e.target.value,
                                   });
                                 }
