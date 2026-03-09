@@ -870,9 +870,11 @@ export const etfRouter = router({
       z.object({
         holdingId: z.number(),
         range: z.enum(["1m", "ytd", "1y", "5y"]),
+        symbol: z.string().optional(),
+        portfolioId: z.number().optional(),
       })
     )
-    .query(async ({ input }) => {
+    .query(async ({ ctx, input }) => {
       let days = 365;
       if (input.range === "1m") days = 30;
       else if (input.range === "ytd") {
@@ -883,7 +885,20 @@ export const etfRouter = router({
 
       const interval = input.range === "1m" ? 1 : 7; // days between points
       
-      const purchases = await getPurchases(input.holdingId);
+      let purchasesList;
+      if (input.holdingId === -1 && input.symbol && input.portfolioId) {
+        const db = await getDb();
+        purchasesList = await db.select().from(purchases).where(
+          and(
+            eq(purchases.userId, ctx.user.id),
+            eq(purchases.portfolioId, input.portfolioId),
+            eq(purchases.symbol, input.symbol.toUpperCase())
+          )
+        ).orderBy(desc(purchases.purchaseDate));
+      } else {
+        purchasesList = await getPurchases(input.holdingId);
+      }
+
       const result = [];
       const endDate = new Date();
       
@@ -893,7 +908,7 @@ export const etfRouter = router({
         date.setHours(0, 0, 0, 0);
 
         let quantityOwned = 0;
-        for (const purchase of purchases) {
+        for (const purchase of purchasesList) {
           if (new Date(purchase.purchaseDate) <= date) {
             quantityOwned += parseFloat(purchase.quantity.toString());
           }
@@ -913,11 +928,15 @@ export const etfRouter = router({
       z.object({
         portfolioId: z.number(),
         holdingId: z.number().optional(),
+        symbol: z.string().optional(),
       })
     )
     .query(async ({ ctx, input }) => {
       let holdings = await getUserEtfHoldings(ctx.user.id, input.portfolioId);
-      if (input.holdingId) {
+      if (input.symbol) {
+        const symbolUpper = input.symbol.toUpperCase();
+        holdings = holdings.filter((h: any) => h.symbol === symbolUpper);
+      } else if (input.holdingId && input.holdingId !== -1) {
         holdings = holdings.filter((h: any) => h.id === input.holdingId);
       }
 
@@ -966,11 +985,15 @@ export const etfRouter = router({
         portfolioId: z.number(),
         range: z.enum(["1m", "ytd", "1y", "5y"]),
         holdingId: z.number().optional(),
+        symbol: z.string().optional(),
       })
     )
     .query(async ({ ctx, input }) => {
       let holdings = await getUserEtfHoldings(ctx.user.id, input.portfolioId);
-      if (input.holdingId) {
+      if (input.symbol) {
+        const symbolUpper = input.symbol.toUpperCase();
+        holdings = holdings.filter((h: any) => h.symbol === symbolUpper);
+      } else if (input.holdingId && input.holdingId !== -1) {
         holdings = holdings.filter((h: any) => h.id === input.holdingId);
       }
       
@@ -1040,13 +1063,16 @@ export const etfRouter = router({
         startDate.setFullYear(now.getFullYear() - 1);
       }
 
-      const activities = [];
+      const activitiesMap = new Map<string, any>();
 
       for (const holding of holdings) {
         const allPurchases = await getPurchases(holding.id);
         const filteredPurchases = allPurchases.filter((p: any) => new Date(p.purchaseDate) >= startDate);
 
         if (filteredPurchases.length > 0) {
+          const symbol = holding.symbol.toUpperCase();
+          const existing = activitiesMap.get(symbol);
+          
           let totalQty = 0;
           let totalCost = 0;
 
@@ -1058,28 +1084,42 @@ export const etfRouter = router({
           });
 
           const currentPrice = holding.currentPrice ? parseFloat(holding.currentPrice.toString()) : 0;
-          const currentValue = totalQty * currentPrice;
-          const gain = currentValue - totalCost;
-          const gainPercent = totalCost > 0 ? (gain / totalCost) * 100 : 0;
 
-          activities.push({
-            holdingId: holding.id,
-            symbol: holding.symbol,
-            name: holding.name,
-            totalQuantity: totalQty.toFixed(3),
-            totalCost: totalCost.toFixed(2),
-            averagePrice: (totalCost / totalQty).toFixed(2),
-            currentPrice: currentPrice.toFixed(2),
-            currentValue: currentValue.toFixed(2),
-            gain: gain.toFixed(2),
-            gainPercent: gainPercent.toFixed(2),
-            purchaseCount: filteredPurchases.length,
-            purchases: filteredPurchases
-          });
+          if (existing) {
+            existing.totalQuantityNum += totalQty;
+            existing.totalCostNum += totalCost;
+            existing.purchases = [...existing.purchases, ...filteredPurchases];
+            existing.purchaseCount += filteredPurchases.length;
+          } else {
+            activitiesMap.set(symbol, {
+              symbol: symbol,
+              name: holding.name,
+              totalQuantityNum: totalQty,
+              totalCostNum: totalCost,
+              currentPrice: currentPrice,
+              purchaseCount: filteredPurchases.length,
+              purchases: filteredPurchases
+            });
+          }
         }
       }
 
-      return activities;
+      return Array.from(activitiesMap.values()).map(activity => {
+        const currentValue = activity.totalQuantityNum * activity.currentPrice;
+        const gain = currentValue - activity.totalCostNum;
+        const gainPercent = activity.totalCostNum > 0 ? (gain / activity.totalCostNum) * 100 : 0;
+
+        return {
+          ...activity,
+          totalQuantity: activity.totalQuantityNum.toFixed(3),
+          totalCost: activity.totalCostNum.toFixed(2),
+          averagePrice: (activity.totalCostNum / activity.totalQuantityNum).toFixed(2),
+          currentPrice: activity.currentPrice.toFixed(2),
+          currentValue: currentValue.toFixed(2),
+          gain: gain.toFixed(2),
+          gainPercent: gainPercent.toFixed(2)
+        };
+      });
     }),
 });
 

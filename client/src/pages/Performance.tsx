@@ -24,9 +24,9 @@ export default function Performance({ selectedPortfolioId }: { selectedPortfolio
   const [quantityRange, setQuantityRange] = useState<TimeRange>("1y");
 
   // Independent asset selectors for each chart
-  const [evolutionHoldingId, setEvolutionHoldingId] = useState<number | "ALL">("ALL");
-  const [priceHoldingId, setPriceHoldingId] = useState<number | null>(null);
-  const [quantityHoldingId, setQuantityHoldingId] = useState<number | null>(null);
+  const [evolutionSymbol, setEvolutionSymbol] = useState<string | "ALL">("ALL");
+  const [priceSymbol, setPriceSymbol] = useState<string | null>(null);
+  const [quantitySymbol, setQuantitySymbol] = useState<string | null>(null);
 
   const { data: holdings } = trpc.etf.getHoldings.useQuery(
     { portfolioId: selectedPortfolioId },
@@ -36,16 +36,16 @@ export default function Performance({ selectedPortfolioId }: { selectedPortfolio
   // Initialize independent holding selectors when holdings are loaded
   useEffect(() => {
     if (holdings && holdings.length > 0) {
-      if (priceHoldingId === null) setPriceHoldingId(holdings[0].id);
-      if (quantityHoldingId === null) setQuantityHoldingId(holdings[0].id);
+      if (priceSymbol === null) setPriceSymbol(holdings[0].symbol);
+      if (quantitySymbol === null) setQuantitySymbol(holdings[0].symbol);
     }
-  }, [holdings, priceHoldingId, quantityHoldingId]);
+  }, [holdings, priceSymbol, quantitySymbol]);
 
   // Queries
   const { data: growthMetrics, isLoading: isLoadingMetrics } = trpc.etf.getPortfolioGrowthMetrics.useQuery(
     { 
       portfolioId: selectedPortfolioId, 
-      holdingId: evolutionHoldingId === "ALL" ? undefined : evolutionHoldingId
+      symbol: evolutionSymbol === "ALL" ? undefined : evolutionSymbol
     },
     { enabled: !!selectedPortfolioId }
   );
@@ -54,12 +54,12 @@ export default function Performance({ selectedPortfolioId }: { selectedPortfolio
     { 
       portfolioId: selectedPortfolioId, 
       range: growthRange,
-      holdingId: evolutionHoldingId === "ALL" ? undefined : evolutionHoldingId
+      symbol: evolutionSymbol === "ALL" ? undefined : evolutionSymbol
     },
     { enabled: !!selectedPortfolioId }
   );
 
-  const selectedPriceHolding = holdings?.find(h => h.id === priceHoldingId) || holdings?.[0];
+  const selectedPriceHolding = holdings?.find(h => h.symbol === priceSymbol) || holdings?.[0];
   
   const getDaysForRange = (range: TimeRange) => {
     if (range === "1m") return 30;
@@ -82,10 +82,12 @@ export default function Performance({ selectedPortfolioId }: { selectedPortfolio
 
   const { data: quantityHistory, isLoading: isLoadingQuantity } = trpc.etf.getAssetQuantityHistory.useQuery(
     {
-      holdingId: quantityHoldingId || 0,
+      holdingId: -1,
+      symbol: quantitySymbol || "",
+      portfolioId: selectedPortfolioId,
       range: quantityRange,
     },
-    { enabled: quantityHoldingId !== null }
+    { enabled: !!quantitySymbol && !!selectedPortfolioId }
   );
 
   // Format evolution data for chart
@@ -230,13 +232,13 @@ export default function Performance({ selectedPortfolioId }: { selectedPortfolio
             </div>
             <div className="flex flex-wrap items-center gap-3">
               <select
-                value={evolutionHoldingId}
-                onChange={(e) => setEvolutionHoldingId(e.target.value === "ALL" ? "ALL" : parseInt(e.target.value))}
+                value={evolutionSymbol}
+                onChange={(e) => setEvolutionSymbol(e.target.value)}
                 className="bg-slate-50 border border-slate-200 rounded px-3 py-1 text-xs font-bold text-slate-600 focus:outline-none focus:border-primary"
               >
                 <option value="ALL">All Investments</option>
                 {holdings?.map((h) => (
-                  <option key={h.id} value={h.id}>{h.symbol}</option>
+                  <option key={h.symbol} value={h.symbol}>{h.symbol}</option>
                 ))}
               </select>
               <RangeSelector value={growthRange} onChange={setGrowthRange} />
@@ -336,12 +338,12 @@ export default function Performance({ selectedPortfolioId }: { selectedPortfolio
             </div>
             <div className="flex items-center gap-2">
               <select
-                value={priceHoldingId || ""}
-                onChange={(e) => setPriceHoldingId(parseInt(e.target.value))}
+                value={priceSymbol || ""}
+                onChange={(e) => setPriceSymbol(e.target.value)}
                 className="bg-slate-50 border border-slate-200 rounded px-2 py-1 text-xs font-bold text-slate-600 focus:outline-none focus:border-primary"
               >
                 {holdings?.map((h) => (
-                  <option key={h.id} value={h.id}>{h.symbol}</option>
+                  <option key={h.symbol} value={h.symbol}>{h.symbol}</option>
                 ))}
               </select>
               <RangeSelector value={priceRange} onChange={setPriceRange} />
@@ -410,12 +412,12 @@ export default function Performance({ selectedPortfolioId }: { selectedPortfolio
             </div>
             <div className="flex items-center gap-2">
               <select
-                value={quantityHoldingId || ""}
-                onChange={(e) => setQuantityHoldingId(parseInt(e.target.value))}
+                value={quantitySymbol || ""}
+                onChange={(e) => setQuantitySymbol(e.target.value)}
                 className="bg-slate-50 border border-slate-200 rounded px-2 py-1 text-xs font-bold text-slate-600 focus:outline-none focus:border-primary"
               >
                 {holdings?.map((h) => (
-                  <option key={h.id} value={h.id}>{h.symbol}</option>
+                  <option key={h.symbol} value={h.symbol}>{h.symbol}</option>
                 ))}
               </select>
               <RangeSelector value={quantityRange} onChange={setQuantityRange} />

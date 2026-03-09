@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { trpc } from "@/lib/trpc";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ type ActivityRange = "7d" | "1m" | "ytd" | "1y";
 export default function Activities({ selectedPortfolioId }: { selectedPortfolioId: number }) {
   const [range, setRange] = useState<ActivityRange>("1m");
   const [viewingPurchases, setViewingPurchases] = useState<any | null>(null);
+  const [filterAccountId, setFilterAccountId] = useState<string>("");
 
   const { data: activities, isLoading } = trpc.etf.getInvestmentActivities.useQuery(
     { portfolioId: selectedPortfolioId, range },
@@ -21,6 +22,20 @@ export default function Activities({ selectedPortfolioId }: { selectedPortfolioI
     { portfolioId: selectedPortfolioId },
     { enabled: !!selectedPortfolioId }
   );
+
+  const filteredPurchases = useMemo(() => {
+    if (!viewingPurchases) return [];
+    if (!filterAccountId) return viewingPurchases.purchases;
+    return viewingPurchases.purchases.filter((p: any) => p.accountId === Number(filterAccountId));
+  }, [viewingPurchases, filterAccountId]);
+
+  const filteredTotalQuantity = useMemo(() => {
+    return filteredPurchases.reduce((sum: number, p: any) => sum + parseFloat(p.quantity.toString()), 0);
+  }, [filteredPurchases]);
+
+  const filteredTotalCost = useMemo(() => {
+    return filteredPurchases.reduce((sum: number, p: any) => sum + parseFloat(p.quantity.toString()) * parseFloat(p.price.toString()), 0);
+  }, [filteredPurchases]);
 
   if (isLoading) {
     return (
@@ -99,7 +114,7 @@ export default function Activities({ selectedPortfolioId }: { selectedPortfolioI
                 {activities.map((activity) => {
                   const isGain = parseFloat(activity.gain) >= 0;
                   return (
-                    <tr key={activity.holdingId} className="border-b border-border hover:bg-slate-50 transition-colors">
+                    <tr key={activity.symbol} className="border-b border-border hover:bg-slate-50 transition-colors">
                       <td className="py-4 px-4">
                         <div className="font-bold text-primary text-sm">{activity.symbol}</div>
                         <div className="text-slate-500 text-[10px] truncate max-w-[150px]">{activity.name}</div>
@@ -170,7 +185,10 @@ export default function Activities({ selectedPortfolioId }: { selectedPortfolioI
       </Card>
 
       {/* Purchase History Dialog */}
-      <Dialog open={!!viewingPurchases} onOpenChange={() => setViewingPurchases(null)}>
+      <Dialog open={!!viewingPurchases} onOpenChange={() => {
+        setViewingPurchases(null);
+        setFilterAccountId("");
+      }}>
         <DialogContent className="sm:max-w-[700px]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -180,14 +198,30 @@ export default function Activities({ selectedPortfolioId }: { selectedPortfolioI
           </DialogHeader>
           
           <div className="mt-4 space-y-4">
+            <div className="flex items-center gap-3 bg-white p-3 rounded-lg border border-border shadow-sm">
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Account Filter:</span>
+                <select 
+                  className="bg-slate-50 border border-slate-200 rounded px-2 py-1 text-[10px] font-bold text-slate-600 focus:outline-none focus:ring-1 focus:ring-primary h-7 min-w-[160px]"
+                  value={filterAccountId}
+                  onChange={(e) => setFilterAccountId(e.target.value)}
+                >
+                  <option value="">All Accounts</option>
+                  {accounts?.map((acc: any) => (
+                    <option key={acc.id} value={acc.id}>{acc.name} {acc.number ? `(${acc.number})` : ""}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
             <div className="bg-slate-50 p-4 rounded-lg border border-border flex justify-between items-center">
               <div>
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Period Accumulation</p>
-                <p className="text-xl font-bold text-slate-800 font-mono">{formatNumber(viewingPurchases?.totalQuantity, 3)} Shares</p>
+                <p className="text-xl font-bold text-slate-800 font-mono">{formatNumber(filteredTotalQuantity, 3)} Shares</p>
               </div>
               <div className="text-right">
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total Period Cost</p>
-                <p className="text-xl font-bold text-primary font-mono">{formatCurrency(viewingPurchases?.totalCost)}</p>
+                <p className="text-xl font-bold text-primary font-mono">{formatCurrency(filteredTotalCost)}</p>
               </div>
             </div>
 
@@ -203,7 +237,7 @@ export default function Activities({ selectedPortfolioId }: { selectedPortfolioI
                   </tr>
                 </thead>
                 <tbody>
-                  {viewingPurchases?.purchases.map((p: any, idx: number) => {
+                  {filteredPurchases.map((p: any, idx: number) => {
                     const qty = parseFloat(p.quantity.toString());
                     const price = parseFloat(p.price.toString());
                     const account = accounts?.find((a: any) => a.id === p.accountId);
@@ -217,6 +251,13 @@ export default function Activities({ selectedPortfolioId }: { selectedPortfolioI
                       </tr>
                     );
                   })}
+                  {filteredPurchases.length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="py-8 text-center text-slate-400 italic">
+                        No purchase records found for this selection.
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>

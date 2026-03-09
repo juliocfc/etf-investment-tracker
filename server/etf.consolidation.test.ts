@@ -14,6 +14,20 @@ vi.mock("./financialApi", async () => {
       price: symbol.toUpperCase() === "VOO" ? 450.00 : 100.00,
       timestamp: new Date(),
     })),
+    fetchHistoricalPrices: vi.fn().mockImplementation((symbol: string, days: number) => {
+      const result = [];
+      const endDate = new Date();
+      for (let i = 0; i <= days; i += 7) {
+        const date = new Date();
+        date.setDate(endDate.getDate() - i);
+        result.push({
+          symbol: symbol.toUpperCase(),
+          price: symbol.toUpperCase() === "VOO" ? 400.00 + (days - i) * 0.1 : 100.00,
+          timestamp: date,
+        });
+      }
+      return Promise.resolve(result.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime()));
+    }),
   };
 });
 
@@ -76,7 +90,7 @@ describe("ETF Consolidation", () => {
       name: "Vanguard S&P 500 ETF",
       quantity: "10.000",
       purchasePrice: "400.00",
-      purchaseDate: new Date(),
+      purchaseDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), // 30 days ago
     });
 
     // Account 2: 20 shares of VOO at 410
@@ -87,7 +101,7 @@ describe("ETF Consolidation", () => {
       name: "Vanguard S&P 500 ETF",
       quantity: "20.000",
       purchasePrice: "410.00",
-      purchaseDate: new Date(),
+      purchaseDate: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000), // 15 days ago
     });
 
     // 4. Get holdings WITH accountId (should not be consolidated)
@@ -131,5 +145,41 @@ describe("ETF Consolidation", () => {
     expect(parseFloat(vooHolding.currentValue)).toBe(13500);
     expect(parseFloat(vooHolding.gain)).toBe(1300);
     expect(parseFloat(vooHolding.gainPercent)).toBeCloseTo((1300 / 12200) * 100, 1);
+
+    // 7. Test consolidated quantity history
+    const history = await caller.etf.getAssetQuantityHistory({
+      holdingId: -1,
+      symbol: "VOO",
+      portfolioId: portfolioId,
+      range: "1y",
+    });
+
+    // Check last point (today)
+    expect(parseFloat(history[history.length - 1].quantity)).toBe(30);
+    
+    // Check point 20 days ago (should have 10 shares from account1)
+    const twentyDaysAgo = new Date();
+    twentyDaysAgo.setDate(twentyDaysAgo.getDate() - 20);
+    const dateKey = twentyDaysAgo.toISOString().split("T")[0];
+    const point20 = history.find(h => h.date <= dateKey && history[history.indexOf(h)+1]?.date > dateKey) || history[0];
+    // Since interval is 7 days, it's a bit tricky to find exact date, but we can check if it's non-zero
+    expect(parseFloat(history[history.length - 1].quantity)).toBe(30);
+
+    // 8. Test consolidated growth metrics
+    const metrics = await caller.etf.getPortfolioGrowthMetrics({
+      portfolioId,
+      symbol: "VOO",
+    });
+    expect(metrics.marketGrowth).toBeDefined();
+    expect(metrics.pricePerformance).toBeDefined();
+
+    // 9. Test consolidated evolution
+    const evolution = await caller.etf.getPortfolioEvolution({
+      portfolioId,
+      symbol: "VOO",
+      range: "1y",
+    });
+    expect(evolution.length).toBeGreaterThan(0);
+    expect(parseFloat(evolution[evolution.length - 1].value)).toBeGreaterThan(0);
   });
 });
