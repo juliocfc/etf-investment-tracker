@@ -35,7 +35,7 @@ describe("buyMoreShares", () => {
     const caller = appRouter.createCaller(ctx);
 
     // Get existing holdings
-    const holdings = await caller.etf.getHoldings();
+    const holdings = await caller.etf.getHoldings({ portfolioId: 1 });
     if (holdings.length === 0) {
       console.log("Skipping test: No holdings found");
       return;
@@ -46,7 +46,10 @@ describe("buyMoreShares", () => {
 
     // Buy more shares at a different price
     const buyResult = await caller.etf.buyMoreShares({
+      portfolioId: 1,
       holdingId: holding.id,
+      symbol: holding.symbol,
+      accountId: 1,
       quantity: "50",
       price: "500.00",
       purchaseDate: new Date("2024-06-01"),
@@ -63,7 +66,10 @@ describe("buyMoreShares", () => {
 
     try {
       await caller.etf.buyMoreShares({
+        portfolioId: 1,
         holdingId: 99999,
+        symbol: "VOO",
+        accountId: 1,
         quantity: "50",
         price: "500.00",
         purchaseDate: new Date(),

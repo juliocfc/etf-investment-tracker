@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
-import { etfHoldings, purchases } from "../drizzle/schema";
+import { etfHoldings, purchases, accounts } from "../drizzle/schema";
 import {
   getUserEtfHoldings,
   createEtfHolding,
@@ -92,6 +92,22 @@ export const etfRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      const dbInstance = await getDb();
+      // Verify account belongs to portfolio
+      const account = await dbInstance
+        .select()
+        .from(accounts)
+        .where(and(
+          eq(accounts.id, input.accountId), 
+          eq(accounts.portfolioId, input.portfolioId),
+          eq(accounts.userId, ctx.user.id)
+        ))
+        .then((rows: any[]) => rows[0]);
+      
+      if (!account) {
+        throw new Error("Invalid account selection for this portfolio");
+      }
+
       const isValid = await validateEtfSymbol(input.symbol);
       if (!isValid) {
         throw new Error(`Invalid ETF symbol: ${input.symbol}`);
@@ -536,13 +552,29 @@ export const etfRouter = router({
         portfolioId: z.number(),
         holdingId: z.number(),
         symbol: z.string(),
-        accountId: z.number().optional(),
+        accountId: z.number(),
         quantity: z.string(),
         price: z.string(),
         purchaseDate: z.date(),
       })
     )
     .mutation(async ({ ctx, input }) => {
+      const dbInstance = await getDb();
+      // Verify account belongs to portfolio
+      const account = await dbInstance
+        .select()
+        .from(accounts)
+        .where(and(
+          eq(accounts.id, input.accountId), 
+          eq(accounts.portfolioId, input.portfolioId),
+          eq(accounts.userId, ctx.user.id)
+        ))
+        .then((rows: any[]) => rows[0]);
+      
+      if (!account) {
+        throw new Error("Invalid account selection for this portfolio");
+      }
+
       let holdingId = input.holdingId;
       let holding: any;
 
@@ -587,7 +619,7 @@ export const etfRouter = router({
       await addPurchase({
         userId: ctx.user.id,
         portfolioId: input.portfolioId,
-        accountId: input.accountId || (holding as any).accountId,
+        accountId: input.accountId,
         holdingId: Number(holdingId),
         symbol: holding.symbol,
         quantity: input.quantity,

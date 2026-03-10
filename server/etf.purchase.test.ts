@@ -38,6 +38,8 @@ describe("Purchase Record Management", () => {
 
     // Create a holding
     const holding = await caller.etf.addHolding({
+      portfolioId: 1,
+      accountId: 1,
       symbol: "QQQM",
       name: "Invesco QQQ Micro Cap ETF",
       quantity: "100.000",
@@ -61,6 +63,8 @@ describe("Purchase Record Management", () => {
 
     // Create a holding with initial purchase
     const holding = await caller.etf.addHolding({
+      portfolioId: 1,
+      accountId: 1,
       symbol: "VOO",
       name: "Vanguard S&P 500 ETF",
       quantity: "50.000",
@@ -83,6 +87,8 @@ describe("Purchase Record Management", () => {
 
     // Create a holding
     const holding = await caller.etf.addHolding({
+      portfolioId: 1,
+      accountId: 1,
       symbol: "QQQM",
       name: "Invesco QQQ Micro Cap ETF",
       quantity: "100.000",
@@ -92,6 +98,9 @@ describe("Purchase Record Management", () => {
 
     // Buy more shares at a different price
     const buyResult = await caller.etf.buyMoreShares({
+      portfolioId: 1,
+      accountId: 1,
+      symbol: "QQQM",
       holdingId: holding!.id,
       quantity: "50.000",
       price: "350.00",
@@ -118,6 +127,8 @@ describe("Purchase Record Management", () => {
 
     // Create a holding
     const holding = await caller.etf.addHolding({
+      portfolioId: 1,
+      accountId: 1,
       symbol: "SCHD",
       name: "Schwab US Dividend Equity ETF",
       quantity: "75.000",

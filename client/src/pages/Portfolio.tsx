@@ -86,13 +86,28 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
     { enabled: !!selectedPortfolioId }
   );
 
-  // Initialize account selectors when accounts are loaded
+  // Initialize account selectors when accounts are loaded or changed
   useEffect(() => {
     if (accounts && accounts.length > 0) {
       const firstAccountId = accounts[0].id.toString();
-      if (!formData.accountId) setFormData(prev => ({ ...prev, accountId: firstAccountId }));
-      if (!buyData.accountId) setBuyData(prev => ({ ...prev, accountId: firstAccountId }));
-      if (!adjustCashData.accountId) setAdjustCashData(prev => ({ ...prev, accountId: firstAccountId }));
+      // Always reset to the first account of the current portfolio if the current selection
+      // doesn't belong to the new accounts list
+      const isAccountValid = (id: string) => accounts.some(acc => acc.id.toString() === id);
+
+      if (!formData.accountId || !isAccountValid(formData.accountId)) {
+        setFormData(prev => ({ ...prev, accountId: firstAccountId }));
+      }
+      if (!buyData.accountId || !isAccountValid(buyData.accountId)) {
+        setBuyData(prev => ({ ...prev, accountId: firstAccountId }));
+      }
+      if (!adjustCashData.accountId || !isAccountValid(adjustCashData.accountId)) {
+        setAdjustCashData(prev => ({ ...prev, accountId: firstAccountId }));
+      }
+    } else {
+      // Clear if no accounts
+      setFormData(prev => ({ ...prev, accountId: "" }));
+      setBuyData(prev => ({ ...prev, accountId: "" }));
+      setAdjustCashData(prev => ({ ...prev, accountId: "" }));
     }
   }, [accounts]);
 
