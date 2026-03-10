@@ -539,6 +539,90 @@ export const etfRouter = router({
       return totalDividends.toFixed(2);
     }),
 
+  getProjectedDividends: protectedProcedure
+    .input(z.object({ portfolioId: z.number() }))
+    .query(async ({ ctx, input }) => {
+      const holdings = await getUserEtfHoldings(ctx.user.id, input.portfolioId);
+      
+      const now = new Date();
+      const oneYearAgo = new Date();
+      oneYearAgo.setDate(now.getDate() - 365);
+
+      const assetsMap = new Map<string, any>();
+      let totalProjectedAnnual = 0;
+      const monthlyProjectionsMap = new Map<string, number>();
+
+      for (const holding of holdings) {
+        const dividendData = await fetchDividendData(holding.symbol);
+        
+        // Calculate "Annual Payout Per Share" by summing dividends where exDate is in the last 365 days
+        const lastYearDividends = dividendData.filter(d => {
+          const exDate = new Date(d.exDate);
+          return exDate >= oneYearAgo && exDate <= now;
+        });
+        
+        const annualDPS = lastYearDividends.reduce((sum, d) => sum + d.dividendPerShare, 0);
+        const currentQuantity = parseFloat(holding.quantity.toString());
+        const projectedAnnual = currentQuantity * annualDPS;
+        totalProjectedAnnual += projectedAnnual;
+
+        const symbol = holding.symbol.toUpperCase();
+        const existing = assetsMap.get(symbol);
+        if (existing) {
+          existing.currentQuantity += currentQuantity;
+          existing.projectedAnnualNum += projectedAnnual;
+          existing.projectedAnnual = existing.projectedAnnualNum.toFixed(2);
+        } else {
+          assetsMap.set(symbol, {
+            symbol: symbol,
+            name: holding.name,
+            projectedAnnualNum: projectedAnnual,
+            projectedAnnual: projectedAnnual.toFixed(2),
+            currentQuantity,
+            annualDPS: annualDPS.toFixed(4),
+          });
+        }
+
+        // Create monthly projection for the next 12 months based on last year's pattern
+        for (let i = 0; i < 12; i++) {
+          const projectionDate = new Date(now.getFullYear(), now.getMonth() + i, 1);
+          const projectionMonth = projectionDate.getMonth();
+          const projectionYear = projectionDate.getFullYear();
+          const monthKey = `${projectionYear}-${String(projectionMonth + 1).padStart(2, "0")}`;
+          
+          // Find dividends that occurred in the same month last year
+          const sameMonthDividends = lastYearDividends.filter(d => new Date(d.exDate).getMonth() === projectionMonth);
+          if (sameMonthDividends.length > 0) {
+            const monthlyAmount = sameMonthDividends.reduce((sum, d) => sum + (d.dividendPerShare * currentQuantity), 0);
+            monthlyProjectionsMap.set(monthKey, (monthlyProjectionsMap.get(monthKey) || 0) + monthlyAmount);
+          }
+        }
+      }
+
+      const assets = Array.from(assetsMap.values());
+
+      // Format monthly projection for the next 12 months
+      const monthlyProjection = [];
+      const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+      for (let i = 0; i < 12; i++) {
+        const projectionDate = new Date(now.getFullYear(), now.getMonth() + i, 1);
+        const projectionMonth = projectionDate.getMonth();
+        const projectionYear = projectionDate.getFullYear();
+        const monthKey = `${projectionYear}-${String(projectionMonth + 1).padStart(2, "0")}`;
+        
+        monthlyProjection.push({
+          month: `${monthNames[projectionMonth]} ${projectionYear}`,
+          amount: (monthlyProjectionsMap.get(monthKey) || 0).toFixed(2),
+        });
+      }
+
+      return {
+        totalProjectedAnnual: totalProjectedAnnual.toFixed(2),
+        assets,
+        monthlyProjection,
+      };
+    }),
+
   lookupETFName: publicProcedure
     .input(z.object({ symbol: z.string().min(1).max(20) }))
     .query(async ({ input }) => {

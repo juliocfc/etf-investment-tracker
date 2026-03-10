@@ -25,6 +25,11 @@ export default function Dividends({ selectedPortfolioId }: { selectedPortfolioId
     { enabled: !!selectedPortfolioId }
   );
 
+  const { data: projections, isLoading: isProjectionLoading } = trpc.etf.getProjectedDividends.useQuery(
+    { portfolioId: selectedPortfolioId },
+    { enabled: !!selectedPortfolioId }
+  );
+
   const [globalFilterSymbol, setGlobalFilterSymbol] = useState<string>("ALL");
   const [filterAccountId, setFilterAccountId] = useState<string>("ALL");
 
@@ -259,6 +264,95 @@ export default function Dividends({ selectedPortfolioId }: { selectedPortfolioId
           )}
         </div>
       </Card>
+
+      {/* Forward-Looking Income Projection */}
+      <div className="space-y-6">
+        <div className="flex items-center gap-2">
+          <TrendingUp className="w-5 h-5 text-primary" />
+          <h2 className="text-xl font-bold text-slate-800">Forward-Looking Income Projection</h2>
+        </div>
+
+        {isProjectionLoading ? (
+          <Card className="p-8 flex items-center justify-center">
+            <RefreshCw className="w-6 h-6 animate-spin text-primary mr-2" />
+            <span className="text-slate-500 font-medium">Calculating projections...</span>
+          </Card>
+        ) : projections ? (
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <Card className="p-6 bg-white shadow-sm border border-border border-l-4 border-l-green-600">
+                <div className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Projected Annual Income (Next 12M)</div>
+                <div className="text-4xl font-bold text-slate-800 font-mono mb-2">
+                  {formatCurrency(projections.totalProjectedAnnual)}
+                </div>
+                <div className="text-sm text-slate-500">
+                  Monthly average: <span className="font-bold text-slate-700">{formatCurrency(parseFloat(projections.totalProjectedAnnual) / 12)}</span>
+                </div>
+              </Card>
+
+              <Card className="p-6 bg-white shadow-sm border border-border md:col-span-2">
+                <div className="flex items-center gap-2 mb-4">
+                  <BarChart3 className="w-4 h-4 text-slate-400" />
+                  <div className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">Monthly Payout Forecast</div>
+                </div>
+                <div className="h-[120px] w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={projections.monthlyProjection}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                      <XAxis dataKey="month" stroke="#94a3b8" fontSize={8} tickLine={false} axisLine={false} />
+                      <YAxis hide />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: "#fff",
+                          border: "1px solid #e2e8f0",
+                          borderRadius: "8px",
+                          fontSize: "10px",
+                        }}
+                        formatter={(value) => [formatCurrency(value as number), "Projected"]}
+                      />
+                      <Bar dataKey="amount" fill="#10b981" radius={[2, 2, 0, 0]}>
+                        {projections.monthlyProjection.map((entry: any, index: number) => (
+                          <Cell key={`cell-${index}`} fill="#10b981" fillOpacity={0.6 + (index / 12) * 0.4} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </Card>
+            </div>
+
+            <Card className="bg-white shadow-sm border border-border overflow-hidden">
+              <div className="px-6 py-4 border-b border-border bg-slate-50/50">
+                <h3 className="text-sm font-bold text-slate-700">Projection by Asset</h3>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-slate-50">
+                    <tr className="border-b border-border">
+                      <th className="text-left py-3 px-6 text-slate-600 font-bold">Symbol</th>
+                      <th className="text-right py-3 px-6 text-slate-600 font-bold">Shares Owned</th>
+                      <th className="text-right py-3 px-6 text-slate-600 font-bold">Annual DPS</th>
+                      <th className="text-right py-3 px-6 text-slate-600 font-bold">Projected Annual</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {projections.assets.map((asset: any) => (
+                      <tr key={asset.symbol} className="border-b border-border hover:bg-slate-50 transition-colors">
+                        <td className="py-3 px-6 font-bold text-primary">{asset.symbol}</td>
+                        <td className="py-3 px-6 text-right font-mono text-slate-500">{formatNumber(asset.currentQuantity, 3)}</td>
+                        <td className="py-3 px-6 text-right font-mono text-slate-500">{formatCurrency(asset.annualDPS, 4)}</td>
+                        <td className="py-3 px-6 text-right font-mono font-bold text-green-600">{formatCurrency(asset.projectedAnnual)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          </>
+        ) : (
+          <div className="text-center py-10 text-slate-400">No projection data available. Add holdings to see forecasts.</div>
+        )}
+      </div>
 
       {/* Dividend History Table */}
       <Card className="bg-white shadow-sm border border-border overflow-hidden">
