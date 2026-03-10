@@ -86,13 +86,18 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
     { enabled: !!selectedPortfolioId }
   );
 
+  // Reset account selection when portfolio changes
+  useEffect(() => {
+    setSelectedAccountId(undefined);
+  }, [selectedPortfolioId]);
+
   // Initialize account selectors when accounts are loaded or changed
   useEffect(() => {
     if (accounts && accounts.length > 0) {
       const firstAccountId = accounts[0].id.toString();
       // Always reset to the first account of the current portfolio if the current selection
       // doesn't belong to the new accounts list
-      const isAccountValid = (id: string) => accounts.some(acc => acc.id.toString() === id);
+      const isAccountValid = (id: string) => accounts.some((acc: any) => acc.id.toString() === id);
 
       if (!formData.accountId || !isAccountValid(formData.accountId)) {
         setFormData(prev => ({ ...prev, accountId: firstAccountId }));
@@ -444,7 +449,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
     }
   };
 
-  const handleImportCSV = (holdingId: number, symbol: string, csvContent: string, accountId?: number) => {
+  const handleImportCSV = (holdingId: number, symbol: string, csvContent: string, accountId: number) => {
     if (!selectedPortfolioId) return;
     importCSVMutation.mutate({
       portfolioId: selectedPortfolioId,
@@ -1231,7 +1236,7 @@ function PurchaseHistoryTable({
   );
 }
 
-function CSVImportForm({ 
+function CSVImportForm({
   holdingId, 
   symbol,
   onImport, 
@@ -1241,7 +1246,7 @@ function CSVImportForm({
 }: { 
   holdingId: number, 
   symbol: string,
-  onImport: (holdingId: number, symbol: string, csv: string, accountId?: number) => void,
+  onImport: (holdingId: number, symbol: string, csv: string, accountId: number) => void,
   isLoading: boolean,
   accounts: any[],
   currentAccountId?: number

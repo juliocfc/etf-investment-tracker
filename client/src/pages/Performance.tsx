@@ -28,6 +28,13 @@ export default function Performance({ selectedPortfolioId }: { selectedPortfolio
   const [priceSymbol, setPriceSymbol] = useState<string | null>(null);
   const [quantitySymbol, setQuantitySymbol] = useState<string | null>(null);
 
+  // Reset symbols when portfolio changes
+  useEffect(() => {
+    setEvolutionSymbol("ALL");
+    setPriceSymbol(null);
+    setQuantitySymbol(null);
+  }, [selectedPortfolioId]);
+
   const { data: holdings } = trpc.etf.getHoldings.useQuery(
     { portfolioId: selectedPortfolioId },
     { enabled: !!selectedPortfolioId }

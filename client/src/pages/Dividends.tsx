@@ -28,6 +28,12 @@ export default function Dividends({ selectedPortfolioId }: { selectedPortfolioId
   const [globalFilterSymbol, setGlobalFilterSymbol] = useState<string>("ALL");
   const [filterAccountId, setFilterAccountId] = useState<string>("ALL");
 
+  // Reset filters when portfolio changes
+  useEffect(() => {
+    setGlobalFilterSymbol("ALL");
+    setFilterAccountId("ALL");
+  }, [selectedPortfolioId]);
+
   // Group history by month for bar chart
   const barChartData = useMemo(() => {
     if (!report?.history) return [];

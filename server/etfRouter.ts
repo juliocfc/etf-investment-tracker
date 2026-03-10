@@ -842,10 +842,26 @@ export const etfRouter = router({
         holdingId: z.number(),
         symbol: z.string(),
         csvContent: z.string(),
-        accountId: z.number().optional(),
+        accountId: z.number(),
       })
     )
     .mutation(async ({ ctx, input }) => {
+      const dbInstance = await getDb();
+      // Verify account belongs to portfolio
+      const account = await dbInstance
+        .select()
+        .from(accounts)
+        .where(and(
+          eq(accounts.id, input.accountId), 
+          eq(accounts.portfolioId, input.portfolioId),
+          eq(accounts.userId, ctx.user.id)
+        ))
+        .then((rows: any[]) => rows[0]);
+      
+      if (!account) {
+        throw new Error("Invalid account selection for this portfolio");
+      }
+
       let holdingId = input.holdingId;
       let holding: any;
 
@@ -886,8 +902,6 @@ export const etfRouter = router({
         }
       }
 
-      const targetAccountId = input.accountId || (holding as any).accountId;
-
       const records = parseCSVContent(input.csvContent);
       const validRecords = records.filter((r: any) => !r.error);
       const invalidRecords = records.filter((r: any) => r.error);
@@ -898,12 +912,12 @@ export const etfRouter = router({
         Number(holdingId),
         holding.symbol,
         validRecords,
-        targetAccountId
+        input.accountId
       );
 
       // Update holding account if it was null
-      if (!(holding as any).accountId && targetAccountId) {
-        await updateEtfHolding(Number(holdingId), { accountId: targetAccountId });
+      if (!(holding as any).accountId && input.accountId) {
+        await updateEtfHolding(Number(holdingId), { accountId: input.accountId });
       }
 
       const newAvgCost = await calculateAverageCost(Number(holdingId));

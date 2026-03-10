@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,12 @@ export default function Activities({ selectedPortfolioId }: { selectedPortfolioI
   const [range, setRange] = useState<ActivityRange>("1m");
   const [viewingPurchases, setViewingPurchases] = useState<any | null>(null);
   const [filterAccountId, setFilterAccountId] = useState<string>("");
+
+  // Reset filters when portfolio changes
+  useEffect(() => {
+    setFilterAccountId("");
+    setViewingPurchases(null);
+  }, [selectedPortfolioId]);
 
   const { data: activities, isLoading } = trpc.etf.getInvestmentActivities.useQuery(
     { portfolioId: selectedPortfolioId, range },

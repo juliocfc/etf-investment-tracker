@@ -235,17 +235,14 @@ export async function getCashBalance(userId: number, portfolioId: number, accoun
   return db.select().from(cashBalance).where(and(...conditions)).then((rows: any[]) => rows[0]);
 }
 
-export async function updateCashBalance(userId: number, portfolioId: number, amount: string, accountId?: number) {
+export async function updateCashBalance(userId: number, portfolioId: number, amount: string, accountId: number) {
   const db = await getDb();
   const existing = await getCashBalance(userId, portfolioId, accountId);
   
-  const targetAccountId = accountId || null;
-  
-  // If we are updating global (no accountId) and it doesn't exist, we should probably not allow it or create one with null accountId
-  if (existing && existing.accountId === targetAccountId) {
+  if (existing && existing.accountId === accountId) {
     return db.update(cashBalance).set({ amount }).where(eq(cashBalance.id, existing.id));
   } else {
-    return db.insert(cashBalance).values({ userId, portfolioId, amount, accountId: targetAccountId });
+    return db.insert(cashBalance).values({ userId, portfolioId, amount, accountId });
   }
 }
 
@@ -299,7 +296,7 @@ export async function bulkImportPurchases(
   holdingId: number,
   symbol: string,
   records: any[],
-  accountId?: number
+  accountId: number
 ) {
   const db = await getDb();
   let successCount = 0;
