@@ -20,7 +20,13 @@ export default function Dividends({ selectedPortfolioId }: { selectedPortfolioId
     { enabled: !!selectedPortfolioId }
   );
 
+  const { data: accounts } = trpc.account.getAccounts.useQuery(
+    { portfolioId: selectedPortfolioId },
+    { enabled: !!selectedPortfolioId }
+  );
+
   const [filterSymbol, setFilterSymbol] = useState<string>("ALL");
+  const [filterAccountId, setFilterAccountId] = useState<string>("ALL");
   const [allTimeFilterSymbol, setAllTimeFilterSymbol] = useState<string>("ALL");
   const [monthlyFilterSymbol, setMonthlyFilterSymbol] = useState<string>("ALL");
   const [chartFilterSymbol, setChartFilterSymbol] = useState<string>("ALL");
@@ -50,6 +56,15 @@ export default function Dividends({ selectedPortfolioId }: { selectedPortfolioId
       .sort((a, b) => a.date.localeCompare(b.date));
   }, [report?.history, chartFilterSymbol]);
 
+  const filteredHistory = useMemo(() => {
+    if (!report?.history) return [];
+    return report.history.filter((h: any) => {
+      const symbolMatch = filterSymbol === "ALL" || h.symbol === filterSymbol;
+      const accountMatch = filterAccountId === "ALL" || h.accountId?.toString() === filterAccountId;
+      return symbolMatch && accountMatch;
+    });
+  }, [report?.history, filterSymbol, filterAccountId]);
+
   if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center h-96 gap-4">
@@ -58,10 +73,6 @@ export default function Dividends({ selectedPortfolioId }: { selectedPortfolioId
       </div>
     );
   }
-
-  const filteredHistory = filterSymbol === "ALL" 
-    ? report?.history 
-    : report?.history.filter((h: any) => h.symbol === filterSymbol);
 
   const displayAllTimeTotal = allTimeFilterSymbol === "ALL"
     ? report?.totalAllTime
@@ -262,8 +273,18 @@ export default function Dividends({ selectedPortfolioId }: { selectedPortfolioId
             <h2 className="text-lg font-bold text-slate-800">Detailed Payout History</h2>
           </div>
           
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <ListFilter className="w-4 h-4 text-slate-400" />
+            <select
+              value={filterAccountId}
+              onChange={(e) => setFilterAccountId(e.target.value)}
+              className="bg-white border border-slate-200 rounded px-3 py-1.5 text-xs font-bold text-slate-600 focus:outline-none focus:border-primary"
+            >
+              <option value="ALL">All Accounts</option>
+              {accounts?.map((acc: any) => (
+                <option key={acc.id} value={acc.id.toString()}>{acc.name}</option>
+              ))}
+            </select>
             <select
               value={filterSymbol}
               onChange={(e) => setFilterSymbol(e.target.value)}
@@ -284,29 +305,34 @@ export default function Dividends({ selectedPortfolioId }: { selectedPortfolioId
                 <tr className="border-b border-border">
                   <th className="text-left py-3 px-6 text-slate-600">Ex-Dividend Date</th>
                   <th className="text-left py-3 px-6 text-slate-600">Symbol</th>
+                  <th className="text-left py-3 px-6 text-slate-600">Account</th>
                   <th className="text-right py-3 px-6 text-slate-600">Per Share</th>
                   <th className="text-right py-3 px-6 text-slate-600">Qty at Ex-Date</th>
                   <th className="text-right py-3 px-6 text-slate-600">Total Received</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredHistory.map((dividend: any, idx: number) => (
-                  <tr key={idx} className="border-b border-border hover:bg-slate-50 transition-colors">
-                    <td className="py-4 px-6 text-slate-600">
-                      {new Date(dividend.exDate).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: '2-digit' })}
-                    </td>
-                    <td className="py-4 px-6 font-bold text-primary">{dividend.symbol}</td>
-                    <td className="py-4 px-6 text-right font-mono text-slate-500">
-                      {formatCurrency(dividend.dividendPerShare, 4)}
-                    </td>
-                    <td className="py-4 px-6 text-right font-mono text-slate-500">
-                      {formatNumber(dividend.quantityOwned, 3)}
-                    </td>
-                    <td className="py-4 px-6 text-right font-mono font-bold text-green-600 bg-green-50/30">
-                      {formatCurrency(dividend.totalAmount)}
-                    </td>
-                  </tr>
-                ))}
+                {filteredHistory.map((dividend: any, idx: number) => {
+                  const account = accounts?.find((a: any) => a.id === dividend.accountId);
+                  return (
+                    <tr key={idx} className="border-b border-border hover:bg-slate-50 transition-colors">
+                      <td className="py-4 px-6 text-slate-600">
+                        {new Date(dividend.exDate).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: '2-digit' })}
+                      </td>
+                      <td className="py-4 px-6 font-bold text-primary">{dividend.symbol}</td>
+                      <td className="py-4 px-6 text-slate-500 text-xs font-medium">{account?.name || "Unknown"}</td>
+                      <td className="py-4 px-6 text-right font-mono text-slate-500">
+                        {formatCurrency(dividend.dividendPerShare, 4)}
+                      </td>
+                      <td className="py-4 px-6 text-right font-mono text-slate-500">
+                        {formatNumber(dividend.quantityOwned, 3)}
+                      </td>
+                      <td className="py-4 px-6 text-right font-mono font-bold text-green-600 bg-green-50/30">
+                        {formatCurrency(dividend.totalAmount)}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           ) : (

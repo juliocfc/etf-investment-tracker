@@ -384,7 +384,7 @@ export const etfRouter = router({
       windowStart.setFullYear(windowStart.getFullYear() - 1);
 
       const allDividends = [];
-      const etfBreakdown = [];
+      const etfBreakdownMap = new Map<string, any>();
 
       const getQuarterKey = (date: Date) => {
         const q = Math.floor(date.getMonth() / 3) + 1;
@@ -429,6 +429,7 @@ export const etfRouter = router({
 
             const dividendRecord = {
               symbol: holding.symbol,
+              accountId: (holding as any).accountId,
               exDate: div.exDate,
               dividendPerShare: div.dividendPerShare,
               quantityOwned,
@@ -448,17 +449,36 @@ export const etfRouter = router({
           }
         }
 
-        etfBreakdown.push({
-          symbol: holding.symbol,
-          name: holding.name,
-          totalLastYear: etfTotalWindow.toFixed(2),
-          totalAllTime: etfTotalAllTime.toFixed(2),
-          quarterlyBreakdown: lastQuarters.map(q => ({
-            quarter: q,
-            amount: (etfQuarterly[q] || 0).toFixed(2),
-          })),
-        });
+        const symbol = holding.symbol.toUpperCase();
+        const existing = etfBreakdownMap.get(symbol);
+        
+        if (existing) {
+          existing.totalLastYearNum += etfTotalWindow;
+          existing.totalAllTimeNum += etfTotalAllTime;
+          lastQuarters.forEach(q => {
+            existing.quarterlyValues[q] = (existing.quarterlyValues[q] || 0) + (etfQuarterly[q] || 0);
+          });
+        } else {
+          etfBreakdownMap.set(symbol, {
+            symbol: symbol,
+            name: holding.name,
+            totalLastYearNum: etfTotalWindow,
+            totalAllTimeNum: etfTotalAllTime,
+            quarterlyValues: { ...etfQuarterly }
+          });
+        }
       }
+
+      const etfBreakdown = Array.from(etfBreakdownMap.values()).map(item => ({
+        symbol: item.symbol,
+        name: item.name,
+        totalLastYear: item.totalLastYearNum.toFixed(2),
+        totalAllTime: item.totalAllTimeNum.toFixed(2),
+        quarterlyBreakdown: lastQuarters.map(q => ({
+          quarter: q,
+          amount: (item.quarterlyValues[q] || 0).toFixed(2),
+        })),
+      }));
 
       const totalLastYear = etfBreakdown.reduce((sum, item) => sum + parseFloat(item.totalLastYear), 0);
       const totalAllTime = etfBreakdown.reduce((sum, item) => sum + parseFloat(item.totalAllTime), 0);
