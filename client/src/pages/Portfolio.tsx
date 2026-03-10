@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Plus, Trash2, RefreshCw, ShoppingCart, History, FolderPlus, FileUp, Wallet, TrendingUp, Info, ArrowUpCircle, CheckCircle2, MoreVertical } from "lucide-react";
 import { toast } from "sonner";
-import { formatCurrency, formatNumber } from "@/lib/utils";
+import { formatCurrency, formatNumber, formatDate } from "@/lib/utils";
 import React, { useEffect, useRef, useState, useMemo } from "react";
 
 const CHART_COLORS = ["#004a99", "#3d8a3d", "#f2a900", "#cc0000", "#666666", "#94a3b8", "#38bdf8", "#10b981", "#fbbf24"];
@@ -28,7 +28,7 @@ const getLastTradingDay = () => {
   } else if (day === 6) { // Saturday -> Move to Friday
     date.setDate(date.getDate() - 1);
   }
-  return date.toISOString().split("T")[0];
+  return formatDate(date);
 };
 
 export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId: number }) {
@@ -85,6 +85,16 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
     { portfolioId: selectedPortfolioId },
     { enabled: !!selectedPortfolioId }
   );
+
+  // Initialize account selectors when accounts are loaded
+  useEffect(() => {
+    if (accounts && accounts.length > 0) {
+      const firstAccountId = accounts[0].id.toString();
+      if (!formData.accountId) setFormData(prev => ({ ...prev, accountId: firstAccountId }));
+      if (!buyData.accountId) setBuyData(prev => ({ ...prev, accountId: firstAccountId }));
+      if (!adjustCashData.accountId) setAdjustCashData(prev => ({ ...prev, accountId: firstAccountId }));
+    }
+  }, [accounts]);
 
   const { data: summary, refetch: refetchSummary } = trpc.etf.getPortfolioSummary.useQuery(
     { portfolioId: selectedPortfolioId, accountId: selectedAccountId },
@@ -145,8 +155,8 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
         name: "",
         quantity: "",
         purchasePrice: "",
-        purchaseDate: new Date().toISOString().split("T")[0],
-        accountId: "",
+        purchaseDate: formatDate(new Date()),
+        accountId: accounts?.[0]?.id.toString() || "",
       });
       setIsAddDialogOpen(false);
     },
@@ -470,7 +480,8 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
           <Dialog open={isAccountsDialogOpen} onOpenChange={setIsAccountsDialogOpen}>
             <DialogTrigger asChild>
               <Button variant="outline" size="sm" className="h-9 text-xs font-bold uppercase tracking-wider border-slate-200 text-slate-600">
-                Manage Accounts
+                <Plus className="w-3.5 h-3.5 mr-1.5" />
+                NEW ACCOUNT
               </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-[425px]">
@@ -540,383 +551,402 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
               </div>
             </DialogContent>
           </Dialog>
-        </div>
-      </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div className="data-card border-l-4 border-l-primary">
-          <div className="data-card-title">Total Portfolio</div>
-          <div className="data-card-value">{formatCurrency(summary?.totalValue)}</div>
-          <div className="data-card-subtitle flex items-center gap-1 text-slate-500">
-            <Info className="w-3 h-3" /> Includes Cash
-          </div>
-        </div>
-
-        <div className="data-card border-l-4 border-l-green-600">
-          <div className="data-card-title">Investment Value</div>
-          <div className="data-card-value">{formatCurrency(summary?.investmentValue)}</div>
-          <div className="data-card-subtitle flex items-center justify-between text-slate-500">
-            <span>Market Assets</span>
-            <span className="font-bold text-primary bg-slate-100 px-1.5 py-0.5 rounded text-[10px]">
-              {summary?.totalValue && parseFloat(summary.totalValue) > 0 
-                ? ((parseFloat(summary.investmentValue) / parseFloat(summary.totalValue)) * 100).toFixed(1) 
-                : "0"}%
-            </span>
-          </div>
-        </div>
-
-        <div className="data-card border-l-4 border-l-slate-400">
-          <div className="data-card-title">Cash Reserve</div>
-          <div className="data-card-value">{formatCurrency(summary?.cashBalance)}</div>
-          <div className="data-card-subtitle flex items-center justify-between text-slate-500">
-            <span>Liquid Funds</span>
-            <span className="font-bold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded text-[10px]">
-              {summary?.totalValue && parseFloat(summary.totalValue) > 0 
-                ? ((parseFloat(summary.cashBalance) / parseFloat(summary.totalValue)) * 100).toFixed(1) 
-                : "0"}%
-            </span>
-          </div>
-        </div>
-
-        <div className="data-card border-l-4 border-l-orange-500">
-          <div className="data-card-title">Asset Count</div>
-          <div className="data-card-value">{holdings?.length || 0}</div>
-          <div className="data-card-subtitle text-slate-500">Diversified Holdings</div>
-        </div>
-      </div>
-
-      {/* Main Holdings Table */}
-      <Card className="bg-white shadow-sm border border-border overflow-hidden">
-        <div className="px-6 py-4 border-b border-border bg-slate-50/50 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-              <TrendingUp className="w-5 h-5 text-primary" />
-              Active Holdings
-            </h2>
-            <span className="text-[10px] font-bold text-slate-400 bg-slate-200/50 px-2 py-0.5 rounded-full uppercase tracking-widest">{summary?.holdings?.length || 0} Assets</span>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => selectedPortfolioId && updatePricesMutation.mutate({ portfolioId: selectedPortfolioId })}
-              disabled={updatePricesMutation.isPending}
-              className="border-slate-200 hover:bg-slate-50 text-xs font-bold uppercase tracking-wider h-9"
+          {selectedAccountId && (
+            <button 
+              onClick={() => {
+                if (confirm("Delete this account? Associated holdings will remain but lose their account link.")) {
+                  deleteAccountMutation.mutate({ id: selectedAccountId });
+                }
+              }}
+              className="p-1 text-slate-400 hover:text-red-600 transition-colors rounded-md hover:bg-red-50" 
+              title="Delete Selected Account"
             >
-              <RefreshCw className={`mr-2 h-3.5 w-3.5 ${updatePricesMutation.isPending ? "animate-spin" : ""}`} />
-              Update Prices
-            </Button>
-            
-            <Dialog open={isAddDialogOpen} onOpenChange={(open) => {
-              setIsAddDialogOpen(open);
-              if (!open) {
-                setFormData({
-                  symbol: "",
-                  name: "",
-                  quantity: "",
-                  purchasePrice: "",
-                  purchaseDate: defaultDate,
-                  accountId: "",
-                });
-              }
-            }}>
-              <DialogTrigger asChild>
-                <Button size="sm" className="bg-primary hover:bg-primary/90 text-white shadow-md shadow-primary/10 text-xs font-bold uppercase tracking-wider h-9">
-                  <Plus className="mr-2 h-3.5 w-3.5" />
-                  Add Investment
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="sm:max-w-[425px]">
-                <DialogHeader>
-                  <DialogTitle>Add New Investment</DialogTitle>
-                </DialogHeader>
-                <div className="space-y-4 pt-4">
-                  <div className="grid gap-2">
-                    <label className="text-xs font-bold text-slate-500 uppercase">Account</label>
-                    <select 
-                      className="bg-white border border-input rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary h-10"
-                      value={formData.accountId}
-                      onChange={(e) => setFormData(prev => ({ ...prev, accountId: e.target.value }))}
-                    >
-                      <option value="">Select Account</option>
-                      {accounts?.map((acc: any) => (
-                        <option key={acc.id} value={acc.id}>{acc.name} {acc.number ? `(${acc.number})` : ""}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="grid gap-2">
-                    <label className="text-xs font-bold text-slate-500 uppercase">Symbol</label>
-                    <Input 
-                      placeholder="e.g., VOO, AAPL" 
-                      value={formData.symbol} 
-                      onChange={handleSymbolChange}
-                      onBlur={() => fetchAndSetPrice(formData.symbol, formData.purchaseDate)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Tab" && !e.shiftKey) {
-                          e.preventDefault();
-                          quantityInputRef.current?.focus();
-                        }
-                      }}
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <label className="text-xs font-bold text-slate-500 uppercase">Investment Name</label>
-                    <Input placeholder="Vanguard S&P 500 ETF" value={formData.name} onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))} />
-                  </div>
-                  <div className="grid gap-2">
-                    <label className="text-xs font-bold text-slate-500 uppercase">Purchase Date</label>
-                    <Input type="date" value={formData.purchaseDate} onChange={handleDateChange} />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="grid gap-2">
-                      <label className="text-xs font-bold text-slate-500 uppercase">Quantity</label>
-                      <Input ref={quantityInputRef} type="number" step="0.001" value={formData.quantity} onChange={(e) => setFormData(prev => ({ ...prev, quantity: e.target.value }))} />
-                    </div>
-                    <div className="grid gap-2">
-                      <label className="text-xs font-bold text-slate-500 uppercase">Purchase Price</label>
-                      <Input type="number" step="0.01" value={formData.purchasePrice} onChange={(e) => setFormData(prev => ({ ...prev, purchasePrice: e.target.value }))} />
-                    </div>
-                  </div>
-                  <Button onClick={handleAddHolding} className="w-full mt-2" disabled={addHoldingMutation.isPending}>
-                    Add Investment
-                  </Button>
-                </div>
-              </DialogContent>
-            </Dialog>
-          </div>
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="bg-slate-50 border-b border-border">
-                <th className="text-left py-3 px-3 text-slate-600">Asset</th>
-                <th className="text-right py-3 px-3 text-slate-600">Qty</th>
-                <th className="text-right py-3 px-3 text-slate-600">Avg Cost</th>
-                <th className="text-right py-3 px-3 text-slate-600">Total Cost</th>
-                <th className="text-right py-3 px-3 text-slate-600">Mkt Price</th>
-                <th className="text-right py-3 px-3 text-slate-600">Mkt Value</th>
-                <th className="text-right py-3 px-3 text-slate-600">Gain/Loss</th>
-                <th className="text-right py-3 px-3 text-slate-600">Return</th>
-                <th className="text-right py-3 px-3 text-slate-600">Allocation</th>
-                <th className="text-center py-3 px-3 text-slate-600">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {summary?.holdings?.map((holding: any) => {
-                const allocation = summary?.investmentAllocationBreakdown?.find((a: any) => a.symbol === holding.symbol);
-                const isGain = parseFloat(holding.gain) >= 0;
-                const isUnderWeight = parseFloat(allocation?.percentage || "0") < (parseFloat(holding.desiredAllocation) || 0);
-                const isConsolidated = holding.isConsolidated || holding.id === -1;
+      </div>
+
+      {accounts && accounts.length > 0 && (
+        <>
+          {/* Stats Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+            <div className="data-card border-l-4 border-l-primary">
+              <div className="data-card-title">Total Portfolio</div>
+              <div className="data-card-value">{formatCurrency(summary?.totalValue)}</div>
+              <div className="data-card-subtitle flex items-center gap-1 text-slate-500">
+                <Info className="w-3 h-3" /> Includes Cash
+              </div>
+            </div>
+
+            <div className="data-card border-l-4 border-l-green-600">
+              <div className="data-card-title">Investment Value</div>
+              <div className="data-card-value">{formatCurrency(summary?.investmentValue)}</div>
+              <div className="data-card-subtitle flex items-center justify-between text-slate-500">
+                <span>Market Assets</span>
+                <span className="font-bold text-primary bg-slate-100 px-1.5 py-0.5 rounded text-[10px]">
+                  {summary?.totalValue && parseFloat(summary.totalValue) > 0 
+                    ? ((parseFloat(summary.investmentValue) / parseFloat(summary.totalValue)) * 100).toFixed(1) 
+                    : "0"}%
+                </span>
+              </div>
+            </div>
+
+            <div className="data-card border-l-4 border-l-slate-400">
+              <div className="data-card-title">Cash Reserve</div>
+              <div className="data-card-value">{formatCurrency(summary?.cashBalance)}</div>
+              <div className="data-card-subtitle flex items-center justify-between text-slate-500">
+                <span>Liquid Funds</span>
+                <span className="font-bold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded text-[10px]">
+                  {summary?.totalValue && parseFloat(summary.totalValue) > 0 
+                    ? ((parseFloat(summary.cashBalance) / parseFloat(summary.totalValue)) * 100).toFixed(1) 
+                    : "0"}%
+                </span>
+              </div>
+            </div>
+
+            <div className="data-card border-l-4 border-l-orange-500">
+              <div className="data-card-title">Asset Count</div>
+              <div className="data-card-value">{holdings?.length || 0}</div>
+              <div className="data-card-subtitle text-slate-500">Diversified Holdings</div>
+            </div>
+          </div>
+
+          {/* Main Holdings Table */}
+          <Card className="bg-white shadow-sm border border-border overflow-hidden">
+            <div className="px-6 py-4 border-b border-border bg-slate-50/50 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                  <TrendingUp className="w-5 h-5 text-primary" />
+                  Active Holdings
+                </h2>
+                <span className="text-[10px] font-bold text-slate-400 bg-slate-200/50 px-2 py-0.5 rounded-full uppercase tracking-widest">{summary?.holdings?.length || 0} Assets</span>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => selectedPortfolioId && updatePricesMutation.mutate({ portfolioId: selectedPortfolioId })}
+                  disabled={updatePricesMutation.isPending}
+                  className="border-slate-200 hover:bg-slate-50 text-xs font-bold uppercase tracking-wider h-9"
+                >
+                  <RefreshCw className={`mr-2 h-3.5 w-3.5 ${updatePricesMutation.isPending ? "animate-spin" : ""}`} />
+                  Update Prices
+                </Button>
                 
-                return (
-                  <tr key={isConsolidated ? `consolidated-${holding.symbol}` : holding.id} className="border-b border-border hover:bg-slate-50 transition-colors">
-                    <td className="py-3 px-3">
-                      <div className="font-bold text-primary text-sm leading-tight">{holding.symbol}</div>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <div className="text-slate-500 text-[10px] leading-tight cursor-help whitespace-nowrap">
-                            {holding.name.length > 20 ? `${holding.name.substring(0, 20)}...` : holding.name}
-                          </div>
-                        </TooltipTrigger>
-                        <TooltipContent side="right">
-                          <p className="max-w-[300px]">{holding.name}</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </td>
-                    <td className="text-right py-3 px-3 font-mono text-xs font-medium">{formatNumber(holding.quantity, 3)}</td>
-                    <td className="text-right py-3 px-3 font-mono text-xs text-slate-600">{formatCurrency(holding.averageCost)}</td>
-                    <td className="text-right py-3 px-3 font-mono text-xs text-slate-600">{formatCurrency(holding.totalCost)}</td>
-                    <td className="text-right py-3 px-3 font-mono text-xs text-slate-600">{formatCurrency(holding.currentPrice)}</td>
-                    <td className="text-right py-3 px-3 font-mono text-xs font-bold">{formatCurrency(holding.currentValue)}</td>
-                    <td className={`text-right py-3 px-3 font-mono text-xs font-bold ${isGain ? "text-green-600" : "text-red-600"}`}>
-                      {isGain ? "+" : ""}{formatCurrency(holding.gain)}
-                    </td>
-                    <td className={`text-right py-3 px-3 font-mono text-xs font-bold ${isGain ? "text-green-600" : "text-red-600"}`}>
-                      {isGain ? "+" : ""}{holding.gainPercent}%
-                    </td>
-                    <td className="text-right py-3 px-3 font-mono">
-                      <div className="flex flex-col items-end gap-1">
-                        <div className="text-xs font-bold text-slate-700 leading-none">{allocation?.percentage || "0.00"}%</div>
-                        <div className="flex items-center gap-1.5 mt-0.5">
-                          {isUnderWeight && (
-                            <div className="flex items-center text-[8px] font-bold text-green-600 animate-pulse">
-                              <ArrowUpCircle className="w-2.5 h-2.5 mr-0.5" /> BUY
-                            </div>
-                          )}
-                          <div className="flex items-center text-[10px] text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
-                            <span className="mr-1">Target</span>
-                            <input
-                              type="number"
-                              step="0.1"
-                              defaultValue={holding.desiredAllocation || "0"}
-                              onBlur={(e) => {
-                                if (e.target.value !== holding.desiredAllocation) {
-                                  updateHoldingMutation.mutate({
-                                    id: holding.id,
-                                    symbol: holding.symbol,
-                                    portfolioId: selectedPortfolioId,
-                                    desiredAllocation: e.target.value,
-                                  });
-                                }
-                              }}
-                              className="w-10 bg-transparent border-none p-0 text-right focus:outline-none focus:ring-0 font-bold text-slate-600"
-                            />
-                            <span>%</span>
-                          </div>
+                <Dialog open={isAddDialogOpen} onOpenChange={(open) => {
+                  setIsAddDialogOpen(open);
+                  if (!open) {
+                    setFormData({
+                      symbol: "",
+                      name: "",
+                      quantity: "",
+                      purchasePrice: "",
+                      purchaseDate: defaultDate,
+                      accountId: accounts?.[0]?.id.toString() || "",
+                    });
+                  } else if (accounts && accounts.length > 0 && !formData.accountId) {
+                    setFormData(prev => ({ ...prev, accountId: accounts[0].id.toString() }));
+                  }
+                }}>
+                  <DialogTrigger asChild>
+                    <Button size="sm" className="bg-primary hover:bg-primary/90 text-white shadow-md shadow-primary/10 text-xs font-bold uppercase tracking-wider h-9">
+                      <Plus className="mr-2 h-3.5 w-3.5" />
+                      Add Investment
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="sm:max-w-[425px]">
+                    <DialogHeader>
+                      <DialogTitle>Add New Investment</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4 pt-4">
+                      <div className="grid gap-2">
+                        <label className="text-xs font-bold text-slate-500 uppercase">Account</label>
+                        <select 
+                          className="bg-white border border-input rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary h-10"
+                          value={formData.accountId}
+                          onChange={(e) => setFormData(prev => ({ ...prev, accountId: e.target.value }))}
+                        >
+                          {accounts?.map((acc: any) => (
+                            <option key={acc.id} value={acc.id}>{acc.name} {acc.number ? `(${acc.number})` : ""}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="grid gap-2">
+                        <label className="text-xs font-bold text-slate-500 uppercase">Symbol</label>
+                        <Input 
+                          placeholder="e.g., VOO, AAPL" 
+                          value={formData.symbol} 
+                          onChange={handleSymbolChange}
+                          onBlur={() => fetchAndSetPrice(formData.symbol, formData.purchaseDate)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Tab" && !e.shiftKey) {
+                              e.preventDefault();
+                              quantityInputRef.current?.focus();
+                            }
+                          }}
+                        />
+                      </div>
+                      <div className="grid gap-2">
+                        <label className="text-xs font-bold text-slate-500 uppercase">Investment Name</label>
+                        <Input placeholder="Vanguard S&P 500 ETF" value={formData.name} onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))} />
+                      </div>
+                      <div className="grid gap-2">
+                        <label className="text-xs font-bold text-slate-500 uppercase">Purchase Date</label>
+                        <Input type="date" value={formData.purchaseDate} onChange={handleDateChange} />
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="grid gap-2">
+                          <label className="text-xs font-bold text-slate-500 uppercase">Quantity</label>
+                          <Input ref={quantityInputRef} type="number" step="0.001" value={formData.quantity} onChange={(e) => setFormData(prev => ({ ...prev, quantity: e.target.value }))} />
+                        </div>
+                        <div className="grid gap-2">
+                          <label className="text-xs font-bold text-slate-500 uppercase">Purchase Price</label>
+                          <Input type="number" step="0.01" value={formData.purchasePrice} onChange={(e) => setFormData(prev => ({ ...prev, purchasePrice: e.target.value }))} />
                         </div>
                       </div>
-                    </td>
-                    <td className="text-center py-3 px-3">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-primary">
-                            <MoreVertical className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-56">
-                          <DropdownMenuLabel>Manage Asset</DropdownMenuLabel>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem onClick={() => setIsBuyDialogOpen({ id: holding.id, symbol: holding.symbol })}>
-                            <ShoppingCart className="mr-2 h-4 w-4 text-slate-500" />
-                            <span>Add Shares</span>
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => setIsCSVImportOpen({ id: holding.id, symbol: holding.symbol })}>
-                            <FileUp className="mr-2 h-4 w-4 text-slate-500" />
-                            <span>Import Purchases</span>
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => setPurchaseHistoryOpen({ id: holding.id, symbol: holding.symbol })}>
-                            <History className="mr-2 h-4 w-4 text-slate-500" />
-                            <span>View History</span>
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem 
-                            onClick={() => handleDeleteHolding(holding.id, holding.symbol)}
-                            className="text-red-600 focus:text-red-600 focus:bg-red-50"
-                          >
-                            <Trash2 className="mr-2 h-4 w-4" />
-                            <span>Delete Investment</span>
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-            {summary?.holdings && summary.holdings.length > 0 && (
-              <tfoot className="bg-slate-50 border-t-2 border-slate-200">
-                <tr className="font-bold text-slate-800">
-                  <td colSpan={5} className="py-4 px-3 uppercase text-[10px] tracking-widest text-slate-500">Total Portfolio Performance</td>
-                  <td className="text-right py-4 px-3 font-mono text-sm">{formatCurrency(summary.investmentValue)}</td>
-                  <td className={`text-right py-4 px-3 font-mono text-sm ${
-                    (summary?.holdings?.reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0) || 0) >= 0 
-                      ? "text-green-600" 
-                      : "text-red-600"
-                  }`}>
-                    {(summary?.holdings?.reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0) || 0) >= 0 ? "+" : ""}
-                    {formatCurrency(summary?.holdings?.reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0) || 0)}
-                  </td>
-                  <td className={`text-right py-4 px-3 font-mono text-sm ${
-                    ((summary?.holdings?.reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0) || 0) / 
-                    (summary?.holdings?.reduce((acc: number, h: any) => acc + (parseFloat(h.averageCost || h.purchasePrice) * parseFloat(h.quantity)), 0) || 1) * 100) >= 0
-                      ? "text-green-600"
-                      : "text-red-600"
-                  }`}>
-                    {(
-                      ((summary?.holdings?.reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0) || 0) / 
-                      (summary?.holdings?.reduce((acc: number, h: any) => acc + (parseFloat(h.averageCost || h.purchasePrice) * parseFloat(h.quantity)), 0) || 1)) * 100
-                    ).toFixed(2)}%
-                  </td>
-                  <td className="text-right py-4 px-3 font-mono text-slate-500 text-xs">100%</td>
-                  <td></td>
-                </tr>
-              </tfoot>
-            )}
-          </table>
-        </div>
-      </Card>
-
-      {/* Allocation & Management Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Portfolio Allocation Pie Chart */}
-        {summary && (
-          <Card className="p-6 bg-white shadow-sm border border-border">
-            <div className="flex items-center gap-2 mb-6">
-              <div className="p-1.5 bg-slate-100 rounded text-slate-600">
-                <FolderPlus className="w-4 h-4" />
+                      <Button onClick={handleAddHolding} className="w-full mt-2" disabled={addHoldingMutation.isPending}>
+                        Add Investment
+                      </Button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
               </div>
-              <h2 className="text-lg font-bold text-slate-800">Portfolio Allocation</h2>
             </div>
-            <div className="flex flex-col md:flex-row items-center gap-8">
-              <PortfolioAllocationChart data={summary.allocationBreakdown} cashPercent={summary.cashAllocationPercent} />
-              <div className="flex-1 w-full">
-                <div className="space-y-2">
-                  {summary.allocationBreakdown.map((item: any, index: number) => (
-                    <div key={item.symbol} className="flex justify-between items-center text-sm p-2 hover:bg-slate-50 rounded transition-colors">
-                      <div className="flex items-center gap-3">
-                        <div 
-                          className="w-3 h-3 rounded-full shrink-0" 
-                          style={{ backgroundColor: CHART_COLORS[index % CHART_COLORS.length] }}
-                        />
-                        <span className="font-bold text-primary w-12">{item.symbol}</span>
-                        <span className="text-slate-500 text-xs truncate max-w-[150px]">{item.name}</span>
-                      </div>
-                      <span className="font-mono font-bold text-slate-700">{item.percentage}%</span>
-                    </div>
-                  ))}
-                  <div className="border-t border-slate-100 pt-2 mt-2 flex justify-between items-center text-sm p-2 bg-slate-50 rounded">
-                    <div className="flex items-center gap-3">
-                      <div className="w-3 h-3 rounded-full shrink-0 bg-slate-200" />
-                      <span className="font-bold text-slate-600">Cash Reserve</span>
-                    </div>
-                    <span className="font-mono font-bold text-slate-700">{summary.cashAllocationPercent}%</span>
-                  </div>
-                </div>
-              </div>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-border">
+                    <th className="text-left py-3 px-3 text-slate-600">Asset</th>
+                    <th className="text-right py-3 px-3 text-slate-600">Qty</th>
+                    <th className="text-right py-3 px-3 text-slate-600">Avg Cost</th>
+                    <th className="text-right py-3 px-3 text-slate-600">Total Cost</th>
+                    <th className="text-right py-3 px-3 text-slate-600">Mkt Price</th>
+                    <th className="text-right py-3 px-3 text-slate-600">Mkt Value</th>
+                    <th className="text-right py-3 px-3 text-slate-600">Gain/Loss</th>
+                    <th className="text-right py-3 px-3 text-slate-600">Return</th>
+                    <th className="text-right py-3 px-3 text-slate-600">Allocation</th>
+                    <th className="text-center py-3 px-3 text-slate-600">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {summary?.holdings?.map((holding: any) => {
+                    const allocation = summary?.investmentAllocationBreakdown?.find((a: any) => a.symbol === holding.symbol);
+                    const isGain = parseFloat(holding.gain) >= 0;
+                    const isUnderWeight = parseFloat(allocation?.percentage || "0") < (parseFloat(holding.desiredAllocation) || 0);
+                    const isConsolidated = holding.isConsolidated || holding.id === -1;
+                    
+                    return (
+                      <tr key={isConsolidated ? `consolidated-${holding.symbol}` : holding.id} className="border-b border-border hover:bg-slate-50 transition-colors">
+                        <td className="py-3 px-3">
+                          <div className="font-bold text-primary text-sm leading-tight">{holding.symbol}</div>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <div className="text-slate-500 text-[10px] leading-tight cursor-help whitespace-nowrap">
+                                {holding.name.length > 20 ? `${holding.name.substring(0, 20)}...` : holding.name}
+                              </div>
+                            </TooltipTrigger>
+                            <TooltipContent side="right">
+                              <p className="max-w-[300px]">{holding.name}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </td>
+                        <td className="text-right py-3 px-3 font-mono text-xs font-medium">{formatNumber(holding.quantity, 3)}</td>
+                        <td className="text-right py-3 px-3 font-mono text-xs text-slate-600">{formatCurrency(holding.averageCost)}</td>
+                        <td className="text-right py-3 px-3 font-mono text-xs text-slate-600">{formatCurrency(holding.totalCost)}</td>
+                        <td className="text-right py-3 px-3 font-mono text-xs text-slate-600">{formatCurrency(holding.currentPrice)}</td>
+                        <td className="text-right py-3 px-3 font-mono text-xs font-bold">{formatCurrency(holding.currentValue)}</td>
+                        <td className={`text-right py-3 px-3 font-mono text-xs font-bold ${isGain ? "text-green-600" : "text-red-600"}`}>
+                          {isGain ? "+" : ""}{formatCurrency(holding.gain)}
+                        </td>
+                        <td className={`text-right py-3 px-3 font-mono text-xs font-bold ${isGain ? "text-green-600" : "text-red-600"}`}>
+                          {isGain ? "+" : ""}{holding.gainPercent}%
+                        </td>
+                        <td className="text-right py-3 px-3 font-mono">
+                          <div className="flex flex-col items-end gap-1">
+                            <div className="text-xs font-bold text-slate-700 leading-none">{allocation?.percentage || "0.00"}%</div>
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              {isUnderWeight && (
+                                <div className="flex items-center text-[8px] font-bold text-green-600 animate-pulse">
+                                  <ArrowUpCircle className="w-2.5 h-2.5 mr-0.5" /> BUY
+                                </div>
+                              )}
+                              <div className="flex items-center text-[10px] text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                                <span className="mr-1">Target</span>
+                                <input
+                                  type="number"
+                                  step="0.1"
+                                  defaultValue={holding.desiredAllocation || "0"}
+                                  onBlur={(e) => {
+                                    if (e.target.value !== holding.desiredAllocation) {
+                                      updateHoldingMutation.mutate({
+                                        id: holding.id,
+                                        symbol: holding.symbol,
+                                        portfolioId: selectedPortfolioId,
+                                        desiredAllocation: e.target.value,
+                                      });
+                                    }
+                                  }}
+                                  className="w-10 bg-transparent border-none p-0 text-right focus:outline-none focus:ring-0 font-bold text-slate-600"
+                                />
+                                <span>%</span>
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="text-center py-3 px-3">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-primary">
+                                <MoreVertical className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-56">
+                              <DropdownMenuLabel>Manage Asset</DropdownMenuLabel>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem onClick={() => setIsBuyDialogOpen({ id: holding.id, symbol: holding.symbol })}>
+                                <ShoppingCart className="mr-2 h-4 w-4 text-slate-500" />
+                                <span>Add Shares</span>
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => setIsCSVImportOpen({ id: holding.id, symbol: holding.symbol })}>
+                                <FileUp className="mr-2 h-4 w-4 text-slate-500" />
+                                <span>Import Purchases</span>
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => setPurchaseHistoryOpen({ id: holding.id, symbol: holding.symbol })}>
+                                <History className="mr-2 h-4 w-4 text-slate-500" />
+                                <span>View History</span>
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem 
+                                onClick={() => handleDeleteHolding(holding.id, holding.symbol)}
+                                className="text-red-600 focus:text-red-600 focus:bg-red-50"
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                <span>Delete Investment</span>
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                {summary?.holdings && summary.holdings.length > 0 && (
+                  <tfoot className="bg-slate-50 border-t-2 border-slate-200">
+                    <tr className="font-bold text-slate-800">
+                      <td colSpan={5} className="py-4 px-3 uppercase text-[10px] tracking-widest text-slate-500">Total Portfolio Performance</td>
+                      <td className="text-right py-4 px-3 font-mono text-sm">{formatCurrency(summary.investmentValue)}</td>
+                      <td className={`text-right py-4 px-3 font-mono text-sm ${
+                        (summary?.holdings?.reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0) || 0) >= 0 
+                          ? "text-green-600" 
+                          : "text-red-600"
+                      }`}>
+                        {(summary?.holdings?.reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0) || 0) >= 0 ? "+" : ""}
+                        {formatCurrency(summary?.holdings?.reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0) || 0)}
+                      </td>
+                      <td className={`text-right py-4 px-3 font-mono text-sm ${
+                        ((summary?.holdings?.reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0) || 0) / 
+                        (summary?.holdings?.reduce((acc: number, h: any) => acc + (parseFloat(h.averageCost || h.purchasePrice) * parseFloat(h.quantity)), 0) || 1) * 100) >= 0
+                          ? "text-green-600"
+                          : "text-red-600"
+                      }`}>
+                        {(
+                          ((summary?.holdings?.reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0) || 0) / 
+                          (summary?.holdings?.reduce((acc: number, h: any) => acc + (parseFloat(h.averageCost || h.purchasePrice) * parseFloat(h.quantity)), 0) || 1)) * 100
+                        ).toFixed(2)}%
+                      </td>
+                      <td className="text-right py-4 px-3 font-mono text-slate-500 text-xs">100%</td>
+                      <td></td>
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
             </div>
           </Card>
-        )}
 
-        {/* Cash Balance Section */}
-        <Card className="p-6 bg-white shadow-sm border border-border flex flex-col">
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-2">
-              <div className="p-1.5 bg-slate-100 rounded text-slate-600">
-                <Wallet className="w-4 h-4" />
+          {/* Allocation & Management Grid */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            {/* Portfolio Allocation Pie Chart */}
+            {summary && (
+              <Card className="p-6 bg-white shadow-sm border border-border">
+                <div className="flex items-center gap-2 mb-6">
+                  <div className="p-1.5 bg-slate-100 rounded text-slate-600">
+                    <FolderPlus className="w-4 h-4" />
+                  </div>
+                  <h2 className="text-lg font-bold text-slate-800">Portfolio Allocation</h2>
+                </div>
+                <div className="flex flex-col md:flex-row items-center gap-8">
+                  <PortfolioAllocationChart data={summary.allocationBreakdown} cashPercent={summary.cashAllocationPercent} />
+                  <div className="flex-1 w-full">
+                    <div className="space-y-2">
+                      {summary.allocationBreakdown.map((item: any, index: number) => (
+                        <div key={item.symbol} className="flex justify-between items-center text-sm p-2 hover:bg-slate-50 rounded transition-colors">
+                          <div className="flex items-center gap-3">
+                            <div 
+                              className="w-3 h-3 rounded-full shrink-0" 
+                              style={{ backgroundColor: CHART_COLORS[index % CHART_COLORS.length] }}
+                            />
+                            <span className="font-bold text-primary w-12">{item.symbol}</span>
+                            <span className="text-slate-500 text-xs truncate max-w-[150px]">{item.name}</span>
+                          </div>
+                          <span className="font-mono font-bold text-slate-700">{item.percentage}%</span>
+                        </div>
+                      ))}
+                      <div className="border-t border-slate-100 pt-2 mt-2 flex justify-between items-center text-sm p-2 bg-slate-50 rounded">
+                        <div className="flex items-center gap-3">
+                          <div className="w-3 h-3 rounded-full shrink-0 bg-slate-200" />
+                          <span className="font-bold text-slate-600">Cash Reserve</span>
+                        </div>
+                        <span className="font-mono font-bold text-slate-700">{summary.cashAllocationPercent}%</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </Card>
+            )}
+
+            {/* Cash Balance Section */}
+            <Card className="p-6 bg-white shadow-sm border border-border flex flex-col">
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 bg-slate-100 rounded text-slate-600">
+                    <Wallet className="w-4 h-4" />
+                  </div>
+                  <h3 className="text-lg font-bold text-slate-800">Cash Reserve Management</h3>
+                </div>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => {
+                    const defaultAccId = selectedAccountId || accounts?.[0]?.id;
+                    if (defaultAccId) {
+                      handleAdjustCashAccountChange(defaultAccId.toString());
+                    }
+                    setIsAdjustCashDialogOpen(true);
+                  }} 
+                  className="text-xs uppercase font-bold border-slate-200 hover:bg-slate-50"
+                >
+                  Adjust Balance
+                </Button>
               </div>
-              <h3 className="text-lg font-bold text-slate-800">Cash Reserve Management</h3>
-            </div>
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={() => {
-                setAdjustCashData({
-                  accountId: selectedAccountId?.toString() || "",
-                  amount: summary?.cashBalance?.toString() || "0",
-                });
-                setIsAdjustCashDialogOpen(true);
-              }} 
-              className="text-xs uppercase font-bold border-slate-200 hover:bg-slate-50"
-            >
-              Adjust Balance
-            </Button>
-          </div>
-          
-          <div className="flex-1 flex flex-col justify-center bg-slate-50 rounded-lg p-8 border border-slate-100 border-dashed">
-            <div className="text-center">
-              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">
-                {selectedAccountId ? `Current Liquid Assets (${accounts?.find((a: any) => a.id === selectedAccountId)?.name})` : "Total Combined Liquid Assets"}
+              
+              <div className="flex-1 flex flex-col justify-center bg-slate-50 rounded-lg p-8 border border-slate-100 border-dashed">
+                <div className="text-center">
+                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">
+                    {selectedAccountId ? `Current Liquid Assets (${accounts?.find((a: any) => a.id === selectedAccountId)?.name})` : "Total Combined Liquid Assets"}
+                  </p>
+                  <p className="text-5xl font-bold text-slate-800 font-mono tracking-tighter">{formatCurrency(summary?.cashBalance)}</p>
+                </div>
+              </div>
+              <p className="text-xs text-slate-400 mt-6 text-center italic">
+                Maintaining a healthy cash reserve allows for strategic entries during market downturns.
               </p>
-              <p className="text-5xl font-bold text-slate-800 font-mono tracking-tighter">{formatCurrency(summary?.cashBalance)}</p>
-            </div>
+            </Card>
           </div>
-          <p className="text-xs text-slate-400 mt-6 text-center italic">
-            Maintaining a healthy cash reserve allows for strategic entries during market downturns.
-          </p>
-        </Card>
-      </div>
+        </>
+      )}
 
       {/* Dialogs */}
       <Dialog open={isAdjustCashDialogOpen} onOpenChange={setIsAdjustCashDialogOpen}>
@@ -932,7 +962,6 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                 value={adjustCashData.accountId}
                 onChange={(e) => handleAdjustCashAccountChange(e.target.value)}
               >
-                <option value="">Select Account</option>
                 {accounts?.map((acc: any) => (
                   <option key={acc.id} value={acc.id}>{acc.name} {acc.number ? `(${acc.number})` : ""}</option>
                 ))}
@@ -980,7 +1009,6 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                   value={buyData.accountId}
                   onChange={(e) => setBuyData(prev => ({ ...prev, accountId: e.target.value }))}
                 >
-                  <option value="">Select Account</option>
                   {accounts?.map((acc: any) => (
                     <option key={acc.id} value={acc.id}>{acc.name} {acc.number ? `(${acc.number})` : ""}</option>
                   ))}
@@ -1245,7 +1273,6 @@ function CSVImportForm({
           value={selectedAccountId}
           onChange={(e) => setSelectedAccountId(e.target.value)}
         >
-          <option value="">Select Account</option>
           {accounts?.map((acc: any) => (
             <option key={acc.id} value={acc.id}>{acc.name} {acc.number ? `(${acc.number})` : ""}</option>
           ))}
