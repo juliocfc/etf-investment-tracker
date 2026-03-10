@@ -25,8 +25,12 @@ export default function Activities({ selectedPortfolioId }: { selectedPortfolioI
 
   const filteredPurchases = useMemo(() => {
     if (!viewingPurchases) return [];
-    if (!filterAccountId) return viewingPurchases.purchases;
-    return viewingPurchases.purchases.filter((p: any) => p.accountId === Number(filterAccountId));
+    let base = viewingPurchases.purchases;
+    if (filterAccountId) {
+      base = base.filter((p: any) => p.accountId === Number(filterAccountId));
+    }
+    // Sort by purchaseDate DESC
+    return [...base].sort((a, b) => new Date(b.purchaseDate).getTime() - new Date(a.purchaseDate).getTime());
   }, [viewingPurchases, filterAccountId]);
 
   const filteredTotalQuantity = useMemo(() => {

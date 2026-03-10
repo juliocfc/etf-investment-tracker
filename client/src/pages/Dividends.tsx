@@ -12,7 +12,7 @@ import {
   ResponsiveContainer,
   Cell
 } from "recharts";
-import { DollarSign, Calendar, ListFilter, Trophy, RefreshCw, Briefcase, BarChart3, TrendingUp } from "lucide-react";
+import { DollarSign, Calendar, ListFilter, Trophy, RefreshCw, BarChart3, TrendingUp } from "lucide-react";
 
 export default function Dividends({ selectedPortfolioId }: { selectedPortfolioId: number }) {
   const { data: report, isLoading } = trpc.etf.getDetailedDividendReport.useQuery(
@@ -25,19 +25,16 @@ export default function Dividends({ selectedPortfolioId }: { selectedPortfolioId
     { enabled: !!selectedPortfolioId }
   );
 
-  const [filterSymbol, setFilterSymbol] = useState<string>("ALL");
+  const [globalFilterSymbol, setGlobalFilterSymbol] = useState<string>("ALL");
   const [filterAccountId, setFilterAccountId] = useState<string>("ALL");
-  const [allTimeFilterSymbol, setAllTimeFilterSymbol] = useState<string>("ALL");
-  const [monthlyFilterSymbol, setMonthlyFilterSymbol] = useState<string>("ALL");
-  const [chartFilterSymbol, setChartFilterSymbol] = useState<string>("ALL");
 
   // Group history by month for bar chart
   const barChartData = useMemo(() => {
     if (!report?.history) return [];
     
-    const filtered = chartFilterSymbol === "ALL" 
+    const filtered = globalFilterSymbol === "ALL" 
       ? report.history 
-      : report.history.filter((h: any) => h.symbol === chartFilterSymbol);
+      : report.history.filter((h: any) => h.symbol === globalFilterSymbol);
       
     const grouped: Record<string, number> = {};
     
@@ -54,16 +51,16 @@ export default function Dividends({ selectedPortfolioId }: { selectedPortfolioId
         displayDate: new Date(date + "-02").toLocaleDateString(undefined, { month: 'short', year: '2-digit' })
       }))
       .sort((a, b) => a.date.localeCompare(b.date));
-  }, [report?.history, chartFilterSymbol]);
+  }, [report?.history, globalFilterSymbol]);
 
   const filteredHistory = useMemo(() => {
     if (!report?.history) return [];
     return report.history.filter((h: any) => {
-      const symbolMatch = filterSymbol === "ALL" || h.symbol === filterSymbol;
+      const symbolMatch = globalFilterSymbol === "ALL" || h.symbol === globalFilterSymbol;
       const accountMatch = filterAccountId === "ALL" || h.accountId?.toString() === filterAccountId;
       return symbolMatch && accountMatch;
     });
-  }, [report?.history, filterSymbol, filterAccountId]);
+  }, [report?.history, globalFilterSymbol, filterAccountId]);
 
   if (isLoading) {
     return (
@@ -74,13 +71,21 @@ export default function Dividends({ selectedPortfolioId }: { selectedPortfolioId
     );
   }
 
-  const displayAllTimeTotal = allTimeFilterSymbol === "ALL"
+  const displayAllTimeTotal = globalFilterSymbol === "ALL"
     ? report?.totalAllTime
-    : report?.etfBreakdown.find((e: any) => e.symbol === allTimeFilterSymbol)?.totalAllTime || "0.00";
+    : report?.etfBreakdown.find((e: any) => e.symbol === globalFilterSymbol)?.totalAllTime || "0.00";
 
-  const displayMonthlyAverage = monthlyFilterSymbol === "ALL"
+  const displayMonthlyAverage = globalFilterSymbol === "ALL"
     ? (parseFloat(report?.totalLastYear || "0") / 12).toFixed(2)
-    : (parseFloat(report?.etfBreakdown.find((e: any) => e.symbol === monthlyFilterSymbol)?.totalLastYear || "0") / 12).toFixed(2);
+    : (parseFloat(report?.etfBreakdown.find((e: any) => e.symbol === globalFilterSymbol)?.totalLastYear || "0") / 12).toFixed(2);
+
+  const displayLastYearTotal = globalFilterSymbol === "ALL"
+    ? report?.totalLastYear
+    : report?.etfBreakdown.find((e: any) => e.symbol === globalFilterSymbol)?.totalLastYear || "0.00";
+
+  const displayQuarterlyBreakdown = globalFilterSymbol === "ALL"
+    ? report?.quarterlyBreakdown
+    : report?.etfBreakdown.find((e: any) => e.symbol === globalFilterSymbol)?.quarterlyBreakdown || [];
 
   return (
     <div className="space-y-8">
@@ -93,6 +98,22 @@ export default function Dividends({ selectedPortfolioId }: { selectedPortfolioId
           <div>
             <h2 className="text-lg font-bold text-slate-800">Dividend Analytics</h2>
             <p className="text-xs text-slate-500 font-medium">Passive income audit and payout timelines</p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3 w-full md:w-auto">
+          <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-md border border-slate-100">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Focus:</span>
+            <select 
+              className="bg-transparent border-none p-0 text-xs font-bold text-slate-600 focus:outline-none h-6 min-w-[140px]"
+              value={globalFilterSymbol}
+              onChange={(e) => setGlobalFilterSymbol(e.target.value)}
+            >
+              <option value="ALL">Total Portfolio</option>
+              {report?.etfBreakdown.map((etf: any) => (
+                <option key={etf.symbol} value={etf.symbol}>{etf.symbol}</option>
+              ))}
+            </select>
           </div>
         </div>
       </div>
@@ -112,16 +133,6 @@ export default function Dividends({ selectedPortfolioId }: { selectedPortfolioId
               <Trophy className="w-5 h-5 text-yellow-600" />
             </div>
           </div>
-          <select
-            value={allTimeFilterSymbol}
-            onChange={(e) => setAllTimeFilterSymbol(e.target.value)}
-            className="w-full bg-slate-50 border border-slate-200 rounded px-2 py-1 text-[10px] font-bold text-slate-600 focus:outline-none"
-          >
-            <option value="ALL">All Investments</option>
-            {report?.etfBreakdown.map((etf: any) => (
-              <option key={etf.symbol} value={etf.symbol}>{etf.symbol}</option>
-            ))}
-          </select>
         </Card>
 
         {/* Monthly Average Panel */}
@@ -137,16 +148,6 @@ export default function Dividends({ selectedPortfolioId }: { selectedPortfolioId
               <DollarSign className="w-5 h-5 text-green-600" />
             </div>
           </div>
-          <select
-            value={monthlyFilterSymbol}
-            onChange={(e) => setMonthlyFilterSymbol(e.target.value)}
-            className="w-full bg-slate-50 border border-slate-200 rounded px-2 py-1 text-[10px] font-bold text-slate-600 focus:outline-none"
-          >
-            <option value="ALL">All Investments</option>
-            {report?.etfBreakdown.map((etf: any) => (
-              <option key={etf.symbol} value={etf.symbol}>{etf.symbol}</option>
-            ))}
-          </select>
         </Card>
 
         {/* Last Year Panel */}
@@ -154,14 +155,14 @@ export default function Dividends({ selectedPortfolioId }: { selectedPortfolioId
           <div className="flex justify-between items-start mb-4">
             <div>
               <div className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Total (Last 12M)</div>
-              <div className="text-3xl font-bold text-slate-800 font-mono">{formatCurrency(report?.totalLastYear)}</div>
+              <div className="text-3xl font-bold text-slate-800 font-mono">{formatCurrency(displayLastYearTotal)}</div>
             </div>
             <div className="p-2 bg-slate-50 rounded-lg">
               <Calendar className="w-5 h-5 text-slate-600" />
             </div>
           </div>
           <div className="grid grid-cols-4 gap-1">
-            {report?.quarterlyBreakdown.map((q: any) => (
+            {displayQuarterlyBreakdown?.map((q: any) => (
               <div key={q.quarter} className="text-center p-1 bg-slate-50 rounded border border-slate-100">
                 <div className="text-[8px] font-bold text-slate-400 uppercase truncate">{q.quarter.split(' ')[1]}</div>
                 <div className="text-[10px] font-bold text-slate-700">{formatCurrency(q.amount, 0)}</div>
@@ -196,18 +197,6 @@ export default function Dividends({ selectedPortfolioId }: { selectedPortfolioId
             <div className="flex items-center gap-2">
               <BarChart3 className="w-5 h-5 text-primary" />
               <h2 className="text-xl font-bold text-slate-800">Dividend Payout Timeline</h2>
-            </div>
-            <div className="flex items-center gap-3">
-              <select
-                value={chartFilterSymbol}
-                onChange={(e) => setChartFilterSymbol(e.target.value)}
-                className="bg-slate-50 border border-slate-200 rounded px-3 py-1 text-xs font-bold text-slate-600 focus:outline-none focus:border-primary"
-              >
-                <option value="ALL">All Investments</option>
-                {report?.etfBreakdown.map((etf: any) => (
-                  <option key={etf.symbol} value={etf.symbol}>{etf.symbol}</option>
-                ))}
-              </select>
             </div>
           </div>
           
@@ -283,16 +272,6 @@ export default function Dividends({ selectedPortfolioId }: { selectedPortfolioId
               <option value="ALL">All Accounts</option>
               {accounts?.map((acc: any) => (
                 <option key={acc.id} value={acc.id.toString()}>{acc.name}</option>
-              ))}
-            </select>
-            <select
-              value={filterSymbol}
-              onChange={(e) => setFilterSymbol(e.target.value)}
-              className="bg-white border border-slate-200 rounded px-3 py-1.5 text-xs font-bold text-slate-600 focus:outline-none focus:border-primary"
-            >
-              <option value="ALL">All Investment Symbols</option>
-              {report?.etfBreakdown.map((etf: any) => (
-                <option key={etf.symbol} value={etf.symbol}>{etf.symbol}</option>
               ))}
             </select>
           </div>

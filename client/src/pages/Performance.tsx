@@ -163,6 +163,22 @@ export default function Performance({ selectedPortfolioId }: { selectedPortfolio
             <p className="text-xs text-slate-500 font-medium">Historical growth and individual asset tracking</p>
           </div>
         </div>
+
+        <div className="flex items-center gap-3 w-full md:w-auto">
+          <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-md border border-slate-100">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Focus:</span>
+            <select 
+              className="bg-transparent border-none p-0 text-xs font-bold text-slate-600 focus:outline-none h-6 min-w-[140px]"
+              value={evolutionSymbol}
+              onChange={(e) => setEvolutionSymbol(e.target.value)}
+            >
+              <option value="ALL">Total Portfolio</option>
+              {holdings?.map((h) => (
+                <option key={h.symbol} value={h.symbol}>{h.symbol}</option>
+              ))}
+            </select>
+          </div>
+        </div>
       </div>
 
       {/* Performance Summary Cards */}
@@ -231,16 +247,6 @@ export default function Performance({ selectedPortfolioId }: { selectedPortfolio
               <h2 className="text-xl font-bold text-slate-800">Portfolio Growth</h2>
             </div>
             <div className="flex flex-wrap items-center gap-3">
-              <select
-                value={evolutionSymbol}
-                onChange={(e) => setEvolutionSymbol(e.target.value)}
-                className="bg-slate-50 border border-slate-200 rounded px-3 py-1 text-xs font-bold text-slate-600 focus:outline-none focus:border-primary"
-              >
-                <option value="ALL">All Investments</option>
-                {holdings?.map((h) => (
-                  <option key={h.symbol} value={h.symbol}>{h.symbol}</option>
-                ))}
-              </select>
               <RangeSelector value={growthRange} onChange={setGrowthRange} />
             </div>
           </div>
