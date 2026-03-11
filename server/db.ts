@@ -235,7 +235,7 @@ export async function getCashBalance(userId: number, portfolioId: number, accoun
   return db.select().from(cashBalance).where(and(...conditions)).then((rows: any[]) => rows[0]);
 }
 
-export async function updateCashBalance(userId: number, portfolioId: number, amount: string, accountId: number) {
+export async function updateCashBalance(userId: number, portfolioId: number, amount: string, accountId: number, date: Date = new Date()) {
   const db = await getDb();
   
   // Record history
@@ -244,15 +244,37 @@ export async function updateCashBalance(userId: number, portfolioId: number, amo
     portfolioId, 
     accountId, 
     amount, 
-    date: new Date() 
+    date: date 
   });
   
-  const existing = await getCashBalance(userId, portfolioId, accountId);
-  
-  if (existing && existing.accountId === accountId) {
-    return db.update(cashBalance).set({ amount }).where(eq(cashBalance.id, existing.id));
-  } else {
-    return db.insert(cashBalance).values({ userId, portfolioId, amount, accountId });
+  // Always find the absolute latest entry for this account to keep the current balance in sync
+  const latestEntry = await db.select()
+    .from(cashBalanceHistory)
+    .where(and(
+      eq(cashBalanceHistory.userId, userId),
+      eq(cashBalanceHistory.accountId, accountId)
+    ))
+    .orderBy(desc(cashBalanceHistory.date), desc(cashBalanceHistory.id))
+    .limit(1)
+    .then((rows: any[]) => rows[0]);
+
+  if (latestEntry) {
+    const existing = await getCashBalance(userId, portfolioId, accountId);
+    if (existing && existing.accountId === accountId) {
+      return db.update(cashBalance)
+        .set({ 
+          amount: latestEntry.amount, 
+          updatedAt: new Date() 
+        })
+        .where(eq(cashBalance.id, existing.id));
+    } else {
+      return db.insert(cashBalance).values({ 
+        userId, 
+        portfolioId, 
+        amount: latestEntry.amount, 
+        accountId 
+      });
+    }
   }
 }
 

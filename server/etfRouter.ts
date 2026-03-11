@@ -319,9 +319,14 @@ export const etfRouter = router({
     }),
 
   updateCashBalance: protectedProcedure
-    .input(z.object({ portfolioId: z.number(), accountId: z.number(), amount: z.string() }))
+    .input(z.object({ 
+      portfolioId: z.number(), 
+      accountId: z.number(), 
+      amount: z.string(),
+      date: z.date().optional()
+    }))
     .mutation(async ({ ctx, input }) => {
-      return updateCashBalance(ctx.user.id, input.portfolioId, input.amount, input.accountId);
+      return updateCashBalance(ctx.user.id, input.portfolioId, input.amount, input.accountId, input.date);
     }),
 
   getBalanceHistory: protectedProcedure

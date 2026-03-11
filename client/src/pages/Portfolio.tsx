@@ -12,7 +12,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Plus, Trash2, RefreshCw, ShoppingCart, History, FolderPlus, FileUp, Wallet, TrendingUp, Info, ArrowUpCircle, CheckCircle2, MoreVertical } from "lucide-react";
+import { Plus, Trash2, RefreshCw, ShoppingCart, History, FolderPlus, FileUp, Wallet, TrendingUp, Info, ArrowUpCircle, CheckCircle2, MoreVertical, CalendarPlus } from "lucide-react";
 import { toast } from "sonner";
 import { formatCurrency, formatNumber, formatDate } from "@/lib/utils";
 import React, { useEffect, useRef, useState, useMemo } from "react";
@@ -38,7 +38,9 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
   const [purchaseHistoryOpen, setPurchaseHistoryOpen] = useState<{ id: number, symbol: string } | null>(null);
   const [isAccountsDialogOpen, setIsAccountsDialogOpen] = useState(false);
   const [isAdjustCashDialogOpen, setIsAdjustCashDialogOpen] = useState(false);
+  const [isHistoricalCashDialogOpen, setIsHistoricalCashDialogOpen] = useState(false);
   const [adjustCashData, setAdjustCashData] = useState({ accountId: "", amount: "" });
+  const [historicalCashData, setHistoricalCashData] = useState({ accountId: "", amount: "", date: formatDate(new Date()) });
   
   const defaultDate = useMemo(() => getLastTradingDay(), []);
 
@@ -108,11 +110,15 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
       if (!adjustCashData.accountId || !isAccountValid(adjustCashData.accountId)) {
         setAdjustCashData(prev => ({ ...prev, accountId: firstAccountId }));
       }
+      if (!historicalCashData.accountId || !isAccountValid(historicalCashData.accountId)) {
+        setHistoricalCashData(prev => ({ ...prev, accountId: firstAccountId }));
+      }
     } else {
       // Clear if no accounts
       setFormData(prev => ({ ...prev, accountId: "" }));
       setBuyData(prev => ({ ...prev, accountId: "" }));
       setAdjustCashData(prev => ({ ...prev, accountId: "" }));
+      setHistoricalCashData(prev => ({ ...prev, accountId: "" }));
     }
   }, [accounts]);
 
@@ -234,6 +240,12 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
       refetchSummary();
       utils.portfolio.getConsolidatedSummary.invalidate();
       setIsAdjustCashDialogOpen(false);
+      setIsHistoricalCashDialogOpen(false);
+      setHistoricalCashData({ 
+        accountId: accounts?.[0]?.id.toString() || "", 
+        amount: "", 
+        date: formatDate(new Date()) 
+      });
     },
   });
 
@@ -936,20 +948,37 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                   </div>
                   <h3 className="text-lg font-bold text-slate-800">Cash Reserve Management</h3>
                 </div>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  onClick={() => {
-                    const defaultAccId = selectedAccountId || accounts?.[0]?.id;
-                    if (defaultAccId) {
-                      handleAdjustCashAccountChange(defaultAccId.toString());
-                    }
-                    setIsAdjustCashDialogOpen(true);
-                  }} 
-                  className="text-xs uppercase font-bold border-slate-200 hover:bg-slate-50"
-                >
-                  Adjust Balance
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={() => {
+                      const defaultAccId = selectedAccountId || accounts?.[0]?.id;
+                      if (defaultAccId) {
+                        setHistoricalCashData(prev => ({ ...prev, accountId: defaultAccId.toString() }));
+                      }
+                      setIsHistoricalCashDialogOpen(true);
+                    }} 
+                    className="text-xs uppercase font-bold border-slate-200 hover:bg-slate-50"
+                  >
+                    <CalendarPlus className="w-3.5 h-3.5 mr-1.5" />
+                    Add History
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={() => {
+                      const defaultAccId = selectedAccountId || accounts?.[0]?.id;
+                      if (defaultAccId) {
+                        handleAdjustCashAccountChange(defaultAccId.toString());
+                      }
+                      setIsAdjustCashDialogOpen(true);
+                    }} 
+                    className="text-xs uppercase font-bold border-slate-200 hover:bg-slate-50"
+                  >
+                    Adjust Balance
+                  </Button>
+                </div>
               </div>
               
               <div className="flex-1 flex flex-col justify-center bg-slate-50 rounded-lg p-8 border border-slate-100 border-dashed">
@@ -969,6 +998,63 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
       )}
 
       {/* Dialogs */}
+      <Dialog open={isHistoricalCashDialogOpen} onOpenChange={setIsHistoricalCashDialogOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Record Historical Cash Balance</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-4">
+            <div className="grid gap-2">
+              <label className="text-xs font-bold text-slate-500 uppercase">Account</label>
+              <select 
+                className="bg-white border border-input rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary h-10"
+                value={historicalCashData.accountId}
+                onChange={(e) => setHistoricalCashData(prev => ({ ...prev, accountId: e.target.value }))}
+              >
+                {accounts?.map((acc: any) => (
+                  <option key={acc.id} value={acc.id}>{acc.name} {acc.number ? `(${acc.number})` : ""}</option>
+                ))}
+              </select>
+            </div>
+            <div className="grid gap-2">
+              <label className="text-xs font-bold text-slate-500 uppercase">Date</label>
+              <Input 
+                type="date" 
+                value={historicalCashData.date} 
+                onChange={(e) => setHistoricalCashData(prev => ({ ...prev, date: e.target.value }))} 
+              />
+            </div>
+            <div className="grid gap-2">
+              <label className="text-xs font-bold text-slate-500 uppercase">Cash Amount</label>
+              <Input 
+                type="number" 
+                step="0.01" 
+                value={historicalCashData.amount} 
+                onChange={(e) => setHistoricalCashData(prev => ({ ...prev, amount: e.target.value }))} 
+              />
+            </div>
+            <Button 
+              onClick={() => {
+                if (historicalCashData.accountId && historicalCashData.amount && historicalCashData.date) {
+                  updateCashMutation.mutate({
+                    portfolioId: selectedPortfolioId,
+                    accountId: Number(historicalCashData.accountId),
+                    amount: historicalCashData.amount,
+                    date: new Date(historicalCashData.date + "T12:00:00") // Mid-day to avoid TZ issues
+                  });
+                } else {
+                  toast.error("Please fill in all fields");
+                }
+              }} 
+              className="w-full" 
+              disabled={updateCashMutation.isPending || !historicalCashData.accountId}
+            >
+              Save History
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={isAdjustCashDialogOpen} onOpenChange={setIsAdjustCashDialogOpen}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
