@@ -99,7 +99,7 @@ export default function Performance({ selectedPortfolioId }: { selectedPortfolio
 
   // Format evolution data for chart
   const evolutionChartData = evolution?.map((item) => ({
-    date: new Date(item.date).toLocaleDateString(undefined, {
+    date: new Date(item.date + "T12:00:00").toLocaleDateString(undefined, {
       month: "short",
       day: "numeric",
       year: growthRange === "5y" ? "2-digit" : undefined,
@@ -120,7 +120,7 @@ export default function Performance({ selectedPortfolioId }: { selectedPortfolio
 
   // Format quantity history data
   const quantityChartData = quantityHistory?.map((item) => ({
-    date: new Date(item.date).toLocaleDateString(undefined, {
+    date: new Date(item.date + "T12:00:00").toLocaleDateString(undefined, {
       month: "short",
       day: "numeric",
       year: quantityRange === "5y" ? "2-digit" : undefined,
@@ -132,8 +132,13 @@ export default function Performance({ selectedPortfolioId }: { selectedPortfolio
     if (evolutionChartData.length < 2) return { val: 0, percent: 0, isPositive: true };
     const first = evolutionChartData[0].value;
     const last = evolutionChartData[evolutionChartData.length - 1].value;
-    const diff = last - first;
-    const percent = first > 0 ? (diff / first) * 100 : 0;
+    
+    // Find first non-zero point to calculate growth from, same as backend
+    const firstNonZero = evolutionChartData.find(d => d.value > 0);
+    const baseValue = firstNonZero ? firstNonZero.value : first;
+    
+    const diff = last - baseValue;
+    const percent = baseValue > 0 ? (diff / baseValue) * 100 : 0;
     return { val: diff.toFixed(2), percent: percent.toFixed(2), isPositive: diff >= 0 };
   };
 
