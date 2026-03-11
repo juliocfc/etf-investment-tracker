@@ -10,6 +10,7 @@ import {
   getPriceHistory,
   getCashBalance,
   updateCashBalance,
+  getCashBalanceHistory,
   addBalanceHistory,
   getBalanceHistory,
   getDividendHistory,
@@ -1096,7 +1097,8 @@ export const etfRouter = router({
       }
 
       const calculateForRange = async (range: "1m" | "ytd" | "1y" | "5y") => {
-        const data = await getProcessedEvolution(ctx.user.id, holdings, range);
+        const includeCash = !input.symbol && (!input.holdingId || input.holdingId === -1);
+        const data = await getProcessedEvolution(ctx.user.id, holdings, range, input.portfolioId, includeCash);
         if (data.length < 2) return { market: "0", price: "0" };
 
         const first = data[0];
@@ -1147,7 +1149,8 @@ export const etfRouter = router({
         holdings = holdings.filter((h: any) => h.id === input.holdingId);
       }
       
-      const data = await getProcessedEvolution(ctx.user.id, holdings, input.range);
+      const includeCash = !input.symbol && (!input.holdingId || input.holdingId === -1);
+      const data = await getProcessedEvolution(ctx.user.id, holdings, input.range, input.portfolioId, includeCash);
       return data.map(d => ({
         date: d.date,
         value: d.totalValue.toFixed(2)
@@ -1277,7 +1280,7 @@ export const etfRouter = router({
  * Shared engine to calculate evolution for any range
  * Ensures perfect consistency between charts and summary cards
  */
-async function getProcessedEvolution(userId: number, holdings: any[], range: "1m" | "ytd" | "1y" | "5y") {
+async function getProcessedEvolution(userId: number, holdings: any[], range: "1m" | "ytd" | "1y" | "5y", portfolioId?: number, includeCash?: boolean) {
   const now = new Date();
   now.setHours(23, 59, 59, 999);
 
@@ -1320,6 +1323,16 @@ async function getProcessedEvolution(userId: number, holdings: any[], range: "1m
     });
   }
 
+  // Fetch cash history if requested
+  let cashHistory: any[] = [];
+  if (includeCash && portfolioId) {
+    cashHistory = await getCashBalanceHistory(userId, portfolioId);
+    cashHistory.forEach(ch => {
+      const dKey = new Date(ch.date).toISOString().split("T")[0];
+      allDatesSet.add(dKey);
+    });
+  }
+
   const sortedDates = Array.from(allDatesSet).sort();
   const lastPrices = new Map<number, number>();
 
@@ -1347,6 +1360,19 @@ async function getProcessedEvolution(userId: number, holdings: any[], range: "1m
 
       // 2. Market Performance Value (Current Quantity * Historical Price)
       totalCurrentQtyValue += item.currentQty * price;
+    }
+
+    // Add cash balance if requested
+    if (includeCash) {
+      const latestAccountCash = new Map<number, number>();
+      for (const ch of cashHistory) {
+        if (new Date(ch.date) <= currentDate) {
+          latestAccountCash.set(ch.accountId, parseFloat(ch.amount));
+        }
+      }
+      const totalCash = Array.from(latestAccountCash.values()).reduce((sum, val) => sum + val, 0);
+      totalMarketValue += totalCash;
+      totalCurrentQtyValue += totalCash;
     }
 
     return {

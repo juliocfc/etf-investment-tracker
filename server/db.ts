@@ -2,7 +2,7 @@ import { eq, and, gte, desc, sql } from "drizzle-orm";
 export { eq, and, desc };
 import { drizzle } from "drizzle-orm/libsql";
 import { createClient } from "@libsql/client";
-import { InsertUser, users, portfolios, accounts, etfHoldings, purchases, priceHistory, balanceHistory, dividendHistory, cashBalance } from "../drizzle/schema";
+import { InsertUser, users, portfolios, accounts, etfHoldings, purchases, priceHistory, balanceHistory, dividendHistory, cashBalance, cashBalanceHistory } from "../drizzle/schema";
 
 let _db: any = null;
 
@@ -237,6 +237,16 @@ export async function getCashBalance(userId: number, portfolioId: number, accoun
 
 export async function updateCashBalance(userId: number, portfolioId: number, amount: string, accountId: number) {
   const db = await getDb();
+  
+  // Record history
+  await db.insert(cashBalanceHistory).values({ 
+    userId, 
+    portfolioId, 
+    accountId, 
+    amount, 
+    date: new Date() 
+  });
+  
   const existing = await getCashBalance(userId, portfolioId, accountId);
   
   if (existing && existing.accountId === accountId) {
@@ -244,6 +254,17 @@ export async function updateCashBalance(userId: number, portfolioId: number, amo
   } else {
     return db.insert(cashBalance).values({ userId, portfolioId, amount, accountId });
   }
+}
+
+export async function getCashBalanceHistory(userId: number, portfolioId: number) {
+  const db = await getDb();
+  return db.select()
+    .from(cashBalanceHistory)
+    .where(and(
+      eq(cashBalanceHistory.userId, userId),
+      eq(cashBalanceHistory.portfolioId, portfolioId)
+    ))
+    .orderBy(cashBalanceHistory.date);
 }
 
 // CSV Parsing and Bulk Import

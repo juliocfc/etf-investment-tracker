@@ -45,7 +45,7 @@ export const etfHoldings = sqliteTable("etfHoldings", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   userId: integer("userId").notNull(),
   portfolioId: integer("portfolioId").notNull(),
-  accountId: integer("accountId").notNull(),
+  accountId: integer("accountId").default(0).notNull(),
   symbol: text("symbol").notNull(),
   name: text("name").notNull(),
   quantity: text("quantity").notNull(),
@@ -62,7 +62,7 @@ export const purchases = sqliteTable("purchases", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   userId: integer("userId").notNull(),
   portfolioId: integer("portfolioId").notNull(),
-  accountId: integer("accountId").notNull(),
+  accountId: integer("accountId").default(0).notNull(),
   holdingId: integer("holdingId").notNull(),
   symbol: text("symbol").notNull(),
   quantity: text("quantity").notNull(),
@@ -84,10 +84,19 @@ export const cashBalance = sqliteTable("cashBalance", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   userId: integer("userId").notNull(),
   portfolioId: integer("portfolioId").notNull(),
-  accountId: integer("accountId").notNull(),
+  accountId: integer("accountId").default(0).notNull(),
   amount: text("amount").notNull(),
   createdAt: integer("createdAt", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
   updatedAt: integer("updatedAt", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+export const cashBalanceHistory = sqliteTable("cashBalanceHistory", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("userId").notNull(),
+  portfolioId: integer("portfolioId").notNull(),
+  accountId: integer("accountId").notNull(),
+  amount: text("amount").notNull(),
+  date: integer("date", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
 export const balanceHistory = sqliteTable("balanceHistory", {
