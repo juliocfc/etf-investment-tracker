@@ -1109,12 +1109,16 @@ export const etfRouter = router({
         const first = data[0];
         const last = data[data.length - 1];
 
-        const marketGrowth = first.totalValue > 0 
-          ? ((last.totalValue - first.totalValue) / first.totalValue) * 100 
+        // Find first non-zero point to calculate growth from
+        const firstNonZeroMarket = data.find(d => d.totalValue > 0) || first;
+        const firstNonZeroPrice = data.find(d => d.priceOnlyValue > 0) || first;
+
+        const marketGrowth = firstNonZeroMarket.totalValue > 0 
+          ? ((last.totalValue - firstNonZeroMarket.totalValue) / firstNonZeroMarket.totalValue) * 100 
           : 0;
         
-        const pricePerformance = first.priceOnlyValue > 0 
-          ? ((last.priceOnlyValue - first.priceOnlyValue) / first.priceOnlyValue) * 100 
+        const pricePerformance = firstNonZeroPrice.priceOnlyValue > 0 
+          ? ((last.priceOnlyValue - firstNonZeroPrice.priceOnlyValue) / firstNonZeroPrice.priceOnlyValue) * 100 
           : 0;
 
         return {
@@ -1302,11 +1306,17 @@ async function getProcessedEvolution(userId: number, holdings: any[], range: "1m
     interval = "1wk";
   }
 
+  const startDate = new Date();
+  startDate.setDate(now.getDate() - days);
+  startDate.setHours(0, 0, 0, 0);
+  const startDateKey = startDate.toISOString().split("T")[0];
+
   const allDatesSet = new Set<string>();
   const holdingData: any[] = [];
 
   for (const holding of holdings) {
-    const priceHistory = await fetchHistoricalPrices(holding.symbol, days, interval);
+    // Fetch a bit more to have "warm up" data for lastPrices
+    const priceHistory = await fetchHistoricalPrices(holding.symbol, days + 10, interval);
     const purchases = await getPurchases(holding.id);
     const pricesMap = new Map<string, number>();
     
@@ -1319,6 +1329,7 @@ async function getProcessedEvolution(userId: number, holdings: any[], range: "1m
     const todayKey = now.toISOString().split("T")[0];
     pricesMap.set(todayKey, parseFloat(holding.currentPrice || "0"));
     allDatesSet.add(todayKey);
+    allDatesSet.add(startDateKey);
 
     holdingData.push({ 
       holding, 
@@ -1338,10 +1349,41 @@ async function getProcessedEvolution(userId: number, holdings: any[], range: "1m
     });
   }
 
+  // Generate all dates in range to fill gaps
   const sortedDates = Array.from(allDatesSet).sort();
   const lastPrices = new Map<number, number>();
 
-  return sortedDates.map((dateKey) => {
+  // Warm up lastPrices with data before startDateKey
+  for (const dateKey of sortedDates) {
+    if (dateKey >= startDateKey) break;
+    for (const item of holdingData) {
+      const price = item.pricesMap.get(dateKey);
+      if (price !== undefined) {
+        lastPrices.set(item.holding.id, price);
+      }
+    }
+  }
+
+  // Generate continuous list of dates for the result
+  const resultDates: string[] = [];
+  let curr = new Date(startDate);
+  while (curr <= now) {
+    const dKey = curr.toISOString().split("T")[0];
+    resultDates.push(dKey);
+    if (interval === "1d") {
+      curr.setDate(curr.getDate() + 1);
+    } else {
+      curr.setDate(curr.getDate() + 7);
+    }
+  }
+
+  // Also ensure today is included at the end if not already
+  const todayKey = now.toISOString().split("T")[0];
+  if (resultDates[resultDates.length - 1] !== todayKey) {
+    resultDates.push(todayKey);
+  }
+
+  return resultDates.map((dateKey) => {
     const currentDate = new Date(dateKey + "T12:00:00");
     let totalMarketValue = 0;
     let totalCurrentQtyValue = 0;
