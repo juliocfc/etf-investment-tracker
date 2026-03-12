@@ -494,11 +494,11 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
-          <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-md border border-slate-100">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Account Filter:</span>
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full md:w-auto">
+          <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-md border border-slate-100 w-full sm:w-auto">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap">Account Filter:</span>
             <select 
-              className="bg-transparent border-none p-0 text-xs font-bold text-slate-600 focus:outline-none h-6 min-w-[140px]"
+              className="bg-transparent border-none p-0 text-xs font-bold text-slate-600 focus:outline-none h-6 flex-1 sm:min-w-[140px]"
               value={selectedAccountId || ""}
               onChange={(e) => setSelectedAccountId(e.target.value ? Number(e.target.value) : undefined)}
             >
@@ -511,7 +511,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
           
           <Dialog open={isAccountsDialogOpen} onOpenChange={setIsAccountsDialogOpen}>
             <DialogTrigger asChild>
-              <Button variant="outline" size="sm" className="h-9 text-xs font-bold uppercase tracking-wider border-slate-200 text-slate-600">
+              <Button variant="outline" size="sm" className="h-9 text-xs font-bold uppercase tracking-wider border-slate-200 text-slate-600 w-full sm:w-auto">
                 <Plus className="w-3.5 h-3.5 mr-1.5" />
                 NEW ACCOUNT
               </Button>
@@ -647,7 +647,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
 
           {/* Main Holdings Table */}
           <Card className="bg-white shadow-sm border border-border overflow-hidden">
-            <div className="px-6 py-4 border-b border-border bg-slate-50/50 flex items-center justify-between">
+            <div className="px-6 py-4 border-b border-border bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div className="flex items-center gap-3">
                 <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
                   <TrendingUp className="w-5 h-5 text-primary" />
@@ -656,13 +656,13 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                 <span className="text-[10px] font-bold text-slate-400 bg-slate-200/50 px-2 py-0.5 rounded-full uppercase tracking-widest">{summary?.holdings?.length || 0} Assets</span>
               </div>
 
-              <div className="flex items-center gap-3">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto">
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => selectedPortfolioId && updatePricesMutation.mutate({ portfolioId: selectedPortfolioId })}
                   disabled={updatePricesMutation.isPending}
-                  className="border-slate-200 hover:bg-slate-50 text-xs font-bold uppercase tracking-wider h-9"
+                  className="border-slate-200 hover:bg-slate-50 text-xs font-bold uppercase tracking-wider h-9 flex-1 sm:flex-none"
                 >
                   <RefreshCw className={`mr-2 h-3.5 w-3.5 ${updatePricesMutation.isPending ? "animate-spin" : ""}`} />
                   Update Prices
@@ -684,7 +684,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                   }
                 }}>
                   <DialogTrigger asChild>
-                    <Button size="sm" className="bg-primary hover:bg-primary/90 text-white shadow-md shadow-primary/10 text-xs font-bold uppercase tracking-wider h-9">
+                    <Button size="sm" className="bg-primary hover:bg-primary/90 text-white shadow-md shadow-primary/10 text-xs font-bold uppercase tracking-wider h-9 flex-1 sm:flex-none">
                       <Plus className="mr-2 h-3.5 w-3.5" />
                       Add Investment
                     </Button>
@@ -941,14 +941,14 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
 
             {/* Cash Balance Section */}
             <Card className="p-6 bg-white shadow-sm border border-border flex flex-col">
-              <div className="flex items-center justify-between mb-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
                 <div className="flex items-center gap-2">
                   <div className="p-1.5 bg-slate-100 rounded text-slate-600">
                     <Wallet className="w-4 h-4" />
                   </div>
                   <h3 className="text-lg font-bold text-slate-800">Cash Reserve Management</h3>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
                   <Button 
                     variant="outline" 
                     size="sm" 
@@ -959,7 +959,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                       }
                       setIsHistoricalCashDialogOpen(true);
                     }} 
-                    className="text-xs uppercase font-bold border-slate-200 hover:bg-slate-50"
+                    className="text-xs uppercase font-bold border-slate-200 hover:bg-slate-50 flex-1 sm:flex-none"
                   >
                     <CalendarPlus className="w-3.5 h-3.5 mr-1.5" />
                     Add History
@@ -974,7 +974,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                       }
                       setIsAdjustCashDialogOpen(true);
                     }} 
-                    className="text-xs uppercase font-bold border-slate-200 hover:bg-slate-50"
+                    className="text-xs uppercase font-bold border-slate-200 hover:bg-slate-50 flex-1 sm:flex-none"
                   >
                     Adjust Balance
                   </Button>
