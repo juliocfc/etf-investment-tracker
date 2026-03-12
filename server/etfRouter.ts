@@ -1206,31 +1206,51 @@ export const etfRouter = router({
     .input(
       z.object({
         portfolioId: z.number(),
-        range: z.enum(["7d", "1m", "ytd", "1y"]),
+        range: z.string(), // Changed to string to support dynamic quarterly keys
       })
     )
     .query(async ({ ctx, input }) => {
       const holdings = await getUserEtfHoldings(ctx.user.id, input.portfolioId);
-      
+
       const now = new Date();
       let startDate = new Date();
-      
-      if (input.range === "7d") {
-        startDate.setDate(now.getDate() - 7);
-      } else if (input.range === "1m") {
-        startDate.setMonth(now.getMonth() - 1);
+      let endDate = new Date();
+      endDate.setHours(23, 59, 59, 999);
+
+      if (input.range === "10d") {
+        startDate.setDate(now.getDate() - 10);
+      } else if (input.range === "30d" || input.range === "1m") {
+        startDate.setDate(now.getDate() - 30);
+      } else if (input.range === "60d") {
+        startDate.setDate(now.getDate() - 60);
+      } else if (input.range === "90d") {
+        startDate.setDate(now.getDate() - 90);
       } else if (input.range === "ytd") {
         startDate = new Date(now.getFullYear(), 0, 1);
       } else if (input.range === "1y") {
         startDate.setFullYear(now.getFullYear() - 1);
+      } else if (input.range.includes("Q")) {
+        // Handle quarterly range (e.g., "2025Q1")
+        const year = parseInt(input.range.substring(0, 4));
+        const quarter = parseInt(input.range.substring(5, 6));
+        startDate = new Date(year, (quarter - 1) * 3, 1);
+        endDate = new Date(year, quarter * 3, 0);
+        endDate.setHours(23, 59, 59, 999);
+      } else {
+        // Default to 30d
+        startDate.setDate(now.getDate() - 30);
       }
+
+      startDate.setHours(0, 0, 0, 0);
 
       const activitiesMap = new Map<string, any>();
 
       for (const holding of holdings) {
         const allPurchases = await getPurchases(holding.id);
-        const filteredPurchases = allPurchases.filter((p: any) => new Date(p.purchaseDate) >= startDate);
-
+        const filteredPurchases = allPurchases.filter((p: any) => {
+          const pDate = new Date(p.purchaseDate);
+          return pDate >= startDate && pDate <= endDate;
+        });
         if (filteredPurchases.length > 0) {
           const symbol = holding.symbol.toUpperCase();
           const existing = activitiesMap.get(symbol);

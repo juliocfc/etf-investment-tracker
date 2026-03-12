@@ -5,13 +5,43 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { List, History, RefreshCw, Calendar, ArrowRightLeft } from "lucide-react";
 import { formatCurrency, formatNumber, formatDate } from "@/lib/utils";
-
-type ActivityRange = "7d" | "1m" | "ytd" | "1y";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export default function Activities({ selectedPortfolioId }: { selectedPortfolioId: number }) {
-  const [range, setRange] = useState<ActivityRange>("1m");
+  const [range, setRange] = useState<string>("30d");
   const [viewingPurchases, setViewingPurchases] = useState<any | null>(null);
   const [filterAccountId, setFilterAccountId] = useState<string>("");
+
+  const rangeOptions = useMemo(() => {
+    const options = [
+      { label: "Past 10 Days", value: "10d" },
+      { label: "Past 30 Days", value: "30d" },
+      { label: "Past 60 Days", value: "60d" },
+      { label: "Past 90 Days", value: "90d" },
+      { label: "Year to Date", value: "ytd" },
+      { label: "Past 1 Year", value: "1y" },
+    ];
+
+    const prevYear = new Date().getFullYear() - 1;
+    for (let q = 4; q >= 1; q--) {
+      options.push({
+        label: `Q${q} ${prevYear}`,
+        value: `${prevYear}Q${q}`,
+      });
+    }
+
+    return options;
+  }, []);
+
+  const currentRangeLabel = useMemo(() => {
+    return rangeOptions.find((opt) => opt.value === range)?.label || "Selected Range";
+  }, [range, rangeOptions]);
 
   // Reset filters when portfolio changes
   useEffect(() => {
@@ -75,20 +105,20 @@ export default function Activities({ selectedPortfolioId }: { selectedPortfolioI
           </div>
         </div>
 
-        <div className="flex bg-slate-100 p-1 rounded-md">
-          {(["7d", "1m", "ytd", "1y"] as const).map((r) => (
-            <button
-              key={r}
-              onClick={() => setRange(r)}
-              className={`px-6 py-2 rounded text-xs font-bold uppercase transition-all duration-300 ${
-                range === r
-                  ? "bg-white text-primary shadow-sm"
-                  : "text-slate-500 hover:text-slate-800"
-              }`}
-            >
-              {r === "7d" ? "7 Days" : r === "1m" ? "1 Month" : r === "ytd" ? "YTD" : "1 Year"}
-            </button>
-          ))}
+        <div className="flex items-center gap-3">
+          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest hidden sm:block">Timeframe:</span>
+          <Select value={range} onValueChange={setRange}>
+            <SelectTrigger className="w-[180px] h-9 bg-white text-xs font-bold uppercase border-slate-200">
+              <SelectValue placeholder="Select range" />
+            </SelectTrigger>
+            <SelectContent>
+              {rangeOptions.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value} className="text-xs font-bold uppercase">
+                  {opt.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
@@ -100,7 +130,7 @@ export default function Activities({ selectedPortfolioId }: { selectedPortfolioI
             <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Accumulation & Performance Summary</h3>
           </div>
           <span className="text-[10px] font-bold text-slate-400 bg-white px-2 py-1 rounded border border-border uppercase tracking-widest">
-            {range === "7d" ? "Last 7 Days" : range === "1m" ? "Last 30 Days" : range === "ytd" ? "Year to Date" : "Last 365 Days"}
+            {currentRangeLabel}
           </span>
         </div>
         
