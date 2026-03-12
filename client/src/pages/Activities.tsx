@@ -3,7 +3,7 @@ import { trpc } from "@/lib/trpc";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { List, History, RefreshCw, Calendar, ArrowRightLeft } from "lucide-react";
+import { List, History, RefreshCw, Calendar, ArrowRightLeft, Wallet } from "lucide-react";
 import { formatCurrency, formatNumber, formatDate } from "@/lib/utils";
 import {
   Select,
@@ -54,6 +54,11 @@ export default function Activities({ selectedPortfolioId }: { selectedPortfolioI
     { enabled: !!selectedPortfolioId }
   );
 
+  const { data: cashActivities, isLoading: isCashLoading } = trpc.etf.getCashActivities.useQuery(
+    { portfolioId: selectedPortfolioId, range },
+    { enabled: !!selectedPortfolioId }
+  );
+
   const { data: accounts } = trpc.account.getAccounts.useQuery(
     { portfolioId: selectedPortfolioId },
     { enabled: !!selectedPortfolioId }
@@ -77,7 +82,7 @@ export default function Activities({ selectedPortfolioId }: { selectedPortfolioI
     return filteredPurchases.reduce((sum: number, p: any) => sum + parseFloat(p.quantity.toString()) * parseFloat(p.price.toString()), 0);
   }, [filteredPurchases]);
 
-  if (isLoading) {
+  if (isLoading || isCashLoading) {
     return (
       <div className="flex flex-col items-center justify-center h-96 gap-4">
         <RefreshCw className="w-10 h-10 animate-spin text-primary" />
@@ -219,6 +224,56 @@ export default function Activities({ selectedPortfolioId }: { selectedPortfolioI
             <div className="py-20 text-center text-slate-400">
               <Calendar className="w-12 h-12 mx-auto mb-4 opacity-20" />
               <p className="text-sm font-medium">No purchase activities recorded for this time interval.</p>
+            </div>
+          )}
+        </div>
+      </Card>
+
+      {/* Cash Balance History Table */}
+      <Card className="bg-white shadow-sm border border-border overflow-hidden">
+        <div className="px-6 py-4 border-b border-border bg-slate-50/50 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Wallet className="w-5 h-5 text-primary" />
+            <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Cash Balance History</h3>
+          </div>
+          <span className="text-[10px] font-bold text-slate-400 bg-white px-2 py-1 rounded border border-border uppercase tracking-widest">
+            {currentRangeLabel}
+          </span>
+        </div>
+        
+        <div className="overflow-x-auto">
+          {cashActivities && cashActivities.length > 0 ? (
+            <table className="w-full">
+              <thead>
+                <tr className="bg-slate-50 border-b border-border">
+                  <th className="text-left py-3 px-4 text-slate-600">Date</th>
+                  <th className="text-left py-3 px-4 text-slate-600">Account</th>
+                  <th className="text-right py-3 px-4 text-slate-600">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {cashActivities.map((activity: any, idx: number) => {
+                  const account = accounts?.find((a: any) => a.id === activity.accountId);
+                  return (
+                    <tr key={idx} className="border-b border-border hover:bg-slate-50 transition-colors text-sm">
+                      <td className="py-4 px-4 font-mono text-slate-600">
+                        {formatDate(activity.date)}
+                      </td>
+                      <td className="py-4 px-4 font-medium text-slate-800">
+                        {account?.name || "N/A"}
+                      </td>
+                      <td className="text-right py-4 px-4 font-mono font-bold text-slate-700">
+                        {formatCurrency(activity.amount)}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          ) : (
+            <div className="py-20 text-center text-slate-400">
+              <Calendar className="w-12 h-12 mx-auto mb-4 opacity-20" />
+              <p className="text-sm font-medium">No cash balance history recorded for this time interval.</p>
             </div>
           )}
         </div>

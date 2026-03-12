@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
-import { etfHoldings, purchases, accounts } from "../drizzle/schema";
+import { etfHoldings, purchases, accounts, cashBalanceHistory } from "../drizzle/schema";
 import {
   getUserEtfHoldings,
   createEtfHolding,
@@ -26,6 +26,7 @@ import {
   eq,
   desc,
 } from "./db";
+import { gte, lte } from "drizzle-orm";
 import {
   fetchEtfPrice,
   fetchHistoricalPrices,
@@ -1211,37 +1212,7 @@ export const etfRouter = router({
     )
     .query(async ({ ctx, input }) => {
       const holdings = await getUserEtfHoldings(ctx.user.id, input.portfolioId);
-
-      const now = new Date();
-      let startDate = new Date();
-      let endDate = new Date();
-      endDate.setHours(23, 59, 59, 999);
-
-      if (input.range === "10d") {
-        startDate.setDate(now.getDate() - 10);
-      } else if (input.range === "30d" || input.range === "1m") {
-        startDate.setDate(now.getDate() - 30);
-      } else if (input.range === "60d") {
-        startDate.setDate(now.getDate() - 60);
-      } else if (input.range === "90d") {
-        startDate.setDate(now.getDate() - 90);
-      } else if (input.range === "ytd") {
-        startDate = new Date(now.getFullYear(), 0, 1);
-      } else if (input.range === "1y") {
-        startDate.setFullYear(now.getFullYear() - 1);
-      } else if (input.range.includes("Q")) {
-        // Handle quarterly range (e.g., "2025Q1")
-        const year = parseInt(input.range.substring(0, 4));
-        const quarter = parseInt(input.range.substring(5, 6));
-        startDate = new Date(year, (quarter - 1) * 3, 1);
-        endDate = new Date(year, quarter * 3, 0);
-        endDate.setHours(23, 59, 59, 999);
-      } else {
-        // Default to 30d
-        startDate.setDate(now.getDate() - 30);
-      }
-
-      startDate.setHours(0, 0, 0, 0);
+      const { startDate, endDate } = calculateDateRange(input.range);
 
       const activitiesMap = new Map<string, any>();
 
@@ -1303,7 +1274,61 @@ export const etfRouter = router({
         };
       });
     }),
+
+  getCashActivities: protectedProcedure
+    .input(z.object({ portfolioId: z.number(), range: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const { startDate, endDate } = calculateDateRange(input.range);
+      const db = await getDb();
+      
+      return db.select()
+        .from(cashBalanceHistory)
+        .where(and(
+          eq(cashBalanceHistory.userId, ctx.user.id),
+          eq(cashBalanceHistory.portfolioId, input.portfolioId),
+          gte(cashBalanceHistory.date, startDate),
+          lte(cashBalanceHistory.date, endDate)
+        ))
+        .orderBy(desc(cashBalanceHistory.date));
+    }),
 });
+
+/**
+ * Shared engine to calculate date ranges for any query
+ */
+function calculateDateRange(range: string) {
+  const now = new Date();
+  let startDate = new Date();
+  let endDate = new Date();
+  endDate.setHours(23, 59, 59, 999);
+
+  if (range === "10d") {
+    startDate.setDate(now.getDate() - 10);
+  } else if (range === "30d" || range === "1m") {
+    startDate.setDate(now.getDate() - 30);
+  } else if (range === "60d") {
+    startDate.setDate(now.getDate() - 60);
+  } else if (range === "90d") {
+    startDate.setDate(now.getDate() - 90);
+  } else if (range === "ytd") {
+    startDate = new Date(now.getFullYear(), 0, 1);
+  } else if (range === "1y") {
+    startDate.setFullYear(now.getFullYear() - 1);
+  } else if (range.includes("Q")) {
+    // Handle quarterly range (e.g., "2025Q1")
+    const year = parseInt(range.substring(0, 4));
+    const quarter = parseInt(range.substring(5, 6));
+    startDate = new Date(year, (quarter - 1) * 3, 1);
+    endDate = new Date(year, quarter * 3, 0);
+    endDate.setHours(23, 59, 59, 999);
+  } else {
+    // Default to 30d
+    startDate.setDate(now.getDate() - 30);
+  }
+
+  startDate.setHours(0, 0, 0, 0);
+  return { startDate, endDate };
+}
 
 /**
  * Shared engine to calculate evolution for any range
