@@ -133,6 +133,16 @@ export async function updateEtfHolding(id: number, data: any) {
   return db.update(etfHoldings).set(data).where(eq(etfHoldings.id, id));
 }
 
+export async function updateEtfHoldingBySymbol(userId: number, symbol: string, data: any) {
+  const db = await getDb();
+  return db.update(etfHoldings)
+    .set(data)
+    .where(and(
+      eq(etfHoldings.userId, userId),
+      eq(etfHoldings.symbol, symbol.toUpperCase())
+    ));
+}
+
 export async function deleteEtfHolding(id: number) {
   const db = await getDb();
   return db.delete(etfHoldings).where(eq(etfHoldings.id, id));

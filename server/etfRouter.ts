@@ -5,6 +5,7 @@ import {
   getUserEtfHoldings,
   createEtfHolding,
   updateEtfHolding,
+  updateEtfHoldingBySymbol,
   deleteEtfHolding,
   addPriceHistory,
   getPriceHistory,
@@ -115,8 +116,37 @@ export const etfRouter = router({
         throw new Error(`Invalid ETF symbol: ${input.symbol}`);
       }
 
-      const priceData = await fetchEtfPrice(input.symbol);
-      const currentPrice = priceData?.price.toString();
+      // Check for existing price (last 1 hour)
+      const existingHolding = await dbInstance
+        .select()
+        .from(etfHoldings)
+        .where(and(
+          eq(etfHoldings.userId, ctx.user.id),
+          eq(etfHoldings.symbol, input.symbol.toUpperCase())
+        ))
+        .limit(1)
+        .then((rows: any[]) => rows[0]);
+
+      let currentPrice: string | undefined;
+      let lastPriceUpdate: Date;
+
+      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+      if (existingHolding && existingHolding.currentPrice && existingHolding.lastPriceUpdate && new Date(existingHolding.lastPriceUpdate) > oneHourAgo) {
+        currentPrice = existingHolding.currentPrice;
+        lastPriceUpdate = new Date(existingHolding.lastPriceUpdate);
+      } else {
+        const priceData = await fetchEtfPrice(input.symbol);
+        currentPrice = priceData?.price.toString();
+        lastPriceUpdate = new Date();
+        
+        if (currentPrice) {
+          // Update all other holdings with this new price
+          await updateEtfHoldingBySymbol(ctx.user.id, input.symbol, {
+            currentPrice,
+            lastPriceUpdate,
+          });
+        }
+      }
 
       const holdingId = await createEtfHolding({
         userId: ctx.user.id,
@@ -129,7 +159,7 @@ export const etfRouter = router({
         purchaseDate: input.purchaseDate,
         desiredAllocation: input.desiredAllocation || "0",
         currentPrice,
-        lastPriceUpdate: new Date(),
+        lastPriceUpdate,
       });
 
       // Create a purchase record for the initial holding
@@ -213,38 +243,42 @@ export const etfRouter = router({
     .input(z.object({ portfolioId: z.number() }))
     .mutation(async ({ ctx, input }) => {
       const holdings = await getUserEtfHoldings(ctx.user.id, input.portfolioId);
+      const uniqueSymbols = Array.from(new Set(holdings.map((h: any) => h.symbol)));
       const results = [];
 
-      for (let i = 0; i < holdings.length; i++) {
-        const holding = holdings[i];
+      for (let i = 0; i < uniqueSymbols.length; i++) {
+        const symbol = uniqueSymbols[i] as string;
         
         // Small delay between requests to be polite to Yahoo Finance
         if (i > 0) {
           await new Promise((resolve) => setTimeout(resolve, 100));
         }
         
-        const priceData = await fetchEtfPrice(holding.symbol);
+        const priceData = await fetchEtfPrice(symbol);
         if (priceData) {
-          await updateEtfHolding(holding.id, {
-            currentPrice: priceData.price.toString(),
-            lastPriceUpdate: new Date(),
+          const currentPrice = priceData.price.toString();
+          const lastPriceUpdate = new Date();
+
+          await updateEtfHoldingBySymbol(ctx.user.id, symbol, {
+            currentPrice,
+            lastPriceUpdate,
           });
 
           await addPriceHistory(
             ctx.user.id,
-            holding.symbol,
-            priceData.price.toString(),
-            new Date()
+            symbol,
+            currentPrice,
+            lastPriceUpdate
           );
 
           results.push({
-            symbol: holding.symbol,
+            symbol: symbol,
             price: priceData.price,
             success: true,
           });
         } else {
           results.push({
-            symbol: holding.symbol,
+            symbol: symbol,
             success: false,
             error: "Failed to fetch price",
           });
