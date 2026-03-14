@@ -70,7 +70,7 @@ export const etfRouter = router({
           existing.totalCost += qty * avgCost;
         }
 
-        return Array.from(consolidatedMap.values()).map((h) => ({
+        return Array.from(consolidatedMap.values()).map((h: any) => ({
           ...h,
           quantity: h.quantity.toString(),
           averageCost: h.quantity > 0 ? (h.totalCost / h.quantity).toString() : "0",
@@ -457,13 +457,13 @@ export const etfRouter = router({
       }
 
       for (const holding of holdings) {
-        const dividendData = await fetchDividendData(holding.symbol);
+        const dividendData = await fetchDividendData(holding.symbol as string);
         const purchases = await getPurchases(holding.id);
         
         let etfTotalWindow = 0;
         let etfTotalAllTime = 0;
         const etfQuarterly: Record<string, number> = {};
-        lastQuarters.forEach(q => etfQuarterly[q] = 0);
+        lastQuarters.forEach((q: string) => etfQuarterly[q] = 0);
 
         for (const div of dividendData) {
           const exDate = new Date(div.exDate);
@@ -512,7 +512,7 @@ export const etfRouter = router({
         if (existing) {
           existing.totalLastYearNum += etfTotalWindow;
           existing.totalAllTimeNum += etfTotalAllTime;
-          lastQuarters.forEach(q => {
+          lastQuarters.forEach((q: string) => {
             existing.quarterlyValues[q] = (existing.quarterlyValues[q] || 0) + (etfQuarterly[q] || 0);
           });
         } else {
@@ -526,24 +526,24 @@ export const etfRouter = router({
         }
       }
 
-      const etfBreakdown = Array.from(etfBreakdownMap.values()).map(item => ({
+      const etfBreakdown = Array.from(etfBreakdownMap.values()).map((item: any) => ({
         symbol: item.symbol,
         name: item.name,
         totalLastYear: item.totalLastYearNum.toFixed(2),
         totalAllTime: item.totalAllTimeNum.toFixed(2),
-        quarterlyBreakdown: lastQuarters.map(q => ({
+        quarterlyBreakdown: lastQuarters.map((q: string) => ({
           quarter: q,
           amount: (item.quarterlyValues[q] || 0).toFixed(2),
         })),
       }));
 
-      const totalLastYear = etfBreakdown.reduce((sum, item) => sum + parseFloat(item.totalLastYear), 0);
-      const totalAllTime = etfBreakdown.reduce((sum, item) => sum + parseFloat(item.totalAllTime), 0);
+      const totalLastYear = etfBreakdown.reduce((sum: number, item: any) => sum + parseFloat(item.totalLastYear), 0);
+      const totalAllTime = etfBreakdown.reduce((sum: number, item: any) => sum + parseFloat(item.totalAllTime), 0);
       const combinedQuarterly: Record<string, number> = {};
-      lastQuarters.forEach(q => combinedQuarterly[q] = 0);
+      lastQuarters.forEach((q: string) => combinedQuarterly[q] = 0);
       
-      etfBreakdown.forEach(item => {
-        item.quarterlyBreakdown.forEach(q => {
+      etfBreakdown.forEach((item: any) => {
+        item.quarterlyBreakdown.forEach((q: any) => {
           if (combinedQuarterly[q.quarter] !== undefined) {
             combinedQuarterly[q.quarter] += parseFloat(q.amount);
           }
@@ -553,7 +553,7 @@ export const etfRouter = router({
       return {
         totalLastYear: totalLastYear.toFixed(2),
         totalAllTime: totalAllTime.toFixed(2),
-        quarterlyBreakdown: lastQuarters.map(q => ({
+        quarterlyBreakdown: lastQuarters.map((q: string) => ({
           quarter: q,
           amount: (combinedQuarterly[q] || 0).toFixed(2),
         })),
@@ -569,7 +569,7 @@ export const etfRouter = router({
       let totalDividends = 0;
 
       for (const holding of holdings) {
-        const dividends = await getDividendHistory(ctx.user.id, holding.symbol);
+        const dividends = await getDividendHistory(ctx.user.id, holding.symbol as string);
         for (const div of dividends) {
           if (div.totalDividend) {
             totalDividends += parseFloat(div.totalDividend.toString());
@@ -581,86 +581,156 @@ export const etfRouter = router({
     }),
 
   getProjectedDividends: protectedProcedure
-    .input(z.object({ portfolioId: z.number() }))
+    .input(z.object({ 
+      portfolioId: z.number(),
+      withDRIP: z.boolean().default(false),
+      symbol: z.string().optional(),
+      accountId: z.number().optional()
+    }))
     .query(async ({ ctx, input }) => {
-      const holdings = await getUserEtfHoldings(ctx.user.id, input.portfolioId);
+      let holdings = await getUserEtfHoldings(ctx.user.id, input.portfolioId, input.accountId);
+      
+      if (input.symbol && input.symbol !== "ALL") {
+        const symbolUpper = input.symbol.toUpperCase();
+        holdings = holdings.filter((h: any) => h.symbol.toUpperCase() === symbolUpper);
+      }
       
       const now = new Date();
-      const oneYearAgo = new Date();
-      oneYearAgo.setDate(now.getDate() - 365);
+      const currentMonth = now.getMonth();
+      const currentYear = now.getFullYear();
 
-      const assetsMap = new Map<string, any>();
-      let totalProjectedAnnual = 0;
-      const monthlyProjectionsMap = new Map<string, number>();
+      // 1. Initial holdings loop & pattern identification
+      const uniqueSymbols = Array.from(new Set(holdings.map((h: any) => h.symbol.toUpperCase())));
+      const symbolDataMap = new Map<string, {
+        monthlyDPS: Map<number, number>,
+        trueAnnualDPS: number,
+        currentPrice: number,
+        name: string,
+        initialQuantity: number
+      }>();
 
-      for (const holding of holdings) {
-        const dividendData = await fetchDividendData(holding.symbol);
+      for (let i = 0; i < uniqueSymbols.length; i++) {
+        const symbol = uniqueSymbols[i] as string;
+        const dividendData = await fetchDividendData(symbol);
+        const holding = holdings.find((h: any) => h.symbol.toUpperCase() === symbol)!;
+        const currentPrice = parseFloat(holding.currentPrice || "0");
         
-        // Calculate "Annual Payout Per Share" by summing dividends where exDate is in the last 365 days
-        const lastYearDividends = dividendData.filter(d => {
-          const exDate = new Date(d.exDate);
-          return exDate >= oneYearAgo && exDate <= now;
+        // Pattern identification (last 14 months)
+        const fourteenMonthsAgo = new Date();
+        fourteenMonthsAgo.setMonth(now.getMonth() - 14);
+        const recentDividends = dividendData.filter((d: any) => new Date(d.exDate) >= fourteenMonthsAgo);
+        
+        const monthYearToSum = new Map<string, number>();
+        recentDividends.forEach((d: any) => {
+          const date = new Date(d.exDate);
+          const m = date.getMonth();
+          const y = date.getFullYear();
+          const key = `${y}-${m}`;
+          monthYearToSum.set(key, (monthYearToSum.get(key) || 0) + d.dividendPerShare);
         });
-        
-        const annualDPS = lastYearDividends.reduce((sum, d) => sum + d.dividendPerShare, 0);
-        const currentQuantity = parseFloat(holding.quantity.toString());
-        const projectedAnnual = currentQuantity * annualDPS;
-        totalProjectedAnnual += projectedAnnual;
 
-        const symbol = holding.symbol.toUpperCase();
-        const existing = assetsMap.get(symbol);
-        if (existing) {
-          existing.currentQuantity += currentQuantity;
-          existing.projectedAnnualNum += projectedAnnual;
-          existing.projectedAnnual = existing.projectedAnnualNum.toFixed(2);
-        } else {
-          assetsMap.set(symbol, {
-            symbol: symbol,
-            name: holding.name,
-            projectedAnnualNum: projectedAnnual,
-            projectedAnnual: projectedAnnual.toFixed(2),
-            currentQuantity,
-            annualDPS: annualDPS.toFixed(4),
-          });
-        }
-
-        // Create monthly projection for the next 12 months based on last year's pattern
-        for (let i = 0; i < 12; i++) {
-          const projectionDate = new Date(now.getFullYear(), now.getMonth() + i, 1);
-          const projectionMonth = projectionDate.getMonth();
-          const projectionYear = projectionDate.getFullYear();
-          const monthKey = `${projectionYear}-${String(projectionMonth + 1).padStart(2, "0")}`;
-          
-          // Find dividends that occurred in the same month last year
-          const sameMonthDividends = lastYearDividends.filter(d => new Date(d.exDate).getMonth() === projectionMonth);
-          if (sameMonthDividends.length > 0) {
-            const monthlyAmount = sameMonthDividends.reduce((sum, d) => sum + (d.dividendPerShare * currentQuantity), 0);
-            monthlyProjectionsMap.set(monthKey, (monthlyProjectionsMap.get(monthKey) || 0) + monthlyAmount);
+        const monthlyDPSMap = new Map<number, number>();
+        for (let m = 0; m < 12; m++) {
+          let mostRecentYear = -1;
+          let dps = 0;
+          for (const [key, val] of Array.from(monthYearToSum.entries())) {
+            const [y, month] = key.split('-').map(Number);
+            if (month === m && y > mostRecentYear) {
+              mostRecentYear = y;
+              dps = val;
+            }
+          }
+          if (mostRecentYear !== -1) {
+            monthlyDPSMap.set(m, dps);
           }
         }
-      }
 
-      const assets = Array.from(assetsMap.values());
+        // Calculate trueAnnualDPS (last 12 months)
+        const oneYearAgo = new Date();
+        oneYearAgo.setFullYear(now.getFullYear() - 1);
+        const trueAnnualDPS = dividendData
+          .filter((d: any) => {
+            const dDate = new Date(d.exDate);
+            return dDate >= oneYearAgo && dDate <= now;
+          })
+          .reduce((sum: number, d: any) => sum + d.dividendPerShare, 0);
 
-      // Format monthly projection for the next 12 months
-      const monthlyProjection = [];
-      const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-      for (let i = 0; i < 12; i++) {
-        const projectionDate = new Date(now.getFullYear(), now.getMonth() + i, 1);
-        const projectionMonth = projectionDate.getMonth();
-        const projectionYear = projectionDate.getFullYear();
-        const monthKey = `${projectionYear}-${String(projectionMonth + 1).padStart(2, "0")}`;
-        
-        monthlyProjection.push({
-          month: `${monthNames[projectionMonth]} ${projectionYear}`,
-          amount: (monthlyProjectionsMap.get(monthKey) || 0).toFixed(2),
+        const initialQuantity = holdings
+          .filter((h: any) => h.symbol.toUpperCase() === symbol)
+          .reduce((sum: number, h: any) => sum + parseFloat(h.quantity.toString()), 0);
+
+        symbolDataMap.set(symbol as string, {
+          monthlyDPS: monthlyDPSMap,
+          trueAnnualDPS,
+          currentPrice,
+          name: holding.name,
+          initialQuantity
         });
       }
+
+      // 2. 12-month simulation
+      const simulationState = new Map<string, { 
+        quantity: number, 
+        projectedTotal: number 
+      }>();
+      
+      for (const [symbol, data] of Array.from(symbolDataMap.entries())) {
+        simulationState.set(symbol, {
+          quantity: data.initialQuantity,
+          projectedTotal: 0
+        });
+      }
+
+      const monthlyProjections = [];
+      let totalProjectedAnnual = 0;
+      const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+      for (let i = 0; i < 12; i++) {
+        const projectionDate = new Date(currentYear, currentMonth + i, 1);
+        const targetMonth = projectionDate.getMonth();
+        const targetYear = projectionDate.getFullYear();
+        
+        let monthlyTotal = 0;
+
+        for (const [symbol, data] of Array.from(symbolDataMap.entries())) {
+          const state = simulationState.get(symbol)!;
+          
+          if (data.monthlyDPS.has(targetMonth)) {
+            const scheduledDPS = data.monthlyDPS.get(targetMonth)!;
+            const payout = state.quantity * scheduledDPS;
+            
+            state.projectedTotal += payout;
+            monthlyTotal += payout;
+
+            if (input.withDRIP && data.currentPrice > 0) {
+              state.quantity += payout / data.currentPrice;
+            }
+          }
+        }
+
+        totalProjectedAnnual += monthlyTotal;
+        monthlyProjections.push({
+          month: `${monthNames[targetMonth]} ${targetYear}`,
+          amount: monthlyTotal.toFixed(2)
+        });
+      }
+
+      // 3. Final response construction
+      const assets = Array.from(symbolDataMap.entries()).map(([symbol, data]) => {
+        const state = simulationState.get(symbol)!;
+        return {
+          symbol,
+          name: data.name,
+          currentQuantity: data.initialQuantity,
+          annualDPS: data.trueAnnualDPS.toFixed(4),
+          projectedAnnual: state.projectedTotal.toFixed(2)
+        };
+      });
 
       return {
         totalProjectedAnnual: totalProjectedAnnual.toFixed(2),
         assets,
-        monthlyProjection,
+        monthlyProjection: monthlyProjections
       };
     }),
 
@@ -1051,10 +1121,10 @@ export const etfRouter = router({
         success: result.success > 0,
         imported: result.success,
         failed: result.failed,
-        errors: [...result.errors, ...invalidRecords.map((r) => r.error || "")],
+        errors: [...result.errors, ...invalidRecords.map((r: any) => r.error || "")],
         newAvgCost,
       };
-    }),
+      }),
 
   getAssetQuantityHistory: protectedProcedure
     .input(
@@ -1195,7 +1265,7 @@ export const etfRouter = router({
       
       const includeCash = !input.symbol && (!input.holdingId || input.holdingId === -1);
       const data = await getProcessedEvolution(ctx.user.id, holdings, input.range, input.portfolioId, includeCash);
-      return data.map(d => ({
+      return data.map((d: any) => ({
         date: d.date,
         value: d.totalValue.toFixed(2)
       }));
@@ -1223,7 +1293,7 @@ export const etfRouter = router({
 
       // Calculate metrics
       const metrics = calculatePerformanceMetrics(
-        prices.map((p) => ({
+        prices.map((p: any) => ({
           date: p.timestamp,
           price: p.price,
         }))
@@ -1443,11 +1513,11 @@ async function getProcessedEvolution(userId: number, holdings: any[], range: "1m
 
   for (const holding of holdings) {
     // Fetch a bit more to have "warm up" data for lastPrices
-    const priceHistory = await fetchHistoricalPrices(holding.symbol, days + 10, interval);
+    const priceHistory = await fetchHistoricalPrices(holding.symbol as string, days + 10, interval);
     const purchases = await getPurchases(holding.id);
     const pricesMap = new Map<string, number>();
     
-    priceHistory.forEach(p => {
+    priceHistory.forEach((p: any) => {
       const dKey = p.timestamp.toISOString().split("T")[0];
       pricesMap.set(dKey, p.price);
       allDatesSet.add(dKey);
@@ -1470,7 +1540,7 @@ async function getProcessedEvolution(userId: number, holdings: any[], range: "1m
   let cashHistory: any[] = [];
   if (includeCash && portfolioId) {
     cashHistory = await getCashBalanceHistory(userId, portfolioId);
-    cashHistory.forEach(ch => {
+    cashHistory.forEach((ch: any) => {
       const dKey = new Date(ch.date).toISOString().split("T")[0];
       allDatesSet.add(dKey);
     });
@@ -1510,7 +1580,7 @@ async function getProcessedEvolution(userId: number, holdings: any[], range: "1m
     resultDates.push(todayKey);
   }
 
-  return resultDates.map((dateKey) => {
+  return resultDates.map((dateKey: string) => {
     const currentDate = new Date(dateKey + "T12:00:00");
     let totalMarketValue = 0;
     let totalCurrentQtyValue = 0;
@@ -1544,7 +1614,7 @@ async function getProcessedEvolution(userId: number, holdings: any[], range: "1m
           latestAccountCash.set(ch.accountId, parseFloat(ch.amount));
         }
       }
-      const totalCash = Array.from(latestAccountCash.values()).reduce((sum, val) => sum + val, 0);
+      const totalCash = Array.from(latestAccountCash.values()).reduce((sum: number, val: number) => sum + val, 0);
       totalMarketValue += totalCash;
       totalCurrentQtyValue += totalCash;
     }
@@ -1583,7 +1653,7 @@ function calculateMonthlyReturn(
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-  const monthlyData = balanceHistory.filter((b) => b.date >= thirtyDaysAgo);
+  const monthlyData = balanceHistory.filter((b: any) => b.date >= thirtyDaysAgo);
   if (monthlyData.length < 2) return "0";
 
   const startValue = parseFloat(monthlyData[0].totalValue.toString());
@@ -1606,7 +1676,7 @@ function calculateYearlyReturn(
   const oneYearAgo = new Date();
   oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
 
-  const yearlyData = balanceHistory.filter((b) => b.date >= oneYearAgo);
+  const yearlyData = balanceHistory.filter((b: any) => b.date >= oneYearAgo);
   if (yearlyData.length < 2) return "0";
 
   const startValue = parseFloat(yearlyData[0].totalValue.toString());

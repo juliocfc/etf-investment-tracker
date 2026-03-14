@@ -2,6 +2,9 @@ import { formatCurrency, formatNumber } from "@/lib/utils";
 import React, { useState, useEffect, useMemo } from "react";
 import { trpc } from "@/lib/trpc";
 import { Card } from "@/components/ui/card";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import {
   BarChart,
   Bar,
@@ -15,6 +18,8 @@ import {
 import { DollarSign, Calendar, ListFilter, Trophy, RefreshCw, BarChart3, TrendingUp } from "lucide-react";
 
 export default function Dividends({ selectedPortfolioId }: { selectedPortfolioId: number }) {
+  const [withDRIP, setWithDRIP] = useState(false);
+
   const { data: report, isLoading } = trpc.etf.getDetailedDividendReport.useQuery(
     { portfolioId: selectedPortfolioId },
     { enabled: !!selectedPortfolioId }
@@ -26,7 +31,7 @@ export default function Dividends({ selectedPortfolioId }: { selectedPortfolioId
   );
 
   const { data: projections, isLoading: isProjectionLoading } = trpc.etf.getProjectedDividends.useQuery(
-    { portfolioId: selectedPortfolioId },
+    { portfolioId: selectedPortfolioId, withDRIP: withDRIP },
     { enabled: !!selectedPortfolioId }
   );
 
@@ -267,9 +272,22 @@ export default function Dividends({ selectedPortfolioId }: { selectedPortfolioId
 
       {/* Forward-Looking Income Projection */}
       <div className="space-y-6">
-        <div className="flex items-center gap-2">
-          <TrendingUp className="w-5 h-5 text-primary" />
-          <h2 className="text-xl font-bold text-slate-800">Forward-Looking Income Projection</h2>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-2">
+            <TrendingUp className="w-5 h-5 text-primary" />
+            <h2 className="text-xl font-bold text-slate-800">Forward-Looking Income Projection</h2>
+          </div>
+          <div className="flex items-center gap-3 bg-white px-3 py-1.5 rounded-md border border-border shadow-sm">
+            <Switch 
+              id="drip-toggle" 
+              checked={withDRIP} 
+              onCheckedChange={setWithDRIP}
+              className="scale-75 origin-right"
+            />
+            <Label htmlFor="drip-toggle" className="text-[10px] font-bold text-slate-500 uppercase cursor-pointer select-none">
+              Simulate Dividend Re-investment (DRIP)
+            </Label>
+          </div>
         </div>
 
         {isProjectionLoading ? (
@@ -280,8 +298,15 @@ export default function Dividends({ selectedPortfolioId }: { selectedPortfolioId
         ) : projections ? (
           <>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <Card className="p-6 bg-white shadow-sm border border-border border-l-4 border-l-green-600">
-                <div className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Projected Annual Income (Next 12M)</div>
+              <Card className="p-6 bg-white shadow-sm border border-border border-l-4 border-l-green-600 relative overflow-hidden">
+                <div className="flex justify-between items-start mb-1">
+                  <div className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">Projected Annual Income (Next 12M)</div>
+                  {withDRIP && (
+                    <Badge variant="secondary" className="bg-green-100 text-green-700 hover:bg-green-100 border-none text-[8px] font-bold py-0 h-4">
+                      Includes Compounding
+                    </Badge>
+                  )}
+                </div>
                 <div className="text-4xl font-bold text-slate-800 font-mono mb-2">
                   {formatCurrency(projections.totalProjectedAnnual)}
                 </div>
