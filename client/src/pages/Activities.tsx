@@ -2,8 +2,9 @@ import React, { useState, useMemo, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { List, History, RefreshCw, Calendar, ArrowRightLeft, Wallet } from "lucide-react";
+import { List, History, RefreshCw, Calendar, ArrowRightLeft, Wallet, Database } from "lucide-react";
 import { formatCurrency, formatNumber, formatDate } from "@/lib/utils";
 import {
   Select,
@@ -14,7 +15,7 @@ import {
 } from "@/components/ui/select";
 
 export default function Activities({ selectedPortfolioId }: { selectedPortfolioId: number }) {
-  const [range, setRange] = useState<string>("30d");
+  const [range, setRange] = useState<string>("10d");
   const [viewingPurchases, setViewingPurchases] = useState<any | null>(null);
   const [filterAccountId, setFilterAccountId] = useState<string>("");
 
@@ -59,6 +60,11 @@ export default function Activities({ selectedPortfolioId }: { selectedPortfolioI
     { enabled: !!selectedPortfolioId }
   );
 
+  const { data: unifiedHistory, isLoading: isUnifiedLoading } = trpc.etf.getUnifiedHistory.useQuery(
+    { portfolioId: selectedPortfolioId, range },
+    { enabled: !!selectedPortfolioId }
+  );
+
   const { data: accounts } = trpc.account.getAccounts.useQuery(
     { portfolioId: selectedPortfolioId },
     { enabled: !!selectedPortfolioId }
@@ -82,7 +88,7 @@ export default function Activities({ selectedPortfolioId }: { selectedPortfolioI
     return filteredPurchases.reduce((sum: number, p: any) => sum + parseFloat(p.quantity.toString()) * parseFloat(p.price.toString()), 0);
   }, [filteredPurchases]);
 
-  if (isLoading || isCashLoading) {
+  if (isLoading || isCashLoading || isUnifiedLoading) {
     return (
       <div className="flex flex-col items-center justify-center h-96 gap-4">
         <RefreshCw className="w-10 h-10 animate-spin text-primary" />
@@ -224,6 +230,79 @@ export default function Activities({ selectedPortfolioId }: { selectedPortfolioI
             <div className="py-20 text-center text-slate-400">
               <Calendar className="w-12 h-12 mx-auto mb-4 opacity-20" />
               <p className="text-sm font-medium">No purchase activities recorded for this time interval.</p>
+            </div>
+          )}
+        </div>
+      </Card>
+
+      {/* Master Transaction Ledger */}
+      <Card className="bg-white shadow-sm border border-border overflow-hidden">
+        <div className="px-6 py-4 border-b border-border bg-slate-50/50 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Database className="w-5 h-5 text-primary" />
+            <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Master Transaction Ledger</h3>
+          </div>
+          <span className="text-[10px] font-bold text-slate-400 bg-white px-2 py-1 rounded border border-border uppercase tracking-widest">
+            {currentRangeLabel}
+          </span>
+        </div>
+        
+        <div className="overflow-x-auto">
+          {unifiedHistory && unifiedHistory.length > 0 ? (
+            <table className="w-full">
+              <thead>
+                <tr className="bg-slate-50 border-b border-border">
+                  <th className="text-left py-3 px-4 text-slate-600">Date</th>
+                  <th className="text-left py-3 px-4 text-slate-600">Type</th>
+                  <th className="text-left py-3 px-4 text-slate-600">Account</th>
+                  <th className="text-left py-3 px-4 text-slate-600">Asset</th>
+                  <th className="text-left py-3 px-4 text-slate-600">Details</th>
+                  <th className="text-right py-3 px-4 text-slate-600">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {unifiedHistory.map((entry: any) => {
+                  const account = accounts?.find((a: any) => a.id === entry.accountId);
+                  const isPurchase = entry.type === 'PURCHASE';
+                  return (
+                    <tr key={entry.id} className="border-b border-border hover:bg-slate-50 transition-colors text-sm">
+                      <td className="py-4 px-4 font-mono text-slate-600">
+                        {formatDate(entry.date)}
+                      </td>
+                      <td className="py-4 px-4">
+                        <Badge variant={isPurchase ? "default" : "secondary"}>
+                          {isPurchase ? "Purchase" : "Cash"}
+                        </Badge>
+                      </td>
+                      <td className="py-4 px-4 font-medium text-slate-800">
+                        {account?.name || "N/A"}
+                      </td>
+                      <td className="py-4 px-4 font-bold text-primary">
+                        {isPurchase ? entry.symbol : "Cash Reserve"}
+                      </td>
+                      <td className="py-4 px-4 text-slate-500 italic">
+                        {isPurchase ? (
+                          `Qty: ${formatNumber(entry.quantity, 3)} @ ${formatCurrency(entry.price)}`
+                        ) : (
+                          "Balance Adjustment"
+                        )}
+                      </td>
+                      <td className="text-right py-4 px-4 font-mono font-bold text-slate-700">
+                        {isPurchase ? (
+                          formatCurrency(parseFloat(entry.quantity) * parseFloat(entry.price))
+                        ) : (
+                          formatCurrency(entry.amount)
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          ) : (
+            <div className="py-20 text-center text-slate-400">
+              <Database className="w-12 h-12 mx-auto mb-4 opacity-20" />
+              <p className="text-sm font-medium">No transactions found for this time interval.</p>
             </div>
           )}
         </div>

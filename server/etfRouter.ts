@@ -1325,6 +1325,54 @@ export const etfRouter = router({
         ))
         .orderBy(desc(cashBalanceHistory.date));
     }),
+
+  getUnifiedHistory: protectedProcedure
+    .input(z.object({ portfolioId: z.number(), range: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const { startDate, endDate } = calculateDateRange(input.range);
+      const db = await getDb();
+
+      const [purchaseRecords, cashRecords] = await Promise.all([
+        db.select()
+          .from(purchases)
+          .where(and(
+            eq(purchases.userId, ctx.user.id),
+            eq(purchases.portfolioId, input.portfolioId),
+            gte(purchases.purchaseDate, startDate),
+            lte(purchases.purchaseDate, endDate)
+          )),
+        db.select()
+          .from(cashBalanceHistory)
+          .where(and(
+            eq(cashBalanceHistory.userId, ctx.user.id),
+            eq(cashBalanceHistory.portfolioId, input.portfolioId),
+            gte(cashBalanceHistory.date, startDate),
+            lte(cashBalanceHistory.date, endDate)
+          ))
+      ]);
+
+      const unifiedPurchases = purchaseRecords.map((p: any) => ({
+        id: `p-${p.id}`,
+        date: p.purchaseDate,
+        type: 'PURCHASE' as const,
+        accountId: p.accountId,
+        symbol: p.symbol,
+        quantity: p.quantity,
+        price: p.price,
+      }));
+
+      const unifiedCash = cashRecords.map((c: any) => ({
+        id: `c-${c.id}`,
+        date: c.date,
+        type: 'CASH' as const,
+        accountId: c.accountId,
+        amount: c.amount,
+      }));
+
+      return [...unifiedPurchases, ...unifiedCash].sort((a, b) => 
+        new Date(b.date).getTime() - new Date(a.date).getTime()
+      );
+    }),
 });
 
 /**
