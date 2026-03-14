@@ -314,6 +314,23 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
     }
   };
 
+  // Helper to format price with automatic decimal point (e.g. 3085 -> 30.85)
+  const handlePriceInputChange = (value: string, setter: (val: string) => void) => {
+    // Remove all non-digits
+    const digits = value.replace(/\D/g, "");
+    if (!digits) {
+      setter("");
+      return;
+    }
+    // Convert to number and shift decimal 2 places
+    const amount = parseInt(digits, 10) / 100;
+    setter(amount.toFixed(2));
+  };
+
+  const handleFocus = (e: React.FocusEvent<HTMLInputElement>) => {
+    e.target.select();
+  };
+
   // Helper to fetch and set price based on symbol and date
   const fetchAndSetPrice = async (symbol: string, date: string, isBuyForm: boolean = false) => {
     if (!symbol || !date) return;
@@ -736,7 +753,13 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                         </div>
                         <div className="grid gap-2">
                           <label className="text-xs font-bold text-slate-500 uppercase">Purchase Price</label>
-                          <Input type="number" step="0.01" value={formData.purchasePrice} onChange={(e) => setFormData(prev => ({ ...prev, purchasePrice: e.target.value }))} />
+                          <Input 
+                            type="text" 
+                            inputMode="decimal"
+                            value={formData.purchasePrice} 
+                            onFocus={handleFocus}
+                            onChange={(e) => handlePriceInputChange(e.target.value, (val) => setFormData(prev => ({ ...prev, purchasePrice: val })))} 
+                          />
                         </div>
                       </div>
                       <Button onClick={handleAddHolding} className="w-full mt-2" disabled={addHoldingMutation.isPending}>
@@ -1027,10 +1050,11 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
             <div className="grid gap-2">
               <label className="text-xs font-bold text-slate-500 uppercase">Cash Amount</label>
               <Input 
-                type="number" 
-                step="0.01" 
+                type="text" 
+                inputMode="decimal"
                 value={historicalCashData.amount} 
-                onChange={(e) => setHistoricalCashData(prev => ({ ...prev, amount: e.target.value }))} 
+                onFocus={handleFocus}
+                onChange={(e) => handlePriceInputChange(e.target.value, (val) => setHistoricalCashData(prev => ({ ...prev, amount: val })))} 
               />
             </div>
             <Button 
@@ -1076,10 +1100,11 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
             <div className="grid gap-2">
               <label className="text-xs font-bold text-slate-500 uppercase">Cash Amount</label>
               <Input 
-                type="number" 
-                step="0.01" 
+                type="text" 
+                inputMode="decimal"
                 value={adjustCashData.amount} 
-                onChange={(e) => setAdjustCashData(prev => ({ ...prev, amount: e.target.value }))} 
+                onFocus={handleFocus}
+                onChange={(e) => handlePriceInputChange(e.target.value, (val) => setAdjustCashData(prev => ({ ...prev, amount: val })))} 
               />
             </div>
             <Button 
@@ -1130,7 +1155,13 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
               </div>
               <div className="grid gap-2">
                 <label className="text-xs font-bold text-slate-500 uppercase">Purchase Price</label>
-                <Input type="number" step="0.01" value={buyData.price} onChange={(e) => setBuyData(prev => ({ ...prev, price: e.target.value }))} />
+                <Input 
+                  type="text" 
+                  inputMode="decimal"
+                  value={buyData.price} 
+                  onFocus={handleFocus}
+                  onChange={(e) => handlePriceInputChange(e.target.value, (val) => setBuyData(prev => ({ ...prev, price: val })))} 
+                />
               </div>
               <Button onClick={() => handleBuyMoreShares(isBuyDialogOpen.id, isBuyDialogOpen.symbol, Number(buyData.accountId))} className="w-full" disabled={buyMoreSharesMutation.isPending}>
                 Add Purchase
@@ -1142,7 +1173,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
 
       {purchaseHistoryOpen && (
         <Dialog open={!!purchaseHistoryOpen} onOpenChange={() => setPurchaseHistoryOpen(null)}>
-          <DialogContent className="sm:max-w-[700px]">
+          <DialogContent className="sm:max-w-[900px]">
             <DialogHeader>
               <DialogTitle>Purchase History for {purchaseHistoryOpen.symbol}</DialogTitle>
             </DialogHeader>
@@ -1276,6 +1307,7 @@ function PurchaseHistoryTable({
               <th className="text-left py-3 px-4">Account</th>
               <th className="text-right py-3 px-4">Quantity</th>
               <th className="text-right py-3 px-4">Price</th>
+              <th className="text-right py-3 px-4">Total</th>
               <th className="text-center py-3 px-4">Action</th>
             </tr>
           </thead>
@@ -1284,17 +1316,21 @@ function PurchaseHistoryTable({
               const date = new Date(purchase.purchaseDate);
               const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
               const accountName = accounts?.find((a: any) => a.id === purchase.accountId)?.name || "Default";
+              const quantity = parseFloat(purchase.quantity);
+              const price = parseFloat(purchase.price);
+              const totalAmount = quantity * price;
               
               return (
                 <tr key={purchase.id} className="border-b border-border hover:bg-white transition-colors">
-                  <td className="py-3 px-4 font-mono">{dateStr}</td>
-                  <td className="py-3 px-4">
+                  <td className="py-3 px-4 font-mono whitespace-nowrap">{dateStr}</td>
+                  <td className="py-3 px-4 whitespace-nowrap">
                     <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200">
                       {accountName}
                     </span>
                   </td>
                   <td className="text-right py-3 px-4 font-mono">{formatNumber(purchase.quantity, 3)}</td>
                   <td className="text-right py-3 px-4 font-mono font-medium">{formatCurrency(purchase.price)}</td>
+                  <td className="text-right py-3 px-4 font-mono font-bold text-slate-700">{formatCurrency(totalAmount)}</td>
                   <td className="text-center py-3 px-4">
                     <Button
                       size="sm"
@@ -1310,7 +1346,7 @@ function PurchaseHistoryTable({
             })}
             {filteredPurchases.length === 0 && (
               <tr>
-                <td colSpan={5} className="py-8 text-center text-slate-400 italic">
+                <td colSpan={6} className="py-8 text-center text-slate-400 italic">
                   No purchase records found for this selection.
                 </td>
               </tr>
