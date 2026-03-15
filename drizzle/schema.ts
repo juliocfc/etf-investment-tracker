@@ -95,7 +95,10 @@ export const cashBalanceHistory = sqliteTable("cashBalanceHistory", {
   userId: integer("userId").notNull(),
   portfolioId: integer("portfolioId").notNull(),
   accountId: integer("accountId").notNull(),
-  amount: text("amount").notNull(),
+  amount: text("amount").notNull(), // Resulting balance after transaction
+  transactionType: text("transactionType"), // "deposit", "withdrawal", "adjustment"
+  transactionAmount: text("transactionAmount"),
+  description: text("description"),
   date: integer("date", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 

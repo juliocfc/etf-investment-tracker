@@ -356,12 +356,49 @@ export const etfRouter = router({
   updateCashBalance: protectedProcedure
     .input(z.object({ 
       portfolioId: z.number(), 
-      accountId: z.number(), 
-      amount: z.string(),
+      amount: z.string(), 
+      accountId: z.number(),
       date: z.date().optional()
     }))
     .mutation(async ({ ctx, input }) => {
       return updateCashBalance(ctx.user.id, input.portfolioId, input.amount, input.accountId, input.date);
+    }),
+
+  recordCashTransaction: protectedProcedure
+    .input(z.object({
+      portfolioId: z.number(),
+      accountId: z.number(),
+      type: z.enum(["deposit", "withdrawal", "adjustment"]),
+      amount: z.string(), // Transaction amount
+      description: z.string().optional(),
+      date: z.date().optional()
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const currentBalance = await getCashBalance(ctx.user.id, input.portfolioId, input.accountId);
+      const currentAmountNum = currentBalance ? parseFloat(currentBalance.amount) : 0;
+      const transactionAmountNum = parseFloat(input.amount);
+
+      let newAmountNum = currentAmountNum;
+      if (input.type === "deposit") {
+        newAmountNum = currentAmountNum + transactionAmountNum;
+      } else if (input.type === "withdrawal") {
+        newAmountNum = currentAmountNum - transactionAmountNum;
+      } else {
+        newAmountNum = transactionAmountNum; // Adjustment sets balance
+      }
+
+      return updateCashBalance(
+        ctx.user.id, 
+        input.portfolioId, 
+        newAmountNum.toString(), 
+        input.accountId, 
+        input.date || new Date(),
+        {
+          type: input.type,
+          transactionAmount: input.amount,
+          description: input.description
+        }
+      );
     }),
 
   getBalanceHistory: protectedProcedure
@@ -722,6 +759,7 @@ export const etfRouter = router({
           symbol,
           name: data.name,
           currentQuantity: data.initialQuantity,
+          finalQuantity: state.quantity,
           annualDPS: data.trueAnnualDPS.toFixed(4),
           projectedAnnual: state.projectedTotal.toFixed(2)
         };
@@ -1437,6 +1475,9 @@ export const etfRouter = router({
         type: 'CASH' as const,
         accountId: c.accountId,
         amount: c.amount,
+        transactionType: c.transactionType,
+        transactionAmount: c.transactionAmount,
+        description: c.description
       }));
 
       return [...unifiedPurchases, ...unifiedCash].sort((a, b) => 

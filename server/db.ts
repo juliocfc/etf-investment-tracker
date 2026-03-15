@@ -245,7 +245,18 @@ export async function getCashBalance(userId: number, portfolioId: number, accoun
   return db.select().from(cashBalance).where(and(...conditions)).then((rows: any[]) => rows[0]);
 }
 
-export async function updateCashBalance(userId: number, portfolioId: number, amount: string, accountId: number, date: Date = new Date()) {
+export async function updateCashBalance(
+  userId: number, 
+  portfolioId: number, 
+  amount: string, 
+  accountId: number, 
+  date: Date = new Date(),
+  transactionDetails?: {
+    type: string,
+    transactionAmount: string,
+    description?: string
+  }
+) {
   const db = await getDb();
   
   // Record history
@@ -253,7 +264,10 @@ export async function updateCashBalance(userId: number, portfolioId: number, amo
     userId, 
     portfolioId, 
     accountId, 
-    amount, 
+    amount, // Resulting balance
+    transactionType: transactionDetails?.type || "adjustment",
+    transactionAmount: transactionDetails?.transactionAmount || amount,
+    description: transactionDetails?.description || "",
     date: date 
   });
   

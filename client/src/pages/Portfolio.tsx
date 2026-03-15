@@ -12,7 +12,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Plus, Trash2, RefreshCw, ShoppingCart, History, FolderPlus, FileUp, Wallet, TrendingUp, Info, ArrowUpCircle, CheckCircle2, MoreVertical, CalendarPlus } from "lucide-react";
+import { Plus, Trash2, RefreshCw, ShoppingCart, History, FolderPlus, FileUp, Wallet, TrendingUp, Info, ArrowUpCircle, CheckCircle2, MoreVertical, CalendarPlus, Download } from "lucide-react";
 import { toast } from "sonner";
 import { formatCurrency, formatNumber, formatDate } from "@/lib/utils";
 import React, { useEffect, useRef, useState, useMemo } from "react";
@@ -39,7 +39,13 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
   const [isAccountsDialogOpen, setIsAccountsDialogOpen] = useState(false);
   const [isAdjustCashDialogOpen, setIsAdjustCashDialogOpen] = useState(false);
   const [isHistoricalCashDialogOpen, setIsHistoricalCashDialogOpen] = useState(false);
-  const [adjustCashData, setAdjustCashData] = useState({ accountId: "", amount: "" });
+  const [adjustCashData, setAdjustCashData] = useState({ 
+    accountId: "", 
+    amount: "", 
+    type: "deposit", 
+    description: "", 
+    date: formatDate(new Date()) 
+  });
   const [historicalCashData, setHistoricalCashData] = useState({ accountId: "", amount: "", date: formatDate(new Date()) });
   
   const defaultDate = useMemo(() => getLastTradingDay(), []);
@@ -241,11 +247,22 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
       utils.portfolio.getConsolidatedSummary.invalidate();
       setIsAdjustCashDialogOpen(false);
       setIsHistoricalCashDialogOpen(false);
-      setHistoricalCashData({ 
-        accountId: accounts?.[0]?.id.toString() || "", 
-        amount: "", 
-        date: formatDate(new Date()) 
-      });
+    },
+    onError: (error) => {
+      toast.error(error.message || "Failed to update cash");
+    },
+  });
+
+  const recordCashTransactionMutation = trpc.etf.recordCashTransaction.useMutation({
+    onSuccess: () => {
+      toast.success("Transaction recorded!");
+      refetchSummary();
+      utils.portfolio.getConsolidatedSummary.invalidate();
+      setIsAdjustCashDialogOpen(false);
+      setAdjustCashData(prev => ({ ...prev, amount: "", description: "" }));
+    },
+    onError: (error) => {
+      toast.error(error.message || "Failed to record transaction");
     },
   });
 
@@ -299,19 +316,6 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
 
   const handleAdjustCashAccountChange = async (accountId: string) => {
     setAdjustCashData(prev => ({ ...prev, accountId }));
-    if (accountId) {
-      try {
-        const balance = await utils.etf.getCashBalance.fetch({
-          portfolioId: selectedPortfolioId!,
-          accountId: Number(accountId),
-        });
-        setAdjustCashData(prev => ({ ...prev, amount: balance || "0" }));
-      } catch (error) {
-        console.error("Error fetching cash balance:", error);
-      }
-    } else {
-      setAdjustCashData(prev => ({ ...prev, amount: "" }));
-    }
   };
 
   // Helper to format price with automatic decimal point (e.g. 3085 -> 30.85)
@@ -870,6 +874,10 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                                 <span>Import Purchases</span>
                               </DropdownMenuItem>
                               <DropdownMenuItem onClick={() => setPurchaseHistoryOpen({ id: holding.id, symbol: holding.symbol })}>
+                                <Download className="mr-2 h-4 w-4 text-slate-500" />
+                                <span>Export Purchases</span>
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => setPurchaseHistoryOpen({ id: holding.id, symbol: holding.symbol })}>
                                 <History className="mr-2 h-4 w-4 text-slate-500" />
                                 <span>View History</span>
                               </DropdownMenuItem>
@@ -985,7 +993,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                     className="text-xs uppercase font-bold border-slate-200 hover:bg-slate-50 flex-1 sm:flex-none"
                   >
                     <CalendarPlus className="w-3.5 h-3.5 mr-1.5" />
-                    Add History
+                    Balance History
                   </Button>
                   <Button 
                     variant="outline" 
@@ -999,7 +1007,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                     }} 
                     className="text-xs uppercase font-bold border-slate-200 hover:bg-slate-50 flex-1 sm:flex-none"
                   >
-                    Adjust Balance
+                    Deposit / Withdrawal
                   </Button>
                 </div>
               </div>
@@ -1082,7 +1090,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
       <Dialog open={isAdjustCashDialogOpen} onOpenChange={setIsAdjustCashDialogOpen}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
-            <DialogTitle>Adjust Cash Balance</DialogTitle>
+            <DialogTitle>Cash Reserve Transaction</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 pt-4">
             <div className="grid gap-2">
@@ -1097,30 +1105,77 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                 ))}
               </select>
             </div>
+            
             <div className="grid gap-2">
-              <label className="text-xs font-bold text-slate-500 uppercase">Cash Amount</label>
+              <label className="text-xs font-bold text-slate-500 uppercase">Action</label>
+              <div className="grid grid-cols-2 gap-2">
+                <Button 
+                  type="button" 
+                  variant={adjustCashData.type === "deposit" ? "default" : "outline"}
+                  onClick={() => setAdjustCashData(prev => ({ ...prev, type: "deposit" }))}
+                  className="h-10 text-xs font-bold uppercase"
+                >
+                  Deposit
+                </Button>
+                <Button 
+                  type="button" 
+                  variant={adjustCashData.type === "withdrawal" ? "default" : "outline"}
+                  onClick={() => setAdjustCashData(prev => ({ ...prev, type: "withdrawal" }))}
+                  className="h-10 text-xs font-bold uppercase"
+                >
+                  Withdrawal
+                </Button>
+              </div>
+            </div>
+
+            <div className="grid gap-2">
+              <label className="text-xs font-bold text-slate-500 uppercase">Amount</label>
               <Input 
                 type="text" 
                 inputMode="decimal"
+                placeholder="0.00"
                 value={adjustCashData.amount} 
-                onFocus={handleFocus}
+                onFocus={(e) => e.target.select()}
                 onChange={(e) => handlePriceInputChange(e.target.value, (val) => setAdjustCashData(prev => ({ ...prev, amount: val })))} 
               />
             </div>
+
+            <div className="grid gap-2">
+              <label className="text-xs font-bold text-slate-500 uppercase">Date</label>
+              <Input 
+                type="date" 
+                value={adjustCashData.date} 
+                onChange={(e) => setAdjustCashData(prev => ({ ...prev, date: e.target.value }))} 
+              />
+            </div>
+
+            <div className="grid gap-2">
+              <label className="text-xs font-bold text-slate-500 uppercase">Description (Optional)</label>
+              <Input 
+                type="text" 
+                placeholder="e.g. Monthly Savings, Dividends Transfer"
+                value={adjustCashData.description} 
+                onChange={(e) => setAdjustCashData(prev => ({ ...prev, description: e.target.value }))} 
+              />
+            </div>
+
             <Button 
               onClick={() => {
                 if (adjustCashData.accountId && adjustCashData.amount) {
-                  updateCashMutation.mutate({
+                  recordCashTransactionMutation.mutate({
                     portfolioId: selectedPortfolioId,
                     accountId: Number(adjustCashData.accountId),
-                    amount: adjustCashData.amount
+                    amount: adjustCashData.amount,
+                    type: adjustCashData.type as "deposit" | "withdrawal",
+                    description: adjustCashData.description,
+                    date: new Date(adjustCashData.date + "T12:00:00")
                   });
                 }
               }} 
               className="w-full" 
-              disabled={updateCashMutation.isPending || !adjustCashData.accountId}
+              disabled={recordCashTransactionMutation.isPending || !adjustCashData.accountId}
             >
-              Save Changes
+              {adjustCashData.type === "deposit" ? "Confirm Deposit" : "Confirm Withdrawal"}
             </Button>
           </div>
         </DialogContent>
@@ -1283,20 +1338,60 @@ function PurchaseHistoryTable({
     return purchases.filter((p: any) => p.accountId === Number(filterAccountId));
   }, [purchases, filterAccountId]);
 
+  const handleExportCSV = () => {
+    if (!filteredPurchases || filteredPurchases.length === 0) {
+      toast.error("No purchases to export");
+      return;
+    }
+
+    const headers = "date,account,quantity,cost";
+    const rows = filteredPurchases.map(p => {
+      const date = new Date(p.purchaseDate).toISOString().split('T')[0];
+      const account = accounts.find(a => a.id === p.accountId);
+      const accountName = account ? account.name : "Unknown";
+      return `${date},"${accountName}",${p.quantity},${p.price}`;
+    });
+
+    const csvContent = [headers, ...rows].join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `${symbol}_purchases.csv`);
+    link.style.visibility = "hidden";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast.success(`Exported ${filteredPurchases.length} purchases to CSV`);
+  };
+
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2 bg-slate-50 p-3 rounded-lg border border-border">
-        <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Filter by Account:</span>
-        <select 
-          className="bg-white border border-slate-200 rounded px-2 py-1 text-xs font-bold text-slate-600 focus:outline-none h-8 min-w-[160px]"
-          value={filterAccountId}
-          onChange={(e) => setFilterAccountId(e.target.value)}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-50 p-3 rounded-lg border border-border">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Filter by Account:</span>
+          <select 
+            className="bg-white border border-slate-200 rounded px-2 py-1 text-xs font-bold text-slate-600 focus:outline-none h-8 min-w-[160px]"
+            value={filterAccountId}
+            onChange={(e) => setFilterAccountId(e.target.value)}
+          >
+            <option value="">All Accounts</option>
+            {accounts?.map((acc: any) => (
+              <option key={acc.id} value={acc.id}>{acc.name}</option>
+            ))}
+          </select>
+        </div>
+
+        <Button 
+          variant="outline" 
+          size="sm" 
+          onClick={handleExportCSV}
+          className="text-[10px] font-bold uppercase tracking-wider h-8 border-slate-200"
+          disabled={!filteredPurchases || filteredPurchases.length === 0}
         >
-          <option value="">All Accounts</option>
-          {accounts?.map((acc: any) => (
-            <option key={acc.id} value={acc.id}>{acc.name}</option>
-          ))}
-        </select>
+          <Download className="w-3.5 h-3.5 mr-1.5 text-primary" />
+          Export to CSV
+        </Button>
       </div>
 
       <div className="overflow-auto max-h-[60vh] custom-scrollbar border border-border rounded-lg bg-slate-50/30">

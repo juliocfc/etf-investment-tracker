@@ -356,6 +356,7 @@ export default function Dividends({ selectedPortfolioId }: { selectedPortfolioId
                     <tr className="border-b border-border">
                       <th className="text-left py-3 px-6 text-slate-600 font-bold">Symbol</th>
                       <th className="text-right py-3 px-6 text-slate-600 font-bold">Shares Owned</th>
+                      <th className="text-right py-3 px-6 text-slate-600 font-bold">Shares after 12M</th>
                       <th className="text-right py-3 px-6 text-slate-600 font-bold">Annual DPS</th>
                       <th className="text-right py-3 px-6 text-slate-600 font-bold">Projected Annual</th>
                     </tr>
@@ -365,6 +366,7 @@ export default function Dividends({ selectedPortfolioId }: { selectedPortfolioId
                       <tr key={asset.symbol} className="border-b border-border hover:bg-slate-50 transition-colors">
                         <td className="py-3 px-6 font-bold text-primary">{asset.symbol}</td>
                         <td className="py-3 px-6 text-right font-mono text-slate-500">{formatNumber(asset.currentQuantity, 3)}</td>
+                        <td className="py-3 px-6 text-right font-mono font-bold text-slate-800">{formatNumber(asset.finalQuantity, 3)}</td>
                         <td className="py-3 px-6 text-right font-mono text-slate-500">{formatCurrency(asset.annualDPS, 4)}</td>
                         <td className="py-3 px-6 text-right font-mono font-bold text-green-600">{formatCurrency(asset.projectedAnnual)}</td>
                       </tr>

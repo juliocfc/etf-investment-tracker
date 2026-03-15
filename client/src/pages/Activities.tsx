@@ -284,14 +284,20 @@ export default function Activities({ selectedPortfolioId }: { selectedPortfolioI
                         {isPurchase ? (
                           `Qty: ${formatNumber(entry.quantity, 3)} @ ${formatCurrency(entry.price)}`
                         ) : (
-                          "Balance Adjustment"
+                          <div className="flex flex-col">
+                            <span className="font-bold text-slate-700 capitalize">{entry.transactionType || "Adjustment"}: {formatCurrency(entry.transactionAmount || entry.amount)}</span>
+                            {entry.description && <span className="text-[10px] text-slate-400 mt-0.5">{entry.description}</span>}
+                          </div>
                         )}
                       </td>
                       <td className="text-right py-4 px-4 font-mono font-bold text-slate-700">
                         {isPurchase ? (
                           formatCurrency(parseFloat(entry.quantity) * parseFloat(entry.price))
                         ) : (
-                          formatCurrency(entry.amount)
+                          <div className="flex flex-col items-end">
+                            <span className="text-xs text-slate-400 font-normal">Balance:</span>
+                            {formatCurrency(entry.amount)}
+                          </div>
                         )}
                       </td>
                     </tr>
@@ -326,8 +332,11 @@ export default function Activities({ selectedPortfolioId }: { selectedPortfolioI
               <thead>
                 <tr className="bg-slate-50 border-b border-border">
                   <th className="text-left py-3 px-4 text-slate-600">Date</th>
+                  <th className="text-left py-3 px-4 text-slate-600">Type</th>
                   <th className="text-left py-3 px-4 text-slate-600">Account</th>
-                  <th className="text-right py-3 px-4 text-slate-600">Amount</th>
+                  <th className="text-left py-3 px-4 text-slate-600">Description</th>
+                  <th className="text-right py-3 px-4 text-slate-600">Transaction</th>
+                  <th className="text-right py-3 px-4 text-slate-600">New Balance</th>
                 </tr>
               </thead>
               <tbody>
@@ -338,10 +347,22 @@ export default function Activities({ selectedPortfolioId }: { selectedPortfolioI
                       <td className="py-4 px-4 font-mono text-slate-600">
                         {formatDate(activity.date)}
                       </td>
+                      <td className="py-4 px-4">
+                        <Badge variant="outline" className="capitalize">
+                          {activity.transactionType || "Adjustment"}
+                        </Badge>
+                      </td>
                       <td className="py-4 px-4 font-medium text-slate-800">
                         {account?.name || "N/A"}
                       </td>
-                      <td className="text-right py-4 px-4 font-mono font-bold text-slate-700">
+                      <td className="py-4 px-4 text-slate-500 italic text-xs max-w-[200px] truncate">
+                        {activity.description || "-"}
+                      </td>
+                      <td className={`text-right py-4 px-4 font-mono font-bold ${activity.transactionType === 'withdrawal' ? 'text-red-600' : activity.transactionType === 'deposit' ? 'text-green-600' : 'text-slate-700'}`}>
+                        {activity.transactionType === 'withdrawal' ? '-' : activity.transactionType === 'deposit' ? '+' : ''}
+                        {formatCurrency(activity.transactionAmount || activity.amount)}
+                      </td>
+                      <td className="text-right py-4 px-4 font-mono text-slate-500">
                         {formatCurrency(activity.amount)}
                       </td>
                     </tr>
