@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
-import { etfHoldings, purchases, accounts, cashBalanceHistory } from "../drizzle/schema";
+import { etfHoldings, purchases, accounts, cashBalanceHistory, cashBalance } from "../drizzle/schema";
 import {
   getUserEtfHoldings,
   createEtfHolding,
@@ -12,6 +12,7 @@ import {
   getCashBalance,
   updateCashBalance,
   getCashBalanceHistory,
+  deleteCashTransaction,
   addBalanceHistory,
   getBalanceHistory,
   getDividendHistory,
@@ -399,6 +400,16 @@ export const etfRouter = router({
           description: input.description
         }
       );
+    }),
+
+  deleteCashTransaction: protectedProcedure
+    .input(z.object({
+      portfolioId: z.number(),
+      accountId: z.number(),
+      transactionId: z.number()
+    }))
+    .mutation(async ({ ctx, input }) => {
+      return deleteCashTransaction(ctx.user.id, input.portfolioId, input.accountId, input.transactionId);
     }),
 
   getBalanceHistory: protectedProcedure
@@ -967,7 +978,20 @@ export const etfRouter = router({
     .input(z.object({ portfolioId: z.number(), accountId: z.number().optional() }))
     .query(async ({ ctx, input }) => {
       const holdings = await getUserEtfHoldings(ctx.user.id, input.portfolioId, input.accountId);
-      const cashBalance = await getCashBalance(ctx.user.id, input.portfolioId, input.accountId);
+      const currentCashBalance = await getCashBalance(ctx.user.id, input.portfolioId, input.accountId);
+      
+      const db = await getDb();
+      const allCashBalances = await db.select().from(cashBalance).where(and(
+        eq(cashBalance.userId, ctx.user.id),
+        eq(cashBalance.portfolioId, input.portfolioId)
+      ));
+      
+      const cashBalancesMap: Record<number, string> = {};
+      allCashBalances.forEach((cb: any) => {
+        if (cb.accountId) {
+          cashBalancesMap[cb.accountId] = cb.amount;
+        }
+      });
 
       let totalInvestmentValue = 0;
       const holdingsWithValues = await Promise.all(
@@ -1040,12 +1064,13 @@ export const etfRouter = router({
         }));
       }
 
-      const cashAmount = cashBalance ? parseFloat(cashBalance.amount.toString()) : 0;
+      const cashAmount = currentCashBalance ? parseFloat(currentCashBalance.amount.toString()) : 0;
       const totalValue = totalInvestmentValue + cashAmount;
 
       return {
         holdings: processedHoldings,
         cashBalance: cashAmount.toFixed(2),
+        cashBalances: cashBalancesMap,
         investmentValue: totalInvestmentValue.toFixed(2),
         totalValue: totalValue.toFixed(2),
         allocationBreakdown: processedHoldings.map((h: any) => ({

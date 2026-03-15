@@ -4,7 +4,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { List, History, RefreshCw, Calendar, ArrowRightLeft, Wallet, Database } from "lucide-react";
+import { List, History, RefreshCw, Calendar, ArrowRightLeft, Wallet } from "lucide-react";
 import { formatCurrency, formatNumber, formatDate } from "@/lib/utils";
 import {
   Select,
@@ -15,7 +15,9 @@ import {
 } from "@/components/ui/select";
 
 export default function Activities({ selectedPortfolioId }: { selectedPortfolioId: number }) {
-  const [range, setRange] = useState<string>("10d");
+  const [investmentRange, setInvestmentRange] = useState<string>("10d");
+  const [cashRange, setCashRange] = useState<string>("10d");
+  const [cashAccountId, setCashAccountId] = useState<string>("");
   const [viewingPurchases, setViewingPurchases] = useState<any | null>(null);
   const [filterAccountId, setFilterAccountId] = useState<string>("");
 
@@ -40,28 +42,20 @@ export default function Activities({ selectedPortfolioId }: { selectedPortfolioI
     return options;
   }, []);
 
-  const currentRangeLabel = useMemo(() => {
-    return rangeOptions.find((opt) => opt.value === range)?.label || "Selected Range";
-  }, [range, rangeOptions]);
-
   // Reset filters when portfolio changes
   useEffect(() => {
+    setCashAccountId("");
     setFilterAccountId("");
     setViewingPurchases(null);
   }, [selectedPortfolioId]);
 
   const { data: activities, isLoading } = trpc.etf.getInvestmentActivities.useQuery(
-    { portfolioId: selectedPortfolioId, range },
+    { portfolioId: selectedPortfolioId, range: investmentRange },
     { enabled: !!selectedPortfolioId }
   );
 
   const { data: cashActivities, isLoading: isCashLoading } = trpc.etf.getCashActivities.useQuery(
-    { portfolioId: selectedPortfolioId, range },
-    { enabled: !!selectedPortfolioId }
-  );
-
-  const { data: unifiedHistory, isLoading: isUnifiedLoading } = trpc.etf.getUnifiedHistory.useQuery(
-    { portfolioId: selectedPortfolioId, range },
+    { portfolioId: selectedPortfolioId, range: cashRange },
     { enabled: !!selectedPortfolioId }
   );
 
@@ -69,6 +63,12 @@ export default function Activities({ selectedPortfolioId }: { selectedPortfolioI
     { portfolioId: selectedPortfolioId },
     { enabled: !!selectedPortfolioId }
   );
+
+  const filteredCashActivities = useMemo(() => {
+    if (!cashActivities) return [];
+    if (!cashAccountId) return cashActivities;
+    return cashActivities.filter((a: any) => a.accountId === Number(cashAccountId));
+  }, [cashActivities, cashAccountId]);
 
   const filteredPurchases = useMemo(() => {
     if (!viewingPurchases) return [];
@@ -88,7 +88,7 @@ export default function Activities({ selectedPortfolioId }: { selectedPortfolioI
     return filteredPurchases.reduce((sum: number, p: any) => sum + parseFloat(p.quantity.toString()) * parseFloat(p.price.toString()), 0);
   }, [filteredPurchases]);
 
-  if (isLoading || isCashLoading || isUnifiedLoading) {
+  if (isLoading || isCashLoading) {
     return (
       <div className="flex flex-col items-center justify-center h-96 gap-4">
         <RefreshCw className="w-10 h-10 animate-spin text-primary" />
@@ -104,7 +104,7 @@ export default function Activities({ selectedPortfolioId }: { selectedPortfolioI
 
   return (
     <div className="space-y-8">
-      {/* Header / Filter Bar */}
+      {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-lg shadow-sm border border-border">
         <div className="flex items-center gap-4">
           <div className="p-2 bg-slate-100 rounded-lg text-primary">
@@ -115,34 +115,31 @@ export default function Activities({ selectedPortfolioId }: { selectedPortfolioI
             <p className="text-xs text-slate-500 font-medium">Review purchase volume and performance of recent acquisitions</p>
           </div>
         </div>
-
-        <div className="flex items-center gap-3">
-          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest hidden sm:block">Timeframe:</span>
-          <Select value={range} onValueChange={setRange}>
-            <SelectTrigger className="w-[180px] h-9 bg-white text-xs font-bold uppercase border-slate-200">
-              <SelectValue placeholder="Select range" />
-            </SelectTrigger>
-            <SelectContent>
-              {rangeOptions.map((opt) => (
-                <SelectItem key={opt.value} value={opt.value} className="text-xs font-bold uppercase">
-                  {opt.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
       </div>
 
       {/* Main Activities Table */}
       <Card className="bg-white shadow-sm border border-border overflow-hidden">
-        <div className="px-6 py-4 border-b border-border bg-slate-50/50 flex items-center justify-between">
+        <div className="px-6 py-4 border-b border-border bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             <List className="w-5 h-5 text-primary" />
             <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Accumulation & Performance Summary</h3>
           </div>
-          <span className="text-[10px] font-bold text-slate-400 bg-white px-2 py-1 rounded border border-border uppercase tracking-widest">
-            {currentRangeLabel}
-          </span>
+          
+          <div className="flex items-center gap-3">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest hidden sm:block">Timeframe:</span>
+            <Select value={investmentRange} onValueChange={setInvestmentRange}>
+              <SelectTrigger className="w-[160px] h-9 bg-white text-xs font-bold uppercase border-slate-200">
+                <SelectValue placeholder="Select range" />
+              </SelectTrigger>
+              <SelectContent>
+                {rangeOptions.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value} className="text-xs font-bold uppercase">
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
         
         <div className="overflow-x-auto">
@@ -235,128 +232,78 @@ export default function Activities({ selectedPortfolioId }: { selectedPortfolioI
         </div>
       </Card>
 
-      {/* Master Transaction Ledger */}
+      {/* Accounts Activity Table */}
       <Card className="bg-white shadow-sm border border-border overflow-hidden">
-        <div className="px-6 py-4 border-b border-border bg-slate-50/50 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Database className="w-5 h-5 text-primary" />
-            <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Master Transaction Ledger</h3>
-          </div>
-          <span className="text-[10px] font-bold text-slate-400 bg-white px-2 py-1 rounded border border-border uppercase tracking-widest">
-            {currentRangeLabel}
-          </span>
-        </div>
-        
-        <div className="overflow-x-auto">
-          {unifiedHistory && unifiedHistory.length > 0 ? (
-            <table className="w-full">
-              <thead>
-                <tr className="bg-slate-50 border-b border-border">
-                  <th className="text-left py-3 px-4 text-slate-600">Date</th>
-                  <th className="text-left py-3 px-4 text-slate-600">Type</th>
-                  <th className="text-left py-3 px-4 text-slate-600">Account</th>
-                  <th className="text-left py-3 px-4 text-slate-600">Asset</th>
-                  <th className="text-left py-3 px-4 text-slate-600">Details</th>
-                  <th className="text-right py-3 px-4 text-slate-600">Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {unifiedHistory.map((entry: any) => {
-                  const account = accounts?.find((a: any) => a.id === entry.accountId);
-                  const isPurchase = entry.type === 'PURCHASE';
-                  return (
-                    <tr key={entry.id} className="border-b border-border hover:bg-slate-50 transition-colors text-sm">
-                      <td className="py-4 px-4 font-mono text-slate-600">
-                        {formatDate(entry.date)}
-                      </td>
-                      <td className="py-4 px-4">
-                        <Badge variant={isPurchase ? "default" : "secondary"}>
-                          {isPurchase ? "Purchase" : "Cash"}
-                        </Badge>
-                      </td>
-                      <td className="py-4 px-4 font-medium text-slate-800">
-                        {account?.name || "N/A"}
-                      </td>
-                      <td className="py-4 px-4 font-bold text-primary">
-                        {isPurchase ? entry.symbol : "Cash Reserve"}
-                      </td>
-                      <td className="py-4 px-4 text-slate-500 italic">
-                        {isPurchase ? (
-                          `Qty: ${formatNumber(entry.quantity, 3)} @ ${formatCurrency(entry.price)}`
-                        ) : (
-                          <div className="flex flex-col">
-                            <span className="font-bold text-slate-700 capitalize">{entry.transactionType || "Adjustment"}: {formatCurrency(entry.transactionAmount || entry.amount)}</span>
-                            {entry.description && <span className="text-[10px] text-slate-400 mt-0.5">{entry.description}</span>}
-                          </div>
-                        )}
-                      </td>
-                      <td className="text-right py-4 px-4 font-mono font-bold text-slate-700">
-                        {isPurchase ? (
-                          formatCurrency(parseFloat(entry.quantity) * parseFloat(entry.price))
-                        ) : (
-                          <div className="flex flex-col items-end">
-                            <span className="text-xs text-slate-400 font-normal">Balance:</span>
-                            {formatCurrency(entry.amount)}
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          ) : (
-            <div className="py-20 text-center text-slate-400">
-              <Database className="w-12 h-12 mx-auto mb-4 opacity-20" />
-              <p className="text-sm font-medium">No transactions found for this time interval.</p>
-            </div>
-          )}
-        </div>
-      </Card>
-
-      {/* Cash Balance History Table */}
-      <Card className="bg-white shadow-sm border border-border overflow-hidden">
-        <div className="px-6 py-4 border-b border-border bg-slate-50/50 flex items-center justify-between">
+        <div className="px-6 py-4 border-b border-border bg-slate-50/50 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             <Wallet className="w-5 h-5 text-primary" />
-            <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Cash Balance History</h3>
+            <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Accounts Activity</h3>
           </div>
-          <span className="text-[10px] font-bold text-slate-400 bg-white px-2 py-1 rounded border border-border uppercase tracking-widest">
-            {currentRangeLabel}
-          </span>
+          
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest hidden sm:block">Account:</span>
+              <select 
+                className="bg-white border border-slate-200 rounded px-3 py-1.5 text-xs font-bold text-slate-600 focus:outline-none focus:ring-1 focus:ring-primary h-9 min-w-[160px]"
+                value={cashAccountId}
+                onChange={(e) => setCashAccountId(e.target.value)}
+              >
+                <option value="">All Accounts</option>
+                {accounts?.map((acc: any) => (
+                  <option key={acc.id} value={acc.id}>{acc.name} {acc.number ? `(${acc.number})` : ""}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest hidden sm:block">Timeframe:</span>
+              <Select value={cashRange} onValueChange={setCashRange}>
+                <SelectTrigger className="w-[180px] h-9 bg-white text-xs font-bold uppercase border-slate-200">
+                  <SelectValue placeholder="Select range" />
+                </SelectTrigger>
+                <SelectContent>
+                  {rangeOptions.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value} className="text-xs font-bold uppercase">
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
         </div>
         
         <div className="overflow-x-auto">
-          {cashActivities && cashActivities.length > 0 ? (
+          {filteredCashActivities && filteredCashActivities.length > 0 ? (
             <table className="w-full">
               <thead>
                 <tr className="bg-slate-50 border-b border-border">
                   <th className="text-left py-3 px-4 text-slate-600">Date</th>
-                  <th className="text-left py-3 px-4 text-slate-600">Type</th>
                   <th className="text-left py-3 px-4 text-slate-600">Account</th>
                   <th className="text-left py-3 px-4 text-slate-600">Description</th>
+                    <th className="text-left py-3 px-4 text-slate-600">Type</th>
                   <th className="text-right py-3 px-4 text-slate-600">Transaction</th>
                   <th className="text-right py-3 px-4 text-slate-600">New Balance</th>
                 </tr>
               </thead>
               <tbody>
-                {cashActivities.map((activity: any, idx: number) => {
+                {filteredCashActivities.map((activity: any, idx: number) => {
                   const account = accounts?.find((a: any) => a.id === activity.accountId);
                   return (
                     <tr key={idx} className="border-b border-border hover:bg-slate-50 transition-colors text-sm">
                       <td className="py-4 px-4 font-mono text-slate-600">
                         {formatDate(activity.date)}
                       </td>
-                      <td className="py-4 px-4">
-                        <Badge variant="outline" className="capitalize">
-                          {activity.transactionType || "Adjustment"}
-                        </Badge>
-                      </td>
                       <td className="py-4 px-4 font-medium text-slate-800">
                         {account?.name || "N/A"}
                       </td>
                       <td className="py-4 px-4 text-slate-500 italic text-xs max-w-[200px] truncate">
                         {activity.description || "-"}
+                      </td>
+                      <td className="py-4 px-4">
+                        <Badge variant="outline" className="capitalize">
+                          {activity.transactionType || "Adjustment"}
+                        </Badge>
                       </td>
                       <td className={`text-right py-4 px-4 font-mono font-bold ${activity.transactionType === 'withdrawal' ? 'text-red-600' : activity.transactionType === 'deposit' ? 'text-green-600' : 'text-slate-700'}`}>
                         {activity.transactionType === 'withdrawal' ? '-' : activity.transactionType === 'deposit' ? '+' : ''}
@@ -373,7 +320,7 @@ export default function Activities({ selectedPortfolioId }: { selectedPortfolioI
           ) : (
             <div className="py-20 text-center text-slate-400">
               <Calendar className="w-12 h-12 mx-auto mb-4 opacity-20" />
-              <p className="text-sm font-medium">No cash balance history recorded for this time interval.</p>
+              <p className="text-sm font-medium">No account activity recorded for this time interval.</p>
             </div>
           )}
         </div>

@@ -313,6 +313,56 @@ export async function getCashBalanceHistory(userId: number, portfolioId: number)
     .orderBy(cashBalanceHistory.date);
 }
 
+export async function deleteCashTransaction(userId: number, portfolioId: number, accountId: number, transactionId: number) {
+  const db = await getDb();
+  
+  // 1. Delete the record
+  await db.delete(cashBalanceHistory).where(and(
+    eq(cashBalanceHistory.id, transactionId),
+    eq(cashBalanceHistory.userId, userId)
+  ));
+  
+  // 2. Recalculate all subsequent balances for this specific account
+  // First, get all remaining records for this account, sorted by date
+  const accountHistory = await db.select()
+    .from(cashBalanceHistory)
+    .where(and(
+      eq(cashBalanceHistory.userId, userId),
+      eq(cashBalanceHistory.accountId, accountId)
+    ))
+    .orderBy(cashBalanceHistory.date, cashBalanceHistory.id);
+  
+  // Recalculate balances starting from the first record
+  let currentBalance = 0;
+  for (const record of accountHistory) {
+    const transAmount = parseFloat(record.transactionAmount || record.amount);
+    if (record.transactionType === "deposit") {
+      currentBalance += transAmount;
+    } else if (record.transactionType === "withdrawal") {
+      currentBalance -= transAmount;
+    } else {
+      // Adjustment or initial record: sets the balance
+      currentBalance = transAmount;
+    }
+    
+    // Update the record with the recalculated balance
+    await db.update(cashBalanceHistory)
+      .set({ amount: currentBalance.toString() })
+      .where(eq(cashBalanceHistory.id, record.id));
+  }
+  
+  // 3. Update the main cashBalance table with the final result
+  const finalBalance = currentBalance.toString();
+  const existing = await getCashBalance(userId, portfolioId, accountId);
+  if (existing) {
+    await db.update(cashBalance)
+      .set({ amount: finalBalance, updatedAt: new Date() })
+      .where(eq(cashBalance.id, existing.id));
+  }
+  
+  return { success: true };
+}
+
 // CSV Parsing and Bulk Import
 export function parseCSVContent(csvContent: string) {
   const lines = csvContent.split("\n");

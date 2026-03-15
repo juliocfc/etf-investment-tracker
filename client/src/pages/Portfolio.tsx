@@ -2,6 +2,7 @@ import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
@@ -36,6 +37,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isBuyDialogOpen, setIsBuyDialogOpen] = useState<{ id: number, symbol: string } | null>(null);
   const [purchaseHistoryOpen, setPurchaseHistoryOpen] = useState<{ id: number, symbol: string } | null>(null);
+  const [cashHistoryOpen, setCashHistoryOpen] = useState<{ id: number, name: string } | null>(null);
   const [isAccountsDialogOpen, setIsAccountsDialogOpen] = useState(false);
   const [isAdjustCashDialogOpen, setIsAdjustCashDialogOpen] = useState(false);
   const [isHistoricalCashDialogOpen, setIsHistoricalCashDialogOpen] = useState(false);
@@ -929,6 +931,127 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
             </div>
           </Card>
 
+          {/* Cash Accounts Table */}
+          <Card className="bg-white shadow-sm border border-border overflow-hidden">
+            <div className="px-6 py-4 border-b border-border bg-slate-50/50 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                  <Wallet className="w-5 h-5 text-primary" />
+                  Cash Accounts
+                </h2>
+                <span className="text-[10px] font-bold text-slate-400 bg-slate-200/50 px-2 py-0.5 rounded-full uppercase tracking-widest">{accounts?.length || 0} Accounts</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => {
+                    const defaultAccId = selectedAccountId || accounts?.[0]?.id;
+                    if (defaultAccId) {
+                      setHistoricalCashData(prev => ({ ...prev, accountId: defaultAccId.toString() }));
+                    }
+                    setIsHistoricalCashDialogOpen(true);
+                  }} 
+                  className="text-[10px] uppercase font-bold border-slate-200 hover:bg-slate-50 h-8"
+                >
+                  <CalendarPlus className="w-3.5 h-3.5 mr-1.5" />
+                  Balance History
+                </Button>
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-slate-50/50 border-b border-border">
+                    <th className="text-left py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Account Name</th>
+                    <th className="text-right py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Cash Balance</th>
+                    <th className="text-center py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {accounts?.map((account: any) => {
+                    const balance = (summary as any)?.cashBalances?.[account.id] || "0.00";
+                    return (
+                      <tr key={account.id} className="border-b border-border hover:bg-slate-50 transition-colors">
+                        <td className="py-4 px-6">
+                          <div className="font-bold text-slate-800">{account.name}</div>
+                          {account.number && <div className="text-[10px] text-slate-500 font-mono mt-0.5">{account.number}</div>}
+                        </td>
+                        <td className="py-4 px-6 text-right font-mono font-bold text-slate-700">
+                          {formatCurrency(balance)}
+                        </td>
+                        <td className="py-4 px-6">
+                          <div className="flex items-center justify-center gap-2">
+                            <Button 
+                              size="sm" 
+                              variant="outline"
+                              onClick={() => {
+                                setAdjustCashData({ 
+                                  accountId: account.id.toString(), 
+                                  amount: "", 
+                                  type: "deposit", 
+                                  description: "", 
+                                  date: formatDate(new Date()) 
+                                });
+                                setIsAdjustCashDialogOpen(true);
+                              }}
+                              className="h-8 text-[10px] font-bold uppercase border-green-200 text-green-700 hover:bg-green-50 hover:text-green-800"
+                            >
+                              Deposit
+                            </Button>
+                            <Button 
+                              size="sm" 
+                              variant="outline"
+                              onClick={() => {
+                                setAdjustCashData({ 
+                                  accountId: account.id.toString(), 
+                                  amount: "", 
+                                  type: "withdrawal", 
+                                  description: "", 
+                                  date: formatDate(new Date()) 
+                                });
+                                setIsAdjustCashDialogOpen(true);
+                              }}
+                              className="h-8 text-[10px] font-bold uppercase border-red-200 text-red-700 hover:bg-red-50 hover:text-red-800"
+                            >
+                              Withdraw
+                            </Button>
+                            <Button 
+                              size="sm" 
+                              variant="ghost"
+                              onClick={() => setCashHistoryOpen({ id: account.id, name: account.name })}
+                              className="h-8 w-8 p-0 text-slate-400 hover:text-primary hover:bg-slate-100"
+                            >
+                              <History className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {(!accounts || accounts.length === 0) && (
+                    <tr>
+                      <td colSpan={3} className="py-10 text-center text-slate-400">
+                        No accounts found. Add an account to manage cash.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+                {accounts && accounts.length > 0 && (
+                  <tfoot className="bg-slate-50 border-t-2 border-slate-200">
+                    <tr className="font-bold text-slate-800">
+                      <td className="py-4 px-6 uppercase text-[10px] tracking-widest text-slate-500">Total Cash Reserve</td>
+                      <td className="text-right py-4 px-6 font-mono text-sm text-primary">
+                        {formatCurrency(accounts.reduce((acc: number, account: any) => acc + parseFloat((summary as any)?.cashBalances?.[account.id] || "0"), 0))}
+                      </td>
+                      <td></td>
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
+            </div>
+          </Card>
+
           {/* Allocation & Management Grid */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             {/* Portfolio Allocation Pie Chart */}
@@ -969,63 +1092,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                 </div>
               </Card>
             )}
-
-            {/* Cash Balance Section */}
-            <Card className="p-6 bg-white shadow-sm border border-border flex flex-col">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-                <div className="flex items-center gap-2">
-                  <div className="p-1.5 bg-slate-100 rounded text-slate-600">
-                    <Wallet className="w-4 h-4" />
-                  </div>
-                  <h3 className="text-lg font-bold text-slate-800">Cash Reserve Management</h3>
-                </div>
-                <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    onClick={() => {
-                      const defaultAccId = selectedAccountId || accounts?.[0]?.id;
-                      if (defaultAccId) {
-                        setHistoricalCashData(prev => ({ ...prev, accountId: defaultAccId.toString() }));
-                      }
-                      setIsHistoricalCashDialogOpen(true);
-                    }} 
-                    className="text-xs uppercase font-bold border-slate-200 hover:bg-slate-50 flex-1 sm:flex-none"
-                  >
-                    <CalendarPlus className="w-3.5 h-3.5 mr-1.5" />
-                    Balance History
-                  </Button>
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    onClick={() => {
-                      const defaultAccId = selectedAccountId || accounts?.[0]?.id;
-                      if (defaultAccId) {
-                        handleAdjustCashAccountChange(defaultAccId.toString());
-                      }
-                      setIsAdjustCashDialogOpen(true);
-                    }} 
-                    className="text-xs uppercase font-bold border-slate-200 hover:bg-slate-50 flex-1 sm:flex-none"
-                  >
-                    Deposit / Withdrawal
-                  </Button>
-                </div>
-              </div>
-              
-              <div className="flex-1 flex flex-col justify-center bg-slate-50 rounded-lg p-8 border border-slate-100 border-dashed">
-                <div className="text-center">
-                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">
-                    {selectedAccountId ? `Current Liquid Assets (${accounts?.find((a: any) => a.id === selectedAccountId)?.name})` : "Total Combined Liquid Assets"}
-                  </p>
-                  <p className="text-5xl font-bold text-slate-800 font-mono tracking-tighter">{formatCurrency(summary?.cashBalance)}</p>
-                </div>
-              </div>
-              <p className="text-xs text-slate-400 mt-6 text-center italic">
-                Maintaining a healthy cash reserve allows for strategic entries during market downturns.
-              </p>
-            </Card>
-          </div>
-        </>
+          </div>        </>
       )}
 
       {/* Dialogs */}
@@ -1093,17 +1160,11 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
             <DialogTitle>Cash Reserve Transaction</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 pt-4">
-            <div className="grid gap-2">
-              <label className="text-xs font-bold text-slate-500 uppercase">Account</label>
-              <select 
-                className="bg-white border border-input rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary h-10"
-                value={adjustCashData.accountId}
-                onChange={(e) => handleAdjustCashAccountChange(e.target.value)}
-              >
-                {accounts?.map((acc: any) => (
-                  <option key={acc.id} value={acc.id}>{acc.name} {acc.number ? `(${acc.number})` : ""}</option>
-                ))}
-              </select>
+            <div className="grid gap-1">
+              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Account</label>
+              <div className="bg-slate-50 border border-slate-200 rounded px-3 py-2 text-sm font-bold text-slate-700">
+                {accounts?.find(a => a.id.toString() === adjustCashData.accountId)?.name || "Selected Account"}
+              </div>
             </div>
             
             <div className="grid gap-2">
@@ -1222,6 +1283,20 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                 Add Purchase
               </Button>
             </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {cashHistoryOpen && (
+        <Dialog open={!!cashHistoryOpen} onOpenChange={() => setCashHistoryOpen(null)}>
+          <DialogContent className="sm:max-w-[800px]">
+            <DialogHeader>
+              <DialogTitle>Cash Transaction History: {cashHistoryOpen.name}</DialogTitle>
+            </DialogHeader>
+            <CashHistoryTable
+              accountId={cashHistoryOpen.id}
+              portfolioId={selectedPortfolioId}
+            />
           </DialogContent>
         </Dialog>
       )}
@@ -1557,6 +1632,116 @@ function CSVImportForm({
           "Import Purchases"
         )}
       </Button>
+    </div>
+  );
+}
+
+function CashHistoryTable({
+  accountId,
+  portfolioId
+}: {
+  accountId: number,
+  portfolioId: number
+}) {
+  const utils = trpc.useUtils();
+  const { data: history, isLoading, refetch } = trpc.etf.getCashActivities.useQuery(
+    { portfolioId, range: "1y" }, // Show last year by default
+    { enabled: !!portfolioId }
+  );
+
+  const deleteCashTransactionMutation = trpc.etf.deleteCashTransaction.useMutation({
+    onSuccess: () => {
+      toast.success("Transaction deleted!");
+      refetch();
+      utils.etf.getPortfolioSummary.invalidate();
+      utils.portfolio.getConsolidatedSummary.invalidate();
+    },
+    onError: (error) => {
+      toast.error(error.message || "Failed to delete transaction");
+    },
+  });
+
+  const handleDeleteTransaction = (transactionId: number) => {
+    if (confirm("Are you sure you want to delete this cash transaction? Subsequent balances for this account will be recalculated.")) {
+      deleteCashTransactionMutation.mutate({
+        portfolioId,
+        accountId,
+        transactionId
+      });
+    }
+  };
+
+  const filteredHistory = useMemo(() => {
+    if (!history) return [];
+    return history.filter((h: any) => h.accountId === accountId);
+  }, [history, accountId]);
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-12 gap-3">
+        <RefreshCw className="w-8 h-8 animate-spin text-primary opacity-50" />
+        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Fetching history...</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4 pt-4">
+      <div className="overflow-auto max-h-[60vh] custom-scrollbar border border-border rounded-lg bg-slate-50/30">
+        <table className="w-full text-sm">
+          <thead className="sticky top-0 bg-slate-50 z-10 shadow-sm">
+            <tr className="border-b border-border">
+              <th className="text-left py-3 px-4 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Date</th>
+              <th className="text-left py-3 px-4 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Type</th>
+              <th className="text-left py-3 px-4 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Description</th>
+              <th className="text-right py-3 px-4 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Transaction</th>
+              <th className="text-right py-3 px-4 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Balance</th>
+              <th className="text-center py-3 px-4 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredHistory.map((activity: any, idx: number) => (
+              <tr key={idx} className="border-b border-border hover:bg-slate-50 transition-colors">
+                <td className="py-3 px-4 font-mono text-xs text-slate-500">
+                  {formatDate(activity.date)}
+                </td>
+                <td className="py-3 px-4">
+                  <Badge variant="outline" className="capitalize text-[10px] h-5">
+                    {activity.transactionType || "Adjustment"}
+                  </Badge>
+                </td>
+                <td className="py-3 px-4 text-slate-500 italic text-xs max-w-[200px] truncate">
+                  {activity.description || "-"}
+                </td>
+                <td className={`text-right py-3 px-4 font-mono font-bold text-xs ${activity.transactionType === 'withdrawal' ? 'text-red-600' : activity.transactionType === 'deposit' ? 'text-green-600' : 'text-slate-700'}`}>
+                  {activity.transactionType === 'withdrawal' ? '-' : activity.transactionType === 'deposit' ? '+' : ''}
+                  {formatCurrency(activity.transactionAmount || activity.amount)}
+                </td>
+                <td className="text-right py-3 px-4 font-mono text-xs text-slate-500">
+                  {formatCurrency(activity.amount)}
+                </td>
+                <td className="py-3 px-4 text-center">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => handleDeleteTransaction(activity.id)}
+                    className="h-7 w-7 p-0 text-slate-300 hover:text-red-600 hover:bg-red-50"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </td>
+              </tr>
+            ))}
+            {filteredHistory.length === 0 && (
+              <tr>
+                <td colSpan={6} className="py-12 text-center text-slate-400">
+                  No transaction history found for this account.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
