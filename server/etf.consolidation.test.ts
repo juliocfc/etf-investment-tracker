@@ -1,7 +1,8 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { describe, expect, it, vi, beforeEach, beforeAll } from "vitest";
 import { appRouter } from "./routers";
 import type { TrpcContext } from "./_core/context";
 import * as financialApi from "./financialApi";
+import { getDb } from "./db";
 
 // Mock financialApi to avoid external network calls during tests
 vi.mock("./financialApi", async () => {
@@ -61,6 +62,21 @@ function createAuthContext(): TrpcContext {
 }
 
 describe("ETF Consolidation", () => {
+  beforeAll(async () => {
+    const db = await getDb();
+    const { portfolios, accounts, users, etfHoldings, purchases } = await import("../drizzle/schema");
+    
+    // Clean up
+    await db.delete(purchases);
+    await db.delete(etfHoldings);
+    await db.delete(accounts);
+    await db.delete(portfolios);
+    await db.delete(users);
+
+    // Seed test data
+    await db.insert(users).values({ id: 1, openId: "test-user-consolidation", name: "Test User Consolidation" });
+  });
+
   it("should consolidate holdings by symbol when accountId is not provided", async () => {
     const ctx = createAuthContext();
     const caller = appRouter.createCaller(ctx);
@@ -69,7 +85,7 @@ describe("ETF Consolidation", () => {
     const portfolio = await caller.portfolio.create({
       name: "Consolidation Test Portfolio",
     });
-    const portfolioId = portfolio.id;
+    const portfolioId = Number(portfolio.id);
 
     // 2. Create two accounts
     const account1 = await caller.account.addAccount({
@@ -81,11 +97,14 @@ describe("ETF Consolidation", () => {
       name: "Account 2",
     });
 
+    const account1Id = Number(account1.id);
+    const account2Id = Number(account2.id);
+
     // 3. Add same ETF to both accounts
     // Account 1: 10 shares of VOO at 400
     await caller.etf.addHolding({
       portfolioId,
-      accountId: account1.id,
+      accountId: account1Id,
       symbol: "VOO",
       name: "Vanguard S&P 500 ETF",
       quantity: "10.000",
@@ -96,7 +115,7 @@ describe("ETF Consolidation", () => {
     // Account 2: 20 shares of VOO at 410
     await caller.etf.addHolding({
       portfolioId,
-      accountId: account2.id,
+      accountId: account2Id,
       symbol: "VOO",
       name: "Vanguard S&P 500 ETF",
       quantity: "20.000",
@@ -107,7 +126,7 @@ describe("ETF Consolidation", () => {
     // 4. Get holdings WITH accountId (should not be consolidated)
     const holdingsAcc1 = await caller.etf.getHoldings({
       portfolioId,
-      accountId: account1.id,
+      accountId: account1Id,
     });
     expect(holdingsAcc1.length).toBe(1);
     expect(holdingsAcc1[0].symbol).toBe("VOO");

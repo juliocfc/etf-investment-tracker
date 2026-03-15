@@ -156,7 +156,8 @@ export async function getPurchases(holdingId: number) {
 
 export async function addPurchase(data: any) {
   const db = await getDb();
-  return db.insert(purchases).values(data);
+  const result = await db.insert(purchases).values(data).returning({ id: purchases.id });
+  return result[0]?.id;
 }
 
 export async function deletePurchase(purchaseId: number) {
@@ -260,7 +261,7 @@ export async function updateCashBalance(
   const db = await getDb();
   
   // Record history
-  await db.insert(cashBalanceHistory).values({ 
+  const historyResult = await db.insert(cashBalanceHistory).values({ 
     userId, 
     portfolioId, 
     accountId, 
@@ -269,7 +270,9 @@ export async function updateCashBalance(
     transactionAmount: transactionDetails?.transactionAmount || amount,
     description: transactionDetails?.description || "",
     date: date 
-  });
+  }).returning({ id: cashBalanceHistory.id });
+  
+  const historyId = historyResult[0]?.id;
   
   // Always find the absolute latest entry for this account to keep the current balance in sync
   const latestEntry = await db.select()
@@ -285,14 +288,14 @@ export async function updateCashBalance(
   if (latestEntry) {
     const existing = await getCashBalance(userId, portfolioId, accountId);
     if (existing && existing.accountId === accountId) {
-      return db.update(cashBalance)
+      await db.update(cashBalance)
         .set({ 
           amount: latestEntry.amount, 
           updatedAt: new Date() 
         })
         .where(eq(cashBalance.id, existing.id));
     } else {
-      return db.insert(cashBalance).values({ 
+      await db.insert(cashBalance).values({ 
         userId, 
         portfolioId, 
         amount: latestEntry.amount, 
@@ -300,6 +303,8 @@ export async function updateCashBalance(
       });
     }
   }
+  
+  return { success: true, historyId };
 }
 
 export async function getCashBalanceHistory(userId: number, portfolioId: number) {
@@ -316,6 +321,16 @@ export async function getCashBalanceHistory(userId: number, portfolioId: number)
 export async function deleteCashTransaction(userId: number, portfolioId: number, accountId: number, transactionId: number) {
   const db = await getDb();
   
+  // Check if this transaction is linked to a purchase
+  const linkedPurchase = await db.select()
+    .from(purchases)
+    .where(and(eq(purchases.cashTransactionId, transactionId), eq(purchases.userId, userId)))
+    .then((rows: any[]) => rows[0]);
+    
+  if (linkedPurchase) {
+    throw new Error("Cannot delete cash transaction linked to a purchase. Delete the purchase instead.");
+  }
+
   // 1. Delete the record
   await db.delete(cashBalanceHistory).where(and(
     eq(cashBalanceHistory.id, transactionId),
@@ -444,7 +459,10 @@ export async function calculateAverageCost(holdingId: number) {
   const db = await getDb();
   const allPurchases = await getPurchases(holdingId);
 
-  if (allPurchases.length === 0) return "0";
+  if (allPurchases.length === 0) {
+    await deleteEtfHolding(holdingId);
+    return "0";
+  }
 
   let totalQty = 0;
   let totalCost = 0;
@@ -459,13 +477,17 @@ export async function calculateAverageCost(holdingId: number) {
   const avgCost = totalQty > 0 ? (totalCost / totalQty).toString() : "0";
   const totalQtyStr = totalQty.toString();
 
-  await db
-    .update(etfHoldings)
-    .set({
-      purchasePrice: avgCost,
-      quantity: totalQtyStr,
-    })
-    .where(eq(etfHoldings.id, holdingId));
+  if (totalQty === 0) {
+    await deleteEtfHolding(holdingId);
+  } else {
+    await db
+      .update(etfHoldings)
+      .set({
+        purchasePrice: avgCost,
+        quantity: totalQtyStr,
+      })
+      .where(eq(etfHoldings.id, holdingId));
+  }
 
   return avgCost;
 }

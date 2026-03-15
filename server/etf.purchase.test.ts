@@ -1,6 +1,7 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { describe, expect, it, vi, beforeEach, beforeAll } from "vitest";
 import { appRouter } from "./routers";
 import type { TrpcContext } from "./_core/context";
+import { getDb } from "./db";
 
 type AuthenticatedUser = NonNullable<TrpcContext["user"]>;
 
@@ -32,6 +33,23 @@ function createAuthContext(): TrpcContext {
 }
 
 describe("Purchase Record Management", () => {
+  beforeAll(async () => {
+    const db = await getDb();
+    const { portfolios, accounts, users, etfHoldings, purchases } = await import("../drizzle/schema");
+    
+    // Clean up
+    await db.delete(purchases);
+    await db.delete(etfHoldings);
+    await db.delete(accounts);
+    await db.delete(portfolios);
+    await db.delete(users);
+
+    // Seed test data
+    await db.insert(users).values({ id: 1, openId: "test-user", name: "Test User" });
+    await db.insert(portfolios).values({ id: 1, userId: 1, name: "Test Portfolio" });
+    await db.insert(accounts).values({ id: 1, userId: 1, portfolioId: 1, name: "Test Account" });
+  });
+
   it("should retrieve empty purchases for a new holding", async () => {
     const ctx = createAuthContext();
     const caller = appRouter.createCaller(ctx);
@@ -49,7 +67,7 @@ describe("Purchase Record Management", () => {
 
     // Get purchases for the holding
     const purchases = await caller.etf.getPurchases({
-      holdingId: holding!.id,
+      holdingId: Number(holding!.id),
     });
 
     // Should have at least one purchase (the initial one created when adding the holding)
@@ -74,11 +92,11 @@ describe("Purchase Record Management", () => {
 
     // Calculate average cost
     const avgCost = await caller.etf.calculateAverageCost({
-      holdingId: holding!.id,
+      holdingId: Number(holding!.id),
     });
 
     // Average cost should equal the purchase price
-    expect(avgCost).toBe(400.00);
+    expect(parseFloat(avgCost)).toBe(400.00);
   });
 
   it("should update average cost when buying more shares", async () => {
@@ -101,7 +119,7 @@ describe("Purchase Record Management", () => {
       portfolioId: 1,
       accountId: 1,
       symbol: "QQQM",
-      holdingId: holding!.id,
+      holdingId: Number(holding!.id),
       quantity: "50.000",
       price: "350.00",
       purchaseDate: new Date("2024-02-01"),
@@ -116,7 +134,7 @@ describe("Purchase Record Management", () => {
 
     // Verify by calculating average cost directly
     const avgCost = await caller.etf.calculateAverageCost({
-      holdingId: holding!.id,
+      holdingId: Number(holding!.id),
     });
     expect(avgCost).toBeCloseTo(316.67, 1);
   });
@@ -138,14 +156,15 @@ describe("Purchase Record Management", () => {
 
     // Get purchases
     const purchases = await caller.etf.getPurchases({
-      holdingId: holding!.id,
+      holdingId: Number(holding!.id),
     });
 
     // Should have exactly one purchase (the initial one)
     expect(purchases.length).toBe(1);
-    expect(purchases[0]?.holdingId).toBe(holding!.id);
+    expect(purchases[0]?.holdingId).toBe(Number(holding!.id));
     expect(purchases[0]?.quantity).toBe("75.000");
     expect(purchases[0]?.price).toBe("60.00");
     expect(purchases[0]?.symbol).toBe("SCHD");
   });
 });
+

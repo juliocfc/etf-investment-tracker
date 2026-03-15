@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { describe, expect, it, vi, beforeEach, beforeAll } from "vitest";
 
 // Mock financialApi - MUST BE BEFORE ANY IMPORTS THAT USE IT
 vi.mock("./financialApi", async () => {
@@ -47,23 +47,39 @@ function createAuthContext(userId: number): TrpcContext {
 }
 
 describe("etfRouter Price Synchronization", () => {
+  const userId = 100;
+
+  beforeAll(async () => {
+    const db = await getDb();
+    const { portfolios, accounts, users, etfHoldings, purchases } = await import("../drizzle/schema");
+    
+    // Clean up
+    await db.delete(purchases);
+    await db.delete(etfHoldings);
+    await db.delete(accounts);
+    await db.delete(portfolios);
+    await db.delete(users);
+
+    // Seed test data for userId 100
+    await db.insert(users).values({ id: userId, openId: `test-user-${userId}`, name: `Test User ${userId}` });
+  });
+
   it("addHolding should use cached price if recent and sync price to other holdings", async () => {
-    const userId = 100;
     const ctx = createAuthContext(userId);
     const caller = appRouter.createCaller(ctx);
 
     // 1. Setup portfolio and accounts
     const portfolio = await caller.portfolio.create({ name: "P1" });
-    const acc1 = await caller.account.addAccount({ portfolioId: portfolio.id, name: "A1" });
-    const acc2 = await caller.account.addAccount({ portfolioId: portfolio.id, name: "A2" });
+    const acc1 = await caller.account.addAccount({ portfolioId: Number(portfolio.id), name: "A1" });
+    const acc2 = await caller.account.addAccount({ portfolioId: Number(portfolio.id), name: "A2" });
 
     const mockedFinancialApi = vi.mocked(financialApi);
 
     // 2. Add VOO to Account 1
     console.log("Adding VOO to Account 1");
     await caller.etf.addHolding({
-      portfolioId: portfolio.id,
-      accountId: acc1.id,
+      portfolioId: Number(portfolio.id),
+      accountId: Number(acc1.id),
       symbol: "VOO",
       name: "Vanguard S&P 500",
       quantity: "10",
@@ -82,8 +98,8 @@ describe("etfRouter Price Synchronization", () => {
     // 4. Add VOO to Account 2 - should use cached price (550.00) from DB because it's recent
     console.log("Adding VOO to Account 2");
     const result2 = await caller.etf.addHolding({
-      portfolioId: portfolio.id,
-      accountId: acc2.id,
+      portfolioId: Number(portfolio.id),
+      accountId: Number(acc2.id),
       symbol: "VOO",
       name: "Vanguard S&P 500",
       quantity: "5",
@@ -95,9 +111,9 @@ describe("etfRouter Price Synchronization", () => {
     expect(mockedFinancialApi.fetchEtfPrice).toHaveBeenCalledTimes(1);
     
     // Check if the new holding has the cached price
-    const holdings = await caller.etf.getHoldings({ portfolioId: portfolio.id, accountId: acc2.id });
+    const holdings = await caller.etf.getHoldings({ portfolioId: Number(portfolio.id), accountId: Number(acc2.id) });
     console.log("Holdings for Acc 2:", JSON.stringify(holdings, null, 2));
-    const voo2 = holdings.find(h => h.id === result2.id);
+    const voo2 = holdings.find(h => Number(h.id) === Number(result2.id));
     expect(voo2?.currentPrice).toBe("550.00");
 
     // 5. Test updatePrices syncs across all holdings
@@ -109,7 +125,7 @@ describe("etfRouter Price Synchronization", () => {
     });
 
     console.log("Calling updatePrices");
-    await caller.etf.updatePrices({ portfolioId: portfolio.id });
+    await caller.etf.updatePrices({ portfolioId: Number(portfolio.id) });
     
     expect(mockedFinancialApi.fetchEtfPrice).toHaveBeenCalledTimes(1); // Once for unique symbol VOO
 
@@ -120,3 +136,4 @@ describe("etfRouter Price Synchronization", () => {
     expect(dbHoldings[1].currentPrice).toBe("600");
   });
 });
+

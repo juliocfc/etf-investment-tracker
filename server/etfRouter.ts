@@ -93,6 +93,7 @@ export const etfRouter = router({
         purchasePrice: z.string(),
         purchaseDate: z.date(),
         desiredAllocation: z.string().optional(),
+        fees: z.string().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -165,6 +166,31 @@ export const etfRouter = router({
 
       // Create a purchase record for the initial holding
       if (holdingId) {
+        const quantityNum = parseFloat(input.quantity);
+        const priceNum = parseFloat(input.purchasePrice);
+        const feesNum = parseFloat(input.fees || "0");
+        const totalCost = (quantityNum * priceNum) + feesNum;
+
+        // Create cash transaction (withdrawal)
+        const currentBalance = await getCashBalance(ctx.user.id, input.portfolioId, input.accountId);
+        const currentAmountNum = currentBalance ? parseFloat(currentBalance.amount) : 0;
+        const newAmountNum = currentAmountNum - totalCost;
+
+        const description = `You bought ${input.quantity} ${input.symbol.toUpperCase()} at $${priceNum.toFixed(2)}${feesNum > 0 ? ` (Fees: $${feesNum.toFixed(2)})` : ""}`;
+        
+        const cashResult = await updateCashBalance(
+          ctx.user.id,
+          input.portfolioId,
+          newAmountNum.toString(),
+          input.accountId,
+          input.purchaseDate,
+          {
+            type: "withdrawal",
+            transactionAmount: totalCost.toString(),
+            description: description
+          }
+        );
+
         await addPurchase({
           userId: ctx.user.id,
           portfolioId: input.portfolioId,
@@ -173,6 +199,8 @@ export const etfRouter = router({
           symbol: input.symbol.toUpperCase(),
           quantity: input.quantity,
           price: input.purchasePrice,
+          fees: input.fees || "0",
+          cashTransactionId: cashResult.historyId,
           purchaseDate: input.purchaseDate,
         });
       }
@@ -800,6 +828,7 @@ export const etfRouter = router({
         quantity: z.string(),
         price: z.string(),
         purchaseDate: z.date(),
+        fees: z.string().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -860,6 +889,31 @@ export const etfRouter = router({
         }
       }
 
+      const quantityNum = parseFloat(input.quantity);
+      const priceNum = parseFloat(input.price);
+      const feesNum = parseFloat(input.fees || "0");
+      const totalCost = (quantityNum * priceNum) + feesNum;
+
+      // Create cash transaction (withdrawal)
+      const currentBalance = await getCashBalance(ctx.user.id, input.portfolioId, input.accountId);
+      const currentAmountNum = currentBalance ? parseFloat(currentBalance.amount) : 0;
+      const newAmountNum = currentAmountNum - totalCost;
+
+      const description = `You bought ${input.quantity} ${input.symbol.toUpperCase()} at $${priceNum.toFixed(2)}${feesNum > 0 ? ` (Fees: $${feesNum.toFixed(2)})` : ""}`;
+      
+      const cashResult = await updateCashBalance(
+        ctx.user.id,
+        input.portfolioId,
+        newAmountNum.toString(),
+        input.accountId,
+        input.purchaseDate,
+        {
+          type: "withdrawal",
+          transactionAmount: totalCost.toString(),
+          description: description
+        }
+      );
+
       await addPurchase({
         userId: ctx.user.id,
         portfolioId: input.portfolioId,
@@ -868,6 +922,8 @@ export const etfRouter = router({
         symbol: holding.symbol,
         quantity: input.quantity,
         price: input.price,
+        fees: input.fees || "0",
+        cashTransactionId: cashResult.historyId,
         purchaseDate: input.purchaseDate,
       });
 
@@ -914,22 +970,29 @@ export const etfRouter = router({
     }),
 
   deletePurchase: protectedProcedure
-    .input(z.object({ purchaseId: z.number(), holdingId: z.number(), symbol: z.string().optional() }))
+    .input(z.object({ 
+      purchaseId: z.number(), 
+      holdingId: z.number(), 
+      portfolioId: z.number(),
+      accountId: z.number(),
+      symbol: z.string().optional()
+    }))
     .mutation(async ({ ctx, input }) => {
       const dbInstance = await getDb();
       
+      const purchaseRecord = await dbInstance
+        .select()
+        .from(purchases)
+        .where(and(eq(purchases.id, input.purchaseId), eq(purchases.userId, ctx.user.id)))
+        .then((rows: any[]) => rows[0]);
+      
+      if (!purchaseRecord) {
+        throw new Error("Purchase record not found or unauthorized");
+      }
+
       // If holdingId is -1 (consolidated), we need to find the real holdingId from the purchase record
       let actualHoldingId = input.holdingId;
       if (actualHoldingId === -1) {
-        const purchaseRecord = await dbInstance
-          .select()
-          .from(purchases)
-          .where(and(eq(purchases.id, input.purchaseId), eq(purchases.userId, ctx.user.id)))
-          .then((rows: any[]) => rows[0]);
-        
-        if (!purchaseRecord) {
-          throw new Error("Purchase record not found or unauthorized");
-        }
         actualHoldingId = purchaseRecord.holdingId;
       }
 
@@ -943,7 +1006,28 @@ export const etfRouter = router({
         throw new Error("Holding not found or unauthorized");
       }
 
-      await deletePurchase(input.purchaseId);
+      // Delete associated cash transaction if it exists
+      if (purchaseRecord.cashTransactionId) {
+        try {
+          // First delete the purchase so the safety check in deleteCashTransaction passes
+          await deletePurchase(input.purchaseId);
+          
+          // Now call deleteCashTransaction to handle the balance recalculation and record deletion
+          await deleteCashTransaction(
+            ctx.user.id, 
+            input.portfolioId, 
+            input.accountId, 
+            purchaseRecord.cashTransactionId
+          );
+        } catch (error) {
+          console.error("Error deleting linked cash transaction:", error);
+          // If the above failed (e.g. purchase already deleted but cash transaction failed), 
+          // ensure we at least try to delete the purchase if not already done.
+        }
+      } else {
+        await deletePurchase(input.purchaseId);
+      }
+
       const newAvgCost = await calculateAverageCost(actualHoldingId);
       
       return {

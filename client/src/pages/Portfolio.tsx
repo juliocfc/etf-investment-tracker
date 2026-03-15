@@ -59,6 +59,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
     purchasePrice: "",
     purchaseDate: defaultDate,
     accountId: "",
+    fees: "",
   });
 
   const [accountFormData, setAccountFormData] = useState({
@@ -71,6 +72,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
     price: "",
     purchaseDate: defaultDate,
     accountId: "",
+    fees: "",
   });
 
   // Automatically fetch price when Buy dialog opens
@@ -191,6 +193,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
         purchasePrice: "",
         purchaseDate: formatDate(new Date()),
         accountId: accounts?.[0]?.id.toString() || "",
+        fees: "",
       });
       setIsAddDialogOpen(false);
     },
@@ -234,6 +237,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
         price: "",
         purchaseDate: defaultDate,
         accountId: "",
+        fees: "",
       });
       setIsBuyDialogOpen(null);
     },
@@ -440,6 +444,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
       quantity: formData.quantity,
       purchasePrice: formData.purchasePrice,
       purchaseDate: new Date(formData.purchaseDate + "T00:00:00"),
+      fees: formData.fees,
     });
   };
 
@@ -465,6 +470,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
       quantity: buyData.quantity,
       price: buyData.price,
       purchaseDate: new Date(buyData.purchaseDate + "T00:00:00"),
+      fees: buyData.fees,
     });
   };
 
@@ -478,9 +484,9 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
     }
   };
 
-  const handleDeletePurchase = (purchaseId: number, holdingId: number, symbol?: string) => {
+  const handleDeletePurchase = (purchaseId: number, holdingId: number, portfolioId: number, accountId: number, symbol?: string) => {
     if (confirm("Are you sure you want to delete this purchase record?")) {
-      deletePurchaseMutation.mutate({ purchaseId, holdingId, symbol });
+      deletePurchaseMutation.mutate({ purchaseId, holdingId, portfolioId, accountId, symbol });
     }
   };
 
@@ -701,6 +707,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                       purchasePrice: "",
                       purchaseDate: defaultDate,
                       accountId: accounts?.[0]?.id.toString() || "",
+                      fees: "",
                     });
                   } else if (accounts && accounts.length > 0 && !formData.accountId) {
                     setFormData(prev => ({ ...prev, accountId: accounts[0].id.toString() }));
@@ -767,6 +774,17 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                             onChange={(e) => handlePriceInputChange(e.target.value, (val) => setFormData(prev => ({ ...prev, purchasePrice: val })))} 
                           />
                         </div>
+                      </div>
+                      <div className="grid gap-2">
+                        <label className="text-xs font-bold text-slate-500 uppercase">Fees</label>
+                        <Input 
+                          type="text" 
+                          inputMode="decimal"
+                          placeholder="0.00"
+                          value={formData.fees} 
+                          onFocus={handleFocus}
+                          onChange={(e) => handlePriceInputChange(e.target.value, (val) => setFormData(prev => ({ ...prev, fees: val })))} 
+                        />
                       </div>
                       <Button onClick={handleAddHolding} className="w-full mt-2" disabled={addHoldingMutation.isPending}>
                         Add Investment
@@ -1101,7 +1119,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
             <div className="grid gap-1">
               <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Account</label>
               <div className="bg-slate-50 border border-slate-200 rounded px-3 py-2 text-sm font-bold text-slate-700">
-                {accounts?.find(a => a.id.toString() === historicalCashData.accountId)?.name || "Selected Account"}
+                {accounts?.find((a: any) => a.id.toString() === historicalCashData.accountId)?.name || "Selected Account"}
               </div>
             </div>
             <div className="grid gap-2">
@@ -1153,7 +1171,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
             <div className="grid gap-1">
               <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Account</label>
               <div className="bg-slate-50 border border-slate-200 rounded px-3 py-2 text-sm font-bold text-slate-700">
-                {accounts?.find(a => a.id.toString() === adjustCashData.accountId)?.name || "Selected Account"}
+                {accounts?.find((a: any) => a.id.toString() === adjustCashData.accountId)?.name || "Selected Account"}
               </div>
             </div>
             
@@ -1259,15 +1277,28 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                 <label className="text-xs font-bold text-slate-500 uppercase">Date of Purchase</label>
                 <Input type="date" value={buyData.purchaseDate} onChange={handleBuyDateChange} />
               </div>
-              <div className="grid gap-2">
-                <label className="text-xs font-bold text-slate-500 uppercase">Purchase Price</label>
-                <Input 
-                  type="text" 
-                  inputMode="decimal"
-                  value={buyData.price} 
-                  onFocus={handleFocus}
-                  onChange={(e) => handlePriceInputChange(e.target.value, (val) => setBuyData(prev => ({ ...prev, price: val })))} 
-                />
+              <div className="grid grid-cols-2 gap-4">
+                <div className="grid gap-2">
+                  <label className="text-xs font-bold text-slate-500 uppercase">Purchase Price</label>
+                  <Input 
+                    type="text" 
+                    inputMode="decimal"
+                    value={buyData.price} 
+                    onFocus={handleFocus}
+                    onChange={(e) => handlePriceInputChange(e.target.value, (val) => setBuyData(prev => ({ ...prev, price: val })))} 
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <label className="text-xs font-bold text-slate-500 uppercase">Fees</label>
+                  <Input 
+                    type="text" 
+                    inputMode="decimal"
+                    placeholder="0.00"
+                    value={buyData.fees} 
+                    onFocus={handleFocus}
+                    onChange={(e) => handlePriceInputChange(e.target.value, (val) => setBuyData(prev => ({ ...prev, fees: val })))} 
+                  />
+                </div>
               </div>
               <Button onClick={() => handleBuyMoreShares(isBuyDialogOpen.id, isBuyDialogOpen.symbol, Number(buyData.accountId))} className="w-full" disabled={buyMoreSharesMutation.isPending}>
                 Add Purchase
@@ -1391,7 +1422,7 @@ function PurchaseHistoryTable({
   holdingId: number, 
   symbol: string,
   portfolioId: number,
-  onDelete: (id: number, holdingId: number, symbol?: string) => void,
+  onDelete: (purchaseId: number, holdingId: number, portfolioId: number, accountId: number, symbol?: string) => void,
   accounts: any[]
 }) {
   const { data: purchases } = trpc.etf.getPurchases.useQuery({ holdingId, symbol, portfolioId });
@@ -1410,9 +1441,9 @@ function PurchaseHistoryTable({
     }
 
     const headers = "date,account,quantity,cost";
-    const rows = filteredPurchases.map(p => {
+    const rows = filteredPurchases.map((p: any) => {
       const date = new Date(p.purchaseDate).toISOString().split('T')[0];
-      const account = accounts.find(a => a.id === p.accountId);
+      const account = accounts.find((a: any) => a.id === p.accountId);
       const accountName = account ? account.name : "Unknown";
       return `${date},"${accountName}",${p.quantity},${p.price}`;
     });
@@ -1495,7 +1526,7 @@ function PurchaseHistoryTable({
                     <Button
                       size="sm"
                       variant="ghost"
-                      onClick={() => onDelete(purchase.id, holdingId, symbol)}
+                      onClick={() => onDelete(purchase.id, holdingId, portfolioId, purchase.accountId, symbol)}
                       className="text-slate-400 hover:text-destructive"
                     >
                       <Trash2 className="h-4 w-4" />
