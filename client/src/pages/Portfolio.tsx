@@ -941,23 +941,6 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                 </h2>
                 <span className="text-[10px] font-bold text-slate-400 bg-slate-200/50 px-2 py-0.5 rounded-full uppercase tracking-widest">{accounts?.length || 0} Accounts</span>
               </div>
-              <div className="flex items-center gap-2">
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  onClick={() => {
-                    const defaultAccId = selectedAccountId || accounts?.[0]?.id;
-                    if (defaultAccId) {
-                      setHistoricalCashData(prev => ({ ...prev, accountId: defaultAccId.toString() }));
-                    }
-                    setIsHistoricalCashDialogOpen(true);
-                  }} 
-                  className="text-[10px] uppercase font-bold border-slate-200 hover:bg-slate-50 h-8"
-                >
-                  <CalendarPlus className="w-3.5 h-3.5 mr-1.5" />
-                  Balance History
-                </Button>
-              </div>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -1019,8 +1002,21 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                             <Button 
                               size="sm" 
                               variant="ghost"
+                              onClick={() => {
+                                setHistoricalCashData(prev => ({ ...prev, accountId: account.id.toString(), amount: "" }));
+                                setIsHistoricalCashDialogOpen(true);
+                              }}
+                              className="h-8 w-8 p-0 text-slate-400 hover:text-primary hover:bg-slate-100"
+                              title="Record Historical Balance"
+                            >
+                              <CalendarPlus className="h-4 w-4" />
+                            </Button>
+                            <Button 
+                              size="sm" 
+                              variant="ghost"
                               onClick={() => setCashHistoryOpen({ id: account.id, name: account.name })}
                               className="h-8 w-8 p-0 text-slate-400 hover:text-primary hover:bg-slate-100"
+                              title="View History"
                             >
                               <History className="h-4 w-4" />
                             </Button>
@@ -1102,17 +1098,11 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
             <DialogTitle>Record Historical Cash Balance</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 pt-4">
-            <div className="grid gap-2">
-              <label className="text-xs font-bold text-slate-500 uppercase">Account</label>
-              <select 
-                className="bg-white border border-input rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary h-10"
-                value={historicalCashData.accountId}
-                onChange={(e) => setHistoricalCashData(prev => ({ ...prev, accountId: e.target.value }))}
-              >
-                {accounts?.map((acc: any) => (
-                  <option key={acc.id} value={acc.id}>{acc.name} {acc.number ? `(${acc.number})` : ""}</option>
-                ))}
-              </select>
+            <div className="grid gap-1">
+              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Account</label>
+              <div className="bg-slate-50 border border-slate-200 rounded px-3 py-2 text-sm font-bold text-slate-700">
+                {accounts?.find(a => a.id.toString() === historicalCashData.accountId)?.name || "Selected Account"}
+              </div>
             </div>
             <div className="grid gap-2">
               <label className="text-xs font-bold text-slate-500 uppercase">Date</label>
