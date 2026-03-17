@@ -9,9 +9,10 @@ import Holdings from "./pages/Portfolio";
 import Activities from "./pages/Activities";
 import Performance from "./pages/Performance";
 import Dividends from "./pages/Dividends";
+import Contact from "./pages/Contact";
 import { trpc } from "@/lib/trpc";
 import { useState, useEffect } from "react";
-import { TrendingUp, ShieldCheck, Globe, Zap, BarChart3, Briefcase } from "lucide-react";
+import { TrendingUp, ShieldCheck, Globe, Zap, BarChart3 } from "lucide-react";
 import { toast } from "sonner";
 
 function DashboardRouter() {
@@ -56,7 +57,10 @@ function DashboardRouter() {
   };
 
   const renderContent = () => {
-    if (!selectedPortfolioId) {
+    // Show portfolio selector requirement only for investment-specific tabs
+    const portfolioRequiredTabs = ["portfolio", "activities", "performance", "dividends"];
+    
+    if (portfolioRequiredTabs.includes(activeTab) && !selectedPortfolioId) {
       return (
         <div className="flex flex-col items-center justify-center h-[60vh] gap-6 text-center bg-white rounded-2xl border-2 border-dashed border-slate-200">
           <div className="p-4 bg-slate-50 rounded-full">
@@ -72,15 +76,17 @@ function DashboardRouter() {
 
     switch (activeTab) {
       case "portfolio":
-        return <Holdings selectedPortfolioId={selectedPortfolioId} />;
+        return <Holdings selectedPortfolioId={selectedPortfolioId!} />;
       case "activities":
-        return <Activities selectedPortfolioId={selectedPortfolioId} />;
+        return <Activities selectedPortfolioId={selectedPortfolioId!} />;
       case "performance":
-        return <Performance selectedPortfolioId={selectedPortfolioId} />;
+        return <Performance selectedPortfolioId={selectedPortfolioId!} />;
       case "dividends":
-        return <Dividends selectedPortfolioId={selectedPortfolioId} />;
+        return <Dividends selectedPortfolioId={selectedPortfolioId!} />;
+      case "contact":
+        return <Contact />;
       default:
-        return <Holdings selectedPortfolioId={selectedPortfolioId} />;
+        return <Holdings selectedPortfolioId={selectedPortfolioId!} />;
     }
   };
 
