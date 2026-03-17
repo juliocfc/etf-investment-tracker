@@ -35,7 +35,7 @@ const getLastTradingDay = () => {
 export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId: number }) {
   const [selectedAccountId, setSelectedAccountId] = useState<number | undefined>(undefined);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
-  const [isBuyDialogOpen, setIsBuyDialogOpen] = useState<{ id: number, symbol: string } | null>(null);
+  const [isTradeDialogOpen, setIsTradeDialogOpen] = useState<{ id: number, symbol: string } | null>(null);
   const [purchaseHistoryOpen, setPurchaseHistoryOpen] = useState<{ id: number, symbol: string } | null>(null);
   const [cashHistoryOpen, setCashHistoryOpen] = useState<{ id: number, name: string } | null>(null);
   const [isAccountsDialogOpen, setIsAccountsDialogOpen] = useState(false);
@@ -60,6 +60,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
     purchaseDate: defaultDate,
     accountId: "",
     fees: "",
+    type: "buy" as "buy" | "sell",
   });
 
   const [accountFormData, setAccountFormData] = useState({
@@ -67,24 +68,25 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
     number: "",
   });
 
-  const [buyData, setBuyData] = useState({
+  const [tradeData, setTradeData] = useState({
     quantity: "",
     price: "",
     purchaseDate: defaultDate,
     accountId: "",
     fees: "",
+    type: "buy" as "buy" | "sell",
   });
 
-  // Automatically fetch price when Buy dialog opens
+  // Automatically fetch price when Trade dialog opens
   useEffect(() => {
-    if (isBuyDialogOpen) {
-      fetchAndSetPrice(isBuyDialogOpen.symbol, buyData.purchaseDate, true);
-      const holding = holdings?.find(h => h.id === isBuyDialogOpen.id);
+    if (isTradeDialogOpen) {
+      fetchAndSetPrice(isTradeDialogOpen.symbol, tradeData.purchaseDate, false);
+      const holding = holdings?.find(h => h.id === isTradeDialogOpen.id);
       if (holding && (holding as any).accountId) {
-        setBuyData(prev => ({ ...prev, accountId: (holding as any).accountId.toString() }));
+        setTradeData(prev => ({ ...prev, accountId: (holding as any).accountId.toString() }));
       }
     }
-  }, [isBuyDialogOpen]);
+  }, [isTradeDialogOpen]);
 
   const [isCSVImportOpen, setIsCSVImportOpen] = useState<{ id: number, symbol: string } | null>(null);
   const lookupTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -114,8 +116,8 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
       if (!formData.accountId || !isAccountValid(formData.accountId)) {
         setFormData(prev => ({ ...prev, accountId: firstAccountId }));
       }
-      if (!buyData.accountId || !isAccountValid(buyData.accountId)) {
-        setBuyData(prev => ({ ...prev, accountId: firstAccountId }));
+      if (!tradeData.accountId || !isAccountValid(tradeData.accountId)) {
+        setTradeData(prev => ({ ...prev, accountId: firstAccountId }));
       }
       if (!adjustCashData.accountId || !isAccountValid(adjustCashData.accountId)) {
         setAdjustCashData(prev => ({ ...prev, accountId: firstAccountId }));
@@ -126,7 +128,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
     } else {
       // Clear if no accounts
       setFormData(prev => ({ ...prev, accountId: "" }));
-      setBuyData(prev => ({ ...prev, accountId: "" }));
+      setTradeData(prev => ({ ...prev, accountId: "" }));
       setAdjustCashData(prev => ({ ...prev, accountId: "" }));
       setHistoricalCashData(prev => ({ ...prev, accountId: "" }));
     }
@@ -194,6 +196,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
         purchaseDate: formatDate(new Date()),
         accountId: accounts?.[0]?.id.toString() || "",
         fees: "",
+        type: "buy",
       });
       setIsAddDialogOpen(false);
     },
@@ -226,23 +229,24 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
     },
   });
 
-  const buyMoreSharesMutation = trpc.etf.buyMoreShares.useMutation({
-    onSuccess: () => {
-      toast.success("Shares purchased successfully!");
+  const executeTradeMutation = trpc.etf.executeTrade.useMutation({
+    onSuccess: (data) => {
+      toast.success(`${tradeData.type === "buy" ? "Bought" : "Sold"} successfully! New quantity: ${data.newQuantity}`);
       refetchHoldings();
       refetchSummary();
       utils.portfolio.getConsolidatedSummary.invalidate();
-      setBuyData({
+      setTradeData({
         quantity: "",
         price: "",
         purchaseDate: defaultDate,
         accountId: "",
         fees: "",
+        type: "buy",
       });
-      setIsBuyDialogOpen(null);
+      setIsTradeDialogOpen(null);
     },
     onError: (error) => {
-      toast.error(error.message || "Failed to buy shares");
+      toast.error(error.message || `Failed to ${tradeData.type} shares`);
     },
   });
 
@@ -342,7 +346,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
   };
 
   // Helper to fetch and set price based on symbol and date
-  const fetchAndSetPrice = async (symbol: string, date: string, isBuyForm: boolean = false) => {
+  const fetchAndSetPrice = async (symbol: string, date: string, isTrade: boolean = false) => {
     if (!symbol || !date) return;
     try {
       const history = await utils.etf.getMarketPriceHistory.fetch({
@@ -357,8 +361,8 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
           .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0];
 
         if (closest) {
-          if (isBuyForm) {
-            setBuyData(prev => ({ ...prev, price: closest.price.toFixed(2) }));
+          if (isTrade) {
+            setTradeData(prev => ({ ...prev, price: closest.price.toFixed(2) }));
           } else {
             setFormData(prev => ({ ...prev, purchasePrice: closest.price.toFixed(2) }));
           }
@@ -402,12 +406,12 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
     await fetchAndSetPrice(formData.symbol, date);
   };
 
-  const handleBuyDateChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleTradeDateChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const date = e.target.value;
-    setBuyData(prev => ({ ...prev, purchaseDate: date }));
+    setTradeData(prev => ({ ...prev, purchaseDate: date }));
 
-    if (isBuyDialogOpen) {
-      await fetchAndSetPrice(isBuyDialogOpen.symbol, date, true);
+    if (isTradeDialogOpen) {
+      await fetchAndSetPrice(isTradeDialogOpen.symbol, date, false);
     }
   };
 
@@ -445,10 +449,11 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
       purchasePrice: formData.purchasePrice,
       purchaseDate: new Date(formData.purchaseDate + "T00:00:00"),
       fees: formData.fees,
+      type: formData.type,
     });
   };
 
-  const handleBuyMoreShares = async (holdingId: number, symbol: string, accountId?: number) => {
+  const handleExecuteTrade = async (holdingId: number, symbol: string, accountId?: number) => {
     if (!selectedPortfolioId) {
       toast.error("Please select a portfolio");
       return;
@@ -457,20 +462,21 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
       toast.error("Please select an account");
       return;
     }
-    if (!buyData.quantity || !buyData.price) {
+    if (!tradeData.quantity || !tradeData.price) {
       toast.error("Please fill in quantity and price");
       return;
     }
 
-    buyMoreSharesMutation.mutate({
+    executeTradeMutation.mutate({
       portfolioId: selectedPortfolioId,
       holdingId,
       symbol,
       accountId,
-      quantity: buyData.quantity,
-      price: buyData.price,
-      purchaseDate: new Date(buyData.purchaseDate + "T00:00:00"),
-      fees: buyData.fees,
+      quantity: tradeData.quantity,
+      price: tradeData.price,
+      purchaseDate: new Date(tradeData.purchaseDate + "T00:00:00"),
+      fees: tradeData.fees,
+      type: tradeData.type,
     });
   };
 
@@ -708,22 +714,41 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                       purchaseDate: defaultDate,
                       accountId: accounts?.[0]?.id.toString() || "",
                       fees: "",
-                    });
+                      type: "buy",
+                      });
+
                   } else if (accounts && accounts.length > 0 && !formData.accountId) {
                     setFormData(prev => ({ ...prev, accountId: accounts[0].id.toString() }));
                   }
                 }}>
                   <DialogTrigger asChild>
                     <Button size="sm" className="bg-primary hover:bg-primary/90 text-white shadow-md shadow-primary/10 text-xs font-bold uppercase tracking-wider h-9 flex-1 sm:flex-none">
-                      <Plus className="mr-2 h-3.5 w-3.5" />
-                      Add Investment
+                      <TrendingUp className="mr-2 h-3.5 w-3.5" />
+                      Add Trade
                     </Button>
                   </DialogTrigger>
                   <DialogContent className="sm:max-w-[425px]">
                     <DialogHeader>
-                      <DialogTitle>Add New Investment</DialogTitle>
+                      <DialogTitle>Add Trade</DialogTitle>
                     </DialogHeader>
                     <div className="space-y-4 pt-4">
+                      <div className="grid gap-2">
+                        <label className="text-xs font-bold text-slate-500 uppercase">Trade Type</label>
+                        <div className="flex bg-slate-100 p-1 rounded-md">
+                          <button
+                            onClick={() => setFormData(prev => ({ ...prev, type: "buy" }))}
+                            className={`flex-1 py-1.5 text-xs font-bold rounded shadow-sm transition-all ${formData.type === "buy" ? "bg-white text-primary" : "text-slate-500 hover:text-slate-700"}`}
+                          >
+                            BUY
+                          </button>
+                          <button
+                            onClick={() => setFormData(prev => ({ ...prev, type: "sell" }))}
+                            className={`flex-1 py-1.5 text-xs font-bold rounded shadow-sm transition-all ${formData.type === "sell" ? "bg-white text-destructive" : "text-slate-500 hover:text-slate-700"}`}
+                          >
+                            SELL
+                          </button>
+                        </div>
+                      </div>
                       <div className="grid gap-2">
                         <label className="text-xs font-bold text-slate-500 uppercase">Account</label>
                         <select 
@@ -751,12 +776,14 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                           }}
                         />
                       </div>
+                      {formData.type === "buy" && (
+                        <div className="grid gap-2">
+                          <label className="text-xs font-bold text-slate-500 uppercase">Investment Name</label>
+                          <Input placeholder="Vanguard S&P 500 ETF" value={formData.name} onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))} />
+                        </div>
+                      )}
                       <div className="grid gap-2">
-                        <label className="text-xs font-bold text-slate-500 uppercase">Investment Name</label>
-                        <Input placeholder="Vanguard S&P 500 ETF" value={formData.name} onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))} />
-                      </div>
-                      <div className="grid gap-2">
-                        <label className="text-xs font-bold text-slate-500 uppercase">Purchase Date</label>
+                        <label className="text-xs font-bold text-slate-500 uppercase">Trade Date</label>
                         <Input type="date" value={formData.purchaseDate} onChange={handleDateChange} />
                       </div>
                       <div className="grid grid-cols-2 gap-4">
@@ -765,7 +792,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                           <Input ref={quantityInputRef} type="number" step="0.001" value={formData.quantity} onChange={(e) => setFormData(prev => ({ ...prev, quantity: e.target.value }))} />
                         </div>
                         <div className="grid gap-2">
-                          <label className="text-xs font-bold text-slate-500 uppercase">Purchase Price</label>
+                          <label className="text-xs font-bold text-slate-500 uppercase">Price per Share</label>
                           <Input 
                             type="text" 
                             inputMode="decimal"
@@ -786,8 +813,12 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                           onChange={(e) => handlePriceInputChange(e.target.value, (val) => setFormData(prev => ({ ...prev, fees: val })))} 
                         />
                       </div>
-                      <Button onClick={handleAddHolding} className="w-full mt-2" disabled={addHoldingMutation.isPending}>
-                        Add Investment
+                      <Button 
+                        onClick={handleAddHolding} 
+                        className={`w-full mt-2 ${formData.type === "sell" ? "bg-destructive hover:bg-destructive/90" : ""}`}
+                        disabled={addHoldingMutation.isPending}
+                      >
+                        Confirm {formData.type === "buy" ? "Purchase" : "Sale"}
                       </Button>
                     </div>
                   </DialogContent>
@@ -885,9 +916,9 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                             <DropdownMenuContent align="end" className="w-56">
                               <DropdownMenuLabel>Manage Asset</DropdownMenuLabel>
                               <DropdownMenuSeparator />
-                              <DropdownMenuItem onClick={() => setIsBuyDialogOpen({ id: holding.id, symbol: holding.symbol })}>
-                                <ShoppingCart className="mr-2 h-4 w-4 text-slate-500" />
-                                <span>Add Shares</span>
+                              <DropdownMenuItem onClick={() => setIsTradeDialogOpen({ id: holding.id, symbol: holding.symbol })}>
+                                <TrendingUp className="mr-2 h-4 w-4 text-slate-500" />
+                                <span>Add Trade</span>
                               </DropdownMenuItem>
                               <DropdownMenuItem onClick={() => setIsCSVImportOpen({ id: holding.id, symbol: holding.symbol })}>
                                 <FileUp className="mr-2 h-4 w-4 text-slate-500" />
@@ -1250,19 +1281,36 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
         </DialogContent>
       </Dialog>
 
-      {isBuyDialogOpen && (
-        <Dialog open={!!isBuyDialogOpen} onOpenChange={() => setIsBuyDialogOpen(null)}>
+      {isTradeDialogOpen && (
+        <Dialog open={!!isTradeDialogOpen} onOpenChange={() => setIsTradeDialogOpen(null)}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Add Shares for {isBuyDialogOpen.symbol}</DialogTitle>
+              <DialogTitle>Add Trade for {isTradeDialogOpen.symbol}</DialogTitle>
             </DialogHeader>
             <div className="space-y-4 pt-4">
               <div className="grid gap-2">
-                <label className="text-xs font-bold text-slate-500 uppercase">Target Account</label>
+                <label className="text-xs font-bold text-slate-500 uppercase">Trade Type</label>
+                <div className="flex bg-slate-100 p-1 rounded-md">
+                  <button
+                    onClick={() => setTradeData(prev => ({ ...prev, type: "buy" }))}
+                    className={`flex-1 py-1.5 text-xs font-bold rounded shadow-sm transition-all ${tradeData.type === "buy" ? "bg-white text-primary" : "text-slate-500 hover:text-slate-700"}`}
+                  >
+                    BUY
+                  </button>
+                  <button
+                    onClick={() => setTradeData(prev => ({ ...prev, type: "sell" }))}
+                    className={`flex-1 py-1.5 text-xs font-bold rounded shadow-sm transition-all ${tradeData.type === "sell" ? "bg-white text-destructive" : "text-slate-500 hover:text-slate-700"}`}
+                  >
+                    SELL
+                  </button>
+                </div>
+              </div>
+              <div className="grid gap-2">
+                <label className="text-xs font-bold text-slate-500 uppercase">Account</label>
                 <select 
                   className="bg-white border border-input rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary h-10 w-full"
-                  value={buyData.accountId}
-                  onChange={(e) => setBuyData(prev => ({ ...prev, accountId: e.target.value }))}
+                  value={tradeData.accountId}
+                  onChange={(e) => setTradeData(prev => ({ ...prev, accountId: e.target.value }))}
                 >
                   {accounts?.map((acc: any) => (
                     <option key={acc.id} value={acc.id}>{acc.name} {acc.number ? `(${acc.number})` : ""}</option>
@@ -1271,21 +1319,21 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
               </div>
               <div className="grid gap-2">
                 <label className="text-xs font-bold text-slate-500 uppercase">Quantity</label>
-                <Input type="number" step="0.001" value={buyData.quantity} onChange={(e) => setBuyData(prev => ({ ...prev, quantity: e.target.value }))} />
+                <Input type="number" step="0.001" value={tradeData.quantity} onChange={(e) => setTradeData(prev => ({ ...prev, quantity: e.target.value }))} />
               </div>
               <div className="grid gap-2">
-                <label className="text-xs font-bold text-slate-500 uppercase">Date of Purchase</label>
-                <Input type="date" value={buyData.purchaseDate} onChange={handleBuyDateChange} />
+                <label className="text-xs font-bold text-slate-500 uppercase">Trade Date</label>
+                <Input type="date" value={tradeData.purchaseDate} onChange={(e) => setTradeData(prev => ({ ...prev, purchaseDate: e.target.value }))} />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="grid gap-2">
-                  <label className="text-xs font-bold text-slate-500 uppercase">Purchase Price</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase">Price per Share</label>
                   <Input 
                     type="text" 
                     inputMode="decimal"
-                    value={buyData.price} 
+                    value={tradeData.price} 
                     onFocus={handleFocus}
-                    onChange={(e) => handlePriceInputChange(e.target.value, (val) => setBuyData(prev => ({ ...prev, price: val })))} 
+                    onChange={(e) => handlePriceInputChange(e.target.value, (val) => setTradeData(prev => ({ ...prev, price: val })))} 
                   />
                 </div>
                 <div className="grid gap-2">
@@ -1294,14 +1342,18 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                     type="text" 
                     inputMode="decimal"
                     placeholder="0.00"
-                    value={buyData.fees} 
+                    value={tradeData.fees} 
                     onFocus={handleFocus}
-                    onChange={(e) => handlePriceInputChange(e.target.value, (val) => setBuyData(prev => ({ ...prev, fees: val })))} 
+                    onChange={(e) => handlePriceInputChange(e.target.value, (val) => setTradeData(prev => ({ ...prev, fees: val })))} 
                   />
                 </div>
               </div>
-              <Button onClick={() => handleBuyMoreShares(isBuyDialogOpen.id, isBuyDialogOpen.symbol, Number(buyData.accountId))} className="w-full" disabled={buyMoreSharesMutation.isPending}>
-                Add Purchase
+              <Button 
+                onClick={() => handleExecuteTrade(isTradeDialogOpen.id, isTradeDialogOpen.symbol, Number(tradeData.accountId))} 
+                className={`w-full ${tradeData.type === "sell" ? "bg-destructive hover:bg-destructive/90" : ""}`}
+                disabled={executeTradeMutation.isPending}
+              >
+                Confirm {tradeData.type === "buy" ? "Purchase" : "Sale"}
               </Button>
             </div>
           </DialogContent>

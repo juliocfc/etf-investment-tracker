@@ -165,6 +165,11 @@ export async function deletePurchase(purchaseId: number) {
   return db.delete(purchases).where(eq(purchases.id, purchaseId));
 }
 
+export async function updatePurchase(purchaseId: number, data: any) {
+  const db = await getDb();
+  return db.update(purchases).set(data).where(eq(purchases.id, purchaseId));
+}
+
 // Price History queries
 export async function addPriceHistory(userId: number, symbol: string, price: string, date: Date) {
   const db = await getDb();
@@ -260,12 +265,12 @@ export async function updateCashBalance(
 ) {
   const db = await getDb();
   
-  // Record history
+  // 1. Record history
   const historyResult = await db.insert(cashBalanceHistory).values({ 
     userId, 
     portfolioId, 
     accountId, 
-    amount, // Resulting balance
+    amount, // This will be recalculated below anyway, but it's a good placeholder
     transactionType: transactionDetails?.type || "adjustment",
     transactionAmount: transactionDetails?.transactionAmount || amount,
     description: transactionDetails?.description || "",
@@ -274,34 +279,49 @@ export async function updateCashBalance(
   
   const historyId = historyResult[0]?.id;
   
-  // Always find the absolute latest entry for this account to keep the current balance in sync
-  const latestEntry = await db.select()
+  // 2. Recalculate ALL balances for this account from the date of this transaction onwards
+  // to maintain consistency if a historical transaction was added
+  const accountHistory = await db.select()
     .from(cashBalanceHistory)
     .where(and(
       eq(cashBalanceHistory.userId, userId),
       eq(cashBalanceHistory.accountId, accountId)
     ))
-    .orderBy(desc(cashBalanceHistory.date), desc(cashBalanceHistory.id))
-    .limit(1)
-    .then((rows: any[]) => rows[0]);
+    .orderBy(cashBalanceHistory.date, cashBalanceHistory.id);
 
-  if (latestEntry) {
-    const existing = await getCashBalance(userId, portfolioId, accountId);
-    if (existing && existing.accountId === accountId) {
-      await db.update(cashBalance)
-        .set({ 
-          amount: latestEntry.amount, 
-          updatedAt: new Date() 
-        })
-        .where(eq(cashBalance.id, existing.id));
-    } else {
-      await db.insert(cashBalance).values({ 
-        userId, 
-        portfolioId, 
-        amount: latestEntry.amount, 
-        accountId 
-      });
+  let currentRunningBalance = 0;
+  for (const record of accountHistory) {
+    const txAmount = parseFloat(record.transactionAmount || "0");
+    if (record.transactionType === "deposit") {
+      currentRunningBalance += txAmount;
+    } else if (record.transactionType === "withdrawal") {
+      currentRunningBalance -= txAmount;
+    } else if (record.transactionType === "adjustment") {
+      currentRunningBalance = parseFloat(record.transactionAmount || "0");
     }
+    
+    // Update the record with its new resulting balance
+    await db.update(cashBalanceHistory)
+      .set({ amount: currentRunningBalance.toString() })
+      .where(eq(cashBalanceHistory.id, record.id));
+  }
+
+  // 3. Update current cashBalance table with the final resulting balance
+  const existing = await getCashBalance(userId, portfolioId, accountId);
+  if (existing && existing.accountId === accountId) {
+    await db.update(cashBalance)
+      .set({ 
+        amount: currentRunningBalance.toString(), 
+        updatedAt: new Date() 
+      })
+      .where(eq(cashBalance.id, existing.id));
+  } else {
+    await db.insert(cashBalance).values({ 
+      userId, 
+      portfolioId, 
+      amount: currentRunningBalance.toString(), 
+      accountId 
+    });
   }
   
   return { success: true, historyId };

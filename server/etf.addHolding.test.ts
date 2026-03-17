@@ -100,8 +100,8 @@ describe("etf.addHolding", () => {
   });
 });
 
-describe("etf.buyMoreShares", () => {
-  it("updates average cost when buying more shares", async () => {
+describe("etf.executeTrade", () => {
+  it("updates average cost when executing a buy trade", async () => {
     const ctx = createAuthContext();
     const caller = appRouter.createCaller(ctx);
 
@@ -119,7 +119,8 @@ describe("etf.buyMoreShares", () => {
     const holdingId1 = Number(result1?.id);
 
     // Add more shares
-    const buyResult = await caller.etf.buyMoreShares({
+    const buyResult = await caller.etf.executeTrade({
+      type: "buy",
       portfolioId: 1,
       accountId: 1,
       holdingId: holdingId1,

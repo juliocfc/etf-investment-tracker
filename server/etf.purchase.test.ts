@@ -99,7 +99,7 @@ describe("Purchase Record Management", () => {
     expect(parseFloat(avgCost)).toBe(400.00);
   });
 
-  it("should update average cost when buying more shares", async () => {
+  it("should update average cost when executing a buy trade", async () => {
     const ctx = createAuthContext();
     const caller = appRouter.createCaller(ctx);
 
@@ -114,8 +114,9 @@ describe("Purchase Record Management", () => {
       purchaseDate: new Date("2024-01-01"),
     });
 
-    // Buy more shares at a different price
-    const buyResult = await caller.etf.buyMoreShares({
+    // Execute a buy trade at a different price
+    const buyResult = await caller.etf.executeTrade({
+      type: "buy",
       portfolioId: 1,
       accountId: 1,
       symbol: "QQQM",

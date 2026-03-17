@@ -30,7 +30,7 @@ function createAuthContext(): TrpcContext {
   return ctx;
 }
 
-describe("buyMoreShares", () => {
+describe("executeTrade", () => {
   beforeAll(async () => {
     const db = await getDb();
     const { portfolios, accounts, users, etfHoldings, purchases } = await import("../drizzle/schema");
@@ -73,7 +73,8 @@ describe("buyMoreShares", () => {
     const initialQuantity = parseFloat(holding.quantity.toString());
 
     // Buy more shares at a different price
-    const buyResult = await caller.etf.buyMoreShares({
+    const buyResult = await caller.etf.executeTrade({
+      type: "buy",
       portfolioId: 1,
       holdingId: Number(holding.id),
       symbol: holding.symbol,
@@ -93,7 +94,8 @@ describe("buyMoreShares", () => {
     const caller = appRouter.createCaller(ctx);
 
     try {
-      await caller.etf.buyMoreShares({
+      await caller.etf.executeTrade({
+        type: "buy",
         portfolioId: 1,
         holdingId: 99999,
         symbol: "VOO",

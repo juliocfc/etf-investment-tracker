@@ -21,6 +21,7 @@ import {
   getPurchases,
   calculateAverageCost,
   deletePurchase,
+  updatePurchase,
   parseCSVContent,
   bulkImportPurchases,
   getDb,
@@ -94,6 +95,7 @@ export const etfRouter = router({
         purchaseDate: z.date(),
         desiredAllocation: z.string().optional(),
         fees: z.string().optional(),
+        type: z.enum(["buy", "sell"]).default("buy"),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -118,17 +120,23 @@ export const etfRouter = router({
         throw new Error(`Invalid ETF symbol: ${input.symbol}`);
       }
 
-      // Check for existing price (last 1 hour)
+      // Check if holding already exists
       const existingHolding = await dbInstance
         .select()
         .from(etfHoldings)
         .where(and(
           eq(etfHoldings.userId, ctx.user.id),
+          eq(etfHoldings.portfolioId, input.portfolioId),
           eq(etfHoldings.symbol, input.symbol.toUpperCase())
         ))
         .limit(1)
         .then((rows: any[]) => rows[0]);
 
+      if (input.type === "sell" && !existingHolding) {
+        throw new Error("Cannot sell an asset you don't own in this portfolio");
+      }
+
+      let holdingId = existingHolding?.id;
       let currentPrice: string | undefined;
       let lastPriceUpdate: Date;
 
@@ -141,8 +149,7 @@ export const etfRouter = router({
         currentPrice = priceData?.price.toString();
         lastPriceUpdate = new Date();
         
-        if (currentPrice) {
-          // Update all other holdings with this new price
+        if (currentPrice && existingHolding) {
           await updateEtfHoldingBySymbol(ctx.user.id, input.symbol, {
             currentPrice,
             lastPriceUpdate,
@@ -150,38 +157,34 @@ export const etfRouter = router({
         }
       }
 
-      const holdingId = await createEtfHolding({
-        userId: ctx.user.id,
-        portfolioId: input.portfolioId,
-        accountId: input.accountId,
-        symbol: input.symbol.toUpperCase(),
-        name: input.name,
-        quantity: input.quantity,
-        purchasePrice: input.purchasePrice,
-        purchaseDate: input.purchaseDate,
-        desiredAllocation: input.desiredAllocation || "0",
-        currentPrice,
-        lastPriceUpdate,
-      });
+      if (!existingHolding) {
+        holdingId = await createEtfHolding({
+          userId: ctx.user.id,
+          portfolioId: input.portfolioId,
+          accountId: input.accountId,
+          symbol: input.symbol.toUpperCase(),
+          name: input.name,
+          quantity: "0", // Start at 0, will be updated by purchase/sell
+          purchasePrice: input.purchasePrice,
+          purchaseDate: input.purchaseDate,
+          desiredAllocation: input.desiredAllocation || "0",
+          currentPrice,
+          lastPriceUpdate,
+        });
+      }
 
-      // Create a purchase record for the initial holding
-      if (holdingId) {
-        const quantityNum = parseFloat(input.quantity);
-        const priceNum = parseFloat(input.purchasePrice);
-        const feesNum = parseFloat(input.fees || "0");
+      const quantityNum = parseFloat(input.quantity);
+      const priceNum = parseFloat(input.purchasePrice);
+      const feesNum = parseFloat(input.fees || "0");
+
+      if (input.type === "buy") {
         const totalCost = (quantityNum * priceNum) + feesNum;
-
-        // Create cash transaction (withdrawal)
-        const currentBalance = await getCashBalance(ctx.user.id, input.portfolioId, input.accountId);
-        const currentAmountNum = currentBalance ? parseFloat(currentBalance.amount) : 0;
-        const newAmountNum = currentAmountNum - totalCost;
-
         const description = `You bought ${input.quantity} ${input.symbol.toUpperCase()} at $${priceNum.toFixed(2)}${feesNum > 0 ? ` (Fees: $${feesNum.toFixed(2)})` : ""}`;
         
         const cashResult = await updateCashBalance(
           ctx.user.id,
           input.portfolioId,
-          newAmountNum.toString(),
+          "0", // Balance will be recalculated by updateCashBalance
           input.accountId,
           input.purchaseDate,
           {
@@ -203,7 +206,59 @@ export const etfRouter = router({
           cashTransactionId: cashResult.historyId,
           purchaseDate: input.purchaseDate,
         });
+      } else {
+        // SELL logic - FIFO
+        const totalOwned = parseFloat(existingHolding!.quantity);
+        if (totalOwned < quantityNum) {
+          throw new Error(`Insufficient shares to sell. Owned: ${totalOwned}, Requested: ${quantityNum}`);
+        }
+
+        const totalProceeds = (quantityNum * priceNum) - feesNum;
+
+        // 1. Create cash transaction (deposit)
+        const currentBalance = await getCashBalance(ctx.user.id, input.portfolioId, input.accountId);
+        const currentAmountNum = currentBalance ? parseFloat(currentBalance.amount) : 0;
+        const newAmountNum = currentAmountNum + totalProceeds;
+
+        const description = `You sold ${input.quantity} ${input.symbol.toUpperCase()} at $${priceNum.toFixed(2)}${feesNum > 0 ? ` (Fees: $${feesNum.toFixed(2)})` : ""}`;
+        
+        await updateCashBalance(
+          ctx.user.id,
+          input.portfolioId,
+          "0", // Balance will be recalculated by updateCashBalance
+          input.accountId,
+          input.purchaseDate,
+          {
+            type: "deposit",
+            transactionAmount: totalProceeds.toString(),
+            description: description
+          }
+        );
+
+        // 2. Reduce shares using FIFO
+        const db = await getDb();
+        const allPurchases = await db.select()
+          .from(purchases)
+          .where(eq(purchases.holdingId, Number(holdingId)))
+          .orderBy(purchases.purchaseDate, purchases.id);
+
+        let remainingToSell = quantityNum;
+        for (const purchase of allPurchases) {
+          if (remainingToSell <= 0) break;
+
+          const purchaseQty = parseFloat(purchase.quantity);
+          if (purchaseQty <= remainingToSell) {
+            await deletePurchase(purchase.id);
+            remainingToSell -= purchaseQty;
+          } else {
+            const newPurchaseQty = purchaseQty - remainingToSell;
+            await updatePurchase(purchase.id, { quantity: newPurchaseQty.toString() });
+            remainingToSell = 0;
+          }
+        }
       }
+
+      await calculateAverageCost(Number(holdingId));
 
       return { id: holdingId };
     }),
@@ -818,7 +873,7 @@ export const etfRouter = router({
       return name || null;
     }),
 
-  buyMoreShares: protectedProcedure
+  executeTrade: protectedProcedure
     .input(
       z.object({
         portfolioId: z.number(),
@@ -829,6 +884,7 @@ export const etfRouter = router({
         price: z.string(),
         purchaseDate: z.date(),
         fees: z.string().optional(),
+        type: z.enum(["buy", "sell"]),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -856,6 +912,10 @@ export const etfRouter = router({
         holding = holdings.find((h: any) => h.symbol === input.symbol.toUpperCase());
 
         if (!holding) {
+          if (input.type === "sell") {
+            throw new Error("Cannot sell: No holding found for this symbol");
+          }
+          
           const name = (await fetchETFName(input.symbol.toUpperCase())) || input.symbol.toUpperCase();
           const isValid = await validateEtfSymbol(input.symbol);
           if (!isValid) {
@@ -892,40 +952,90 @@ export const etfRouter = router({
       const quantityNum = parseFloat(input.quantity);
       const priceNum = parseFloat(input.price);
       const feesNum = parseFloat(input.fees || "0");
-      const totalCost = (quantityNum * priceNum) + feesNum;
 
-      // Create cash transaction (withdrawal)
-      const currentBalance = await getCashBalance(ctx.user.id, input.portfolioId, input.accountId);
-      const currentAmountNum = currentBalance ? parseFloat(currentBalance.amount) : 0;
-      const newAmountNum = currentAmountNum - totalCost;
+      if (input.type === "buy") {
+        const totalCost = (quantityNum * priceNum) + feesNum;
+        const description = `You bought ${input.quantity} ${input.symbol.toUpperCase()} at $${priceNum.toFixed(2)}${feesNum > 0 ? ` (Fees: $${feesNum.toFixed(2)})` : ""}`;
+        
+        const cashResult = await updateCashBalance(
+          ctx.user.id,
+          input.portfolioId,
+          "0", // Balance will be recalculated by updateCashBalance
+          input.accountId,
+          input.purchaseDate,
+          {
+            type: "withdrawal",
+            transactionAmount: totalCost.toString(),
+            description: description
+          }
+        );
 
-      const description = `You bought ${input.quantity} ${input.symbol.toUpperCase()} at $${priceNum.toFixed(2)}${feesNum > 0 ? ` (Fees: $${feesNum.toFixed(2)})` : ""}`;
-      
-      const cashResult = await updateCashBalance(
-        ctx.user.id,
-        input.portfolioId,
-        newAmountNum.toString(),
-        input.accountId,
-        input.purchaseDate,
-        {
-          type: "withdrawal",
-          transactionAmount: totalCost.toString(),
-          description: description
+        await addPurchase({
+          userId: ctx.user.id,
+          portfolioId: input.portfolioId,
+          accountId: input.accountId,
+          holdingId: Number(holdingId),
+          symbol: holding.symbol,
+          quantity: input.quantity,
+          price: input.price,
+          fees: input.fees || "0",
+          cashTransactionId: cashResult.historyId,
+          purchaseDate: input.purchaseDate,
+        });
+      } else {
+        // SELL logic - FIFO
+        const totalOwned = parseFloat(holding.quantity);
+        if (totalOwned < quantityNum) {
+          throw new Error(`Insufficient shares to sell. Owned: ${totalOwned}, Requested: ${quantityNum}`);
         }
-      );
 
-      await addPurchase({
-        userId: ctx.user.id,
-        portfolioId: input.portfolioId,
-        accountId: input.accountId,
-        holdingId: Number(holdingId),
-        symbol: holding.symbol,
-        quantity: input.quantity,
-        price: input.price,
-        fees: input.fees || "0",
-        cashTransactionId: cashResult.historyId,
-        purchaseDate: input.purchaseDate,
-      });
+        const totalProceeds = (quantityNum * priceNum) - feesNum;
+
+        // 1. Create cash transaction (deposit)
+        const currentBalance = await getCashBalance(ctx.user.id, input.portfolioId, input.accountId);
+        const currentAmountNum = currentBalance ? parseFloat(currentBalance.amount) : 0;
+        const newAmountNum = currentAmountNum + totalProceeds;
+
+        const description = `You sold ${input.quantity} ${input.symbol.toUpperCase()} at $${priceNum.toFixed(2)}${feesNum > 0 ? ` (Fees: $${feesNum.toFixed(2)})` : ""}`;
+        
+        await updateCashBalance(
+          ctx.user.id,
+          input.portfolioId,
+          "0", // Balance will be recalculated by updateCashBalance
+          input.accountId,
+          input.purchaseDate,
+          {
+            type: "deposit",
+            transactionAmount: totalProceeds.toString(),
+            description: description
+          }
+        );
+
+        // 2. Reduce shares using FIFO
+        // Get all purchases for this holding, sorted by date (oldest first)
+        const db = await getDb();
+        const allPurchases = await db.select()
+          .from(purchases)
+          .where(eq(purchases.holdingId, Number(holdingId)))
+          .orderBy(purchases.purchaseDate, purchases.id); // Oldest first
+
+        let remainingToSell = quantityNum;
+        for (const purchase of allPurchases) {
+          if (remainingToSell <= 0) break;
+
+          const purchaseQty = parseFloat(purchase.quantity);
+          if (purchaseQty <= remainingToSell) {
+            // Delete this purchase completely
+            await deletePurchase(purchase.id);
+            remainingToSell -= purchaseQty;
+          } else {
+            // Partial sale from this purchase
+            const newPurchaseQty = purchaseQty - remainingToSell;
+            await updatePurchase(purchase.id, { quantity: newPurchaseQty.toString() });
+            remainingToSell = 0;
+          }
+        }
+      }
 
       const averageCost = await calculateAverageCost(Number(holdingId));
       
@@ -937,8 +1047,8 @@ export const etfRouter = router({
 
       return {
         success: true,
-        newQuantity: parseFloat(updatedHolding.quantity).toFixed(3),
-        averageCost: parseFloat(averageCost || input.price).toFixed(3),
+        newQuantity: updatedHolding ? parseFloat(updatedHolding.quantity).toFixed(3) : "0.000",
+        averageCost: updatedHolding ? parseFloat(averageCost || input.price).toFixed(3) : "0.000",
       };
     }),
 
