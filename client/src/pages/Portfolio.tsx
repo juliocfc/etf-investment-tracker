@@ -810,6 +810,17 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                           onChange={(e) => handlePriceInputChange(e.target.value, (val) => setFormData(prev => ({ ...prev, fees: val })))} 
                         />
                       </div>
+                      <div className="grid gap-2 p-3 bg-slate-50 rounded-md border border-slate-100">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                          Estimated Transaction Total
+                        </label>
+                        <div className="text-lg font-mono font-bold text-slate-700">
+                          {formatCurrency(
+                            (parseFloat(formData.quantity || "0") * parseFloat(formData.purchasePrice || "0")) + 
+                            (formData.type === "buy" ? parseFloat(formData.fees || "0") : -parseFloat(formData.fees || "0"))
+                          )}
+                        </div>
+                      </div>
                       <Button 
                         onClick={handleAddHolding} 
                         className={`w-full mt-2 ${formData.type === "sell" ? "bg-destructive hover:bg-destructive/90" : ""}`}
@@ -1343,6 +1354,17 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                     onFocus={handleFocus}
                     onChange={(e) => handlePriceInputChange(e.target.value, (val) => setTradeData(prev => ({ ...prev, fees: val })))} 
                   />
+                </div>
+              </div>
+              <div className="grid gap-2 p-3 bg-slate-50 rounded-md border border-slate-100">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                  Estimated Transaction Total
+                </label>
+                <div className="text-lg font-mono font-bold text-slate-700">
+                  {formatCurrency(
+                    (parseFloat(tradeData.quantity || "0") * parseFloat(tradeData.price || "0")) + 
+                    (tradeData.type === "buy" ? parseFloat(tradeData.fees || "0") : -parseFloat(tradeData.fees || "0"))
+                  )}
                 </div>
               </div>
               <Button 

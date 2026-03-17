@@ -133,7 +133,7 @@ function Router() {
                 Professional Portfolio Intelligence.
               </h1>
               <p className="text-white/70 text-lg">
-                High-fidelity asset tracking with real-time market data, historical performance audit, and detailed dividend ledger analysis.
+                High-fidelity asset tracking with automatic market data, historical performance audit, and detailed dividend ledger analysis.
               </p>
             </div>
             <div className="space-y-4 hidden md:block">
