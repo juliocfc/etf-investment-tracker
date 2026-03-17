@@ -373,6 +373,14 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
     }
   };
 
+  const doesHoldingExistInAccount = useMemo(() => {
+    if (!formData.symbol || !formData.accountId || !holdings) return false;
+    return holdings.some(h => 
+      h.symbol.toUpperCase() === formData.symbol.toUpperCase() && 
+      (h as any).accountId.toString() === formData.accountId
+    );
+  }, [formData.symbol, formData.accountId, holdings]);
+
   // Handlers
   const handleSymbolChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const symbol = e.target.value.toUpperCase();
@@ -426,17 +434,6 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
     }
     if (!formData.symbol || !formData.quantity || !formData.purchasePrice) {
       toast.error("Please fill in all fields");
-      return;
-    }
-
-    // Check for duplicates in the SELECTED account
-    // We already fetch holdings for the selected account if selectedAccountId is set
-    const isDuplicate = holdings?.some(h => 
-      h.symbol.toUpperCase() === formData.symbol.toUpperCase() && 
-      (h as any).accountId === Number(formData.accountId)
-    );
-    if (isDuplicate) {
-      toast.error(`'${formData.symbol.toUpperCase()}' is already in this account. Use 'Add Shares' to increase your position.`);
       return;
     }
 
@@ -776,7 +773,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                           }}
                         />
                       </div>
-                      {formData.type === "buy" && (
+                      {formData.type === "buy" && !doesHoldingExistInAccount && (
                         <div className="grid gap-2">
                           <label className="text-xs font-bold text-slate-500 uppercase">Investment Name</label>
                           <Input placeholder="Vanguard S&P 500 ETF" value={formData.name} onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))} />

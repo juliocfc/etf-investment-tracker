@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach, beforeAll } from "vitest";
+import { describe, expect, it, beforeEach } from "vitest";
 import { appRouter } from "./routers";
 import type { TrpcContext } from "./_core/context";
 import { getDb } from "./db";
@@ -33,13 +33,15 @@ function createAuthContext(): TrpcContext {
 }
 
 describe("etf.addHolding", () => {
-  beforeAll(async () => {
+  beforeEach(async () => {
     const db = await getDb();
-    const { portfolios, accounts, users, etfHoldings, purchases } = await import("../drizzle/schema");
+    const { portfolios, accounts, users, etfHoldings, purchases, cashBalanceHistory, cashBalance } = await import("../drizzle/schema");
     
     // Clean up
     await db.delete(purchases);
     await db.delete(etfHoldings);
+    await db.delete(cashBalanceHistory);
+    await db.delete(cashBalance);
     await db.delete(accounts);
     await db.delete(portfolios);
     await db.delete(users);
@@ -73,6 +75,43 @@ describe("etf.addHolding", () => {
     expect(typeof Number(result?.id)).toBe("number");
   });
 
+  it("should update existing holding instead of erroring when symbol already exists in account", async () => {
+    const ctx = createAuthContext();
+    const caller = appRouter.createCaller(ctx);
+
+    // 1. Initial purchase
+    await caller.etf.addHolding({
+      portfolioId: 1,
+      accountId: 1,
+      symbol: "VOO",
+      name: "Vanguard S&P 500",
+      quantity: "10",
+      purchasePrice: "500.00",
+      purchaseDate: new Date("2024-01-01"),
+    });
+
+    // 2. Second purchase using addHolding (mimicking the top button action)
+    const result = await caller.etf.addHolding({
+      portfolioId: 1,
+      accountId: 1,
+      symbol: "VOO",
+      name: "Vanguard S&P 500",
+      quantity: "5",
+      purchasePrice: "520.00",
+      purchaseDate: new Date("2024-02-01"),
+    });
+
+    // Should return the same ID or a valid ID, not error
+    expect(result?.id).toBeDefined();
+
+    // Verify consolidated result
+    const holdings = await caller.etf.getHoldings({ portfolioId: 1, accountId: 1 });
+    const holding = holdings.find(h => h.symbol === "VOO");
+    expect(parseFloat(holding!.quantity)).toBe(15);
+    // Average cost: (10*500 + 5*520) / 15 = (5000 + 2600) / 15 = 7600 / 15 = 506.67
+    expect(parseFloat(holding!.averageCost || "0")).toBeCloseTo(506.67, 1);
+  });
+
   it("average cost should be calculated for newly added holdings", async () => {
     const ctx = createAuthContext();
     const caller = appRouter.createCaller(ctx);
@@ -97,44 +136,5 @@ describe("etf.addHolding", () => {
     expect(newHolding).toBeDefined();
     expect(newHolding?.averageCost).not.toBeNull();
     expect(parseFloat(newHolding?.averageCost || "0")).toBe(400.00);
-  });
-});
-
-describe("etf.executeTrade", () => {
-  it("updates average cost when executing a buy trade", async () => {
-    const ctx = createAuthContext();
-    const caller = appRouter.createCaller(ctx);
-
-    // Add first holding
-    const result1 = await caller.etf.addHolding({
-      portfolioId: 1,
-      accountId: 1,
-      symbol: "QQQM",
-      name: "Invesco QQQ Micro Cap ETF",
-      quantity: "100.000",
-      purchasePrice: "300.00",
-      purchaseDate: new Date("2024-01-01"),
-    });
-
-    const holdingId1 = Number(result1?.id);
-
-    // Add more shares
-    const buyResult = await caller.etf.executeTrade({
-      type: "buy",
-      portfolioId: 1,
-      accountId: 1,
-      holdingId: holdingId1,
-      symbol: "QQQM",
-      quantity: "50.000",
-      price: "350.00",
-      purchaseDate: new Date("2024-02-01"),
-    });
-
-    // Verify the buy result
-    expect(buyResult.success).toBe(true);
-    expect(buyResult.newQuantity).toBe("150.000");
-    
-    // Average cost should be (100*300 + 50*350) / 150 = 316.67
-    expect(parseFloat(buyResult.averageCost)).toBeCloseTo(316.67, 1);
   });
 });

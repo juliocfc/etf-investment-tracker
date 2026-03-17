@@ -120,13 +120,14 @@ export const etfRouter = router({
         throw new Error(`Invalid ETF symbol: ${input.symbol}`);
       }
 
-      // Check if holding already exists
+      // Check if holding already exists in this SPECIFIC account
       const existingHolding = await dbInstance
         .select()
         .from(etfHoldings)
         .where(and(
           eq(etfHoldings.userId, ctx.user.id),
           eq(etfHoldings.portfolioId, input.portfolioId),
+          eq(etfHoldings.accountId, input.accountId),
           eq(etfHoldings.symbol, input.symbol.toUpperCase())
         ))
         .limit(1)
