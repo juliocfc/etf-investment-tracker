@@ -98,6 +98,12 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
 
   const utils = trpc.useUtils();
 
+  // Reset sub-tab and account filter when portfolio changes
+  useEffect(() => {
+    setActiveSubTab("overview");
+    setSelectedAccountId(undefined);
+  }, [selectedPortfolioId]);
+
   // Queries
   const { data: accounts, refetch: refetchAccounts } = trpc.account.getAccounts.useQuery(
     { portfolioId: selectedPortfolioId },

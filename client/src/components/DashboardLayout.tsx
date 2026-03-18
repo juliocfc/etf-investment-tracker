@@ -38,8 +38,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
   });
 
   const navItems = [
-    { id: "portfolio", label: "Holdings & Cash", icon: <Wallet className="w-4 h-4" /> },
-    { id: "portfolios", label: "Portfolios", icon: <Briefcase className="w-4 h-4" /> },
+    { id: "portfolios", label: "Portfolios Admin", icon: <Briefcase className="w-4 h-4" /> },
     { id: "contact", label: "Contact Us", icon: <Mail className="w-4 h-4" /> },
   ];
 
@@ -66,70 +65,6 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
               <h1 className="text-lg font-bold tracking-tight text-[#004a99] uppercase hidden sm:block">
                 Investment Insights
               </h1>
-            </div>
-
-            {/* Global Portfolio Selector */}
-            <div className="ml-2 sm:ml-4 pl-2 sm:pl-4 border-l border-slate-200 flex items-center gap-2 sm:gap-3">
-              <div className="p-1.5 bg-slate-50 rounded text-slate-400 hidden sm:block">
-                <Briefcase className="w-4 h-4" />
-              </div>
-              <div className="flex items-center gap-1">
-                <select
-                  value={selectedPortfolioId || ""}
-                  onChange={(e) => onPortfolioChange(parseInt(e.target.value))}
-                  className="bg-transparent border-none focus:ring-0 font-bold text-slate-700 cursor-pointer hover:text-[#004a99] transition-colors text-xs sm:text-sm max-w-[100px] sm:max-w-none truncate"
-                >
-                  {portfolios.map((p) => (
-                    <option key={p.id} value={p.id}>{p.name}</option>
-                  ))}
-                </select>
-                
-                <Dialog open={isAddPortfolioOpen} onOpenChange={setIsAddPortfolioOpen}>
-                  <DialogTrigger asChild>
-                    <button className="flex items-center gap-1.5 ml-1 sm:ml-2 px-1.5 py-1 text-slate-400 hover:text-primary transition-colors rounded-md hover:bg-slate-100" title="New Portfolio">
-                      <Plus className="w-3.5 h-3.5" />
-                      <span className="text-[10px] font-bold uppercase tracking-wider hidden md:block">New Portfolio</span>
-                    </button>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>Create New Portfolio</DialogTitle>
-                    </DialogHeader>
-                    <div className="space-y-4 pt-4">
-                      <div className="space-y-2">
-                        <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Portfolio Name</label>
-                        <Input
-                          placeholder="e.g., Retirement, Growth, Dividend"
-                          value={newPortfolioName}
-                          onChange={(e) => setNewPortfolioName(e.target.value)}
-                          autoFocus
-                        />
-                      </div>
-                      <Button 
-                        onClick={() => {
-                          onCreatePortfolio(newPortfolioName);
-                          setIsAddPortfolioOpen(false);
-                          setNewPortfolioName("");
-                        }}
-                        className="w-full bg-[#004a99] hover:bg-[#003d7a]"
-                        disabled={!newPortfolioName}
-                      >
-                        Create Portfolio
-                      </Button>
-                    </div>
-                  </DialogContent>
-                </Dialog>
-
-                {selectedPortfolioId && (
-                  <button 
-                    onClick={() => onDeletePortfolio(selectedPortfolioId)}
-                    className="p-1 text-slate-400 hover:text-red-600 transition-colors rounded-md hover:bg-red-50" 
-                    title="Delete Current Portfolio"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                )}
-              </div>
             </div>
 
             {/* Consolidated Totals */}
@@ -189,32 +124,97 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
         <aside
           className={`${
             sidebarOpen ? "w-64" : "w-0"
-          } bg-white border-r border-slate-200 transition-all duration-300 overflow-hidden lg:static absolute z-30 h-full shadow-lg lg:shadow-none`}
+          } bg-white border-r border-slate-200 transition-all duration-300 overflow-hidden lg:static absolute z-30 h-full shadow-lg lg:shadow-none flex flex-col`}
         >
-          <div className="p-4 space-y-1">
-            <div className="px-4 py-2 mb-2">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Main Menu</span>
+          <div className="p-4 flex-1 overflow-y-auto space-y-6 custom-scrollbar">
+            <div className="space-y-1">
+              <div className="px-4 py-2 mb-1">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Portfolios</span>
+              </div>
+              {portfolios.map((p) => (
+                <button
+                  key={p.id}
+                  onClick={() => {
+                    onPortfolioChange(p.id);
+                    onTabChange?.("portfolio");
+                    if (window.innerWidth < 1024) setSidebarOpen(false);
+                  }}
+                  className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-md transition-all duration-200 font-medium ${
+                    activeTab === "portfolio" && selectedPortfolioId === p.id
+                      ? "bg-primary/10 text-primary shadow-sm"
+                      : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+                  }`}
+                >
+                  <Wallet className={`w-4 h-4 ${activeTab === "portfolio" && selectedPortfolioId === p.id ? "text-primary" : "text-slate-400"}`} />
+                  <span className="text-sm truncate">{p.name}</span>
+                  {activeTab === "portfolio" && selectedPortfolioId === p.id && (
+                    <div className="ml-auto w-1 h-4 rounded-full bg-primary" />
+                  )}
+                </button>
+              ))}
+              
+              <Dialog open={isAddPortfolioOpen} onOpenChange={setIsAddPortfolioOpen}>
+                <DialogTrigger asChild>
+                  <button className="w-full flex items-center gap-3 px-4 py-2.5 rounded-md transition-all duration-200 font-medium text-slate-400 hover:text-primary hover:bg-slate-50 group">
+                    <Plus className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                    <span className="text-sm uppercase tracking-wider font-bold">New Portfolio</span>
+                  </button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Create New Portfolio</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4 pt-4">
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Portfolio Name</label>
+                      <Input
+                        placeholder="e.g., Retirement, Growth, Dividend"
+                        value={newPortfolioName}
+                        onChange={(e) => setNewPortfolioName(e.target.value)}
+                        autoFocus
+                      />
+                    </div>
+                    <Button 
+                      onClick={() => {
+                        onCreatePortfolio(newPortfolioName);
+                        setIsAddPortfolioOpen(false);
+                        setNewPortfolioName("");
+                      }}
+                      className="w-full bg-[#004a99] hover:bg-[#003d7a]"
+                      disabled={!newPortfolioName}
+                    >
+                      Create Portfolio
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
             </div>
-            {navItems.map((item) => (
-              <button
-                key={item.id}
-                onClick={() => {
-                  onTabChange?.(item.id);
-                  if (window.innerWidth < 1024) setSidebarOpen(false);
-                }}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-md transition-all duration-200 font-medium ${
-                  activeTab === item.id
-                    ? "bg-slate-100 text-[#004a99]"
-                    : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
-                }`}
-              >
-                {item.icon}
-                <span className="text-sm">{item.label}</span>
-                {activeTab === item.id && (
-                  <div className="ml-auto w-1.5 h-1.5 rounded-full bg-[#004a99]" />
-                )}
-              </button>
-            ))}
+
+            <div className="space-y-1">
+              <div className="px-4 py-2 mb-1">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">System</span>
+              </div>
+              {navItems.map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => {
+                    onTabChange?.(item.id);
+                    if (window.innerWidth < 1024) setSidebarOpen(false);
+                  }}
+                  className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-md transition-all duration-200 font-medium ${
+                    activeTab === item.id
+                      ? "bg-slate-100 text-[#004a99]"
+                      : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+                  }`}
+                >
+                  {item.icon}
+                  <span className="text-sm">{item.label}</span>
+                  {activeTab === item.id && (
+                    <div className="ml-auto w-1.5 h-1.5 rounded-full bg-[#004a99]" />
+                  )}
+                </button>
+              ))}
+            </div>
           </div>
         </aside>
 
