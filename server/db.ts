@@ -95,6 +95,11 @@ export async function deleteAccount(id: number) {
   return db.delete(accounts).where(eq(accounts.id, id));
 }
 
+export async function updateAccount(id: number, data: any) {
+  const db = await getDb();
+  return db.update(accounts).set(data).where(eq(accounts.id, id));
+}
+
 // ETF Holdings queries
 export async function getUserEtfHoldings(userId: number, portfolioId: number, accountId?: number) {
   const db = await getDb();

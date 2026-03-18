@@ -33,4 +33,21 @@ export const accountRouter = router({
       await deleteAccount(input.id);
       return { success: true };
     }),
+
+  updateAccount: protectedProcedure
+    .input(
+      z.object({
+        id: z.number(),
+        name: z.string().min(1).max(255),
+        number: z.string().optional(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const { updateAccount } = await import("./db");
+      await updateAccount(input.id, {
+        name: input.name,
+        number: input.number,
+      });
+      return { success: true };
+    }),
 });

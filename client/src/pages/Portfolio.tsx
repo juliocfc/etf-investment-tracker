@@ -13,7 +13,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Plus, Trash2, RefreshCw, ShoppingCart, History, FolderPlus, FileUp, Wallet, TrendingUp, Info, ArrowUpCircle, CheckCircle2, MoreVertical, CalendarPlus, Download, List, Activity, DollarSign, LayoutDashboard } from "lucide-react";
+import { Plus, Trash2, RefreshCw, ShoppingCart, History, FolderPlus, FileUp, Wallet, TrendingUp, Info, ArrowUpCircle, CheckCircle2, MoreVertical, CalendarPlus, Download, List, Activity, DollarSign, LayoutDashboard, Edit2 } from "lucide-react";
 import { toast } from "sonner";
 import { formatCurrency, formatNumber, formatDate } from "@/lib/utils";
 import React, { useEffect, useRef, useState, useMemo } from "react";
@@ -154,16 +154,30 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
     { enabled: !!selectedPortfolioId }
   );
 
+  const [editingAccount, setEditingAccount] = useState<{ id: number, name: string, number?: string } | null>(null);
+
   // Mutations
   const addAccountMutation = trpc.account.addAccount.useMutation({
     onSuccess: () => {
       toast.success("Account added successfully!");
       refetchAccounts();
       setAccountFormData({ name: "", number: "" });
+      setIsAccountsDialogOpen(false);
     },
     onError: (error) => {
       toast.error(error.message || "Failed to add account");
     },
+  });
+
+  const updateAccountMutation = trpc.account.updateAccount.useMutation({
+    onSuccess: () => {
+      toast.success("Account updated!");
+      refetchAccounts();
+      setEditingAccount(null);
+    },
+    onError: (error) => {
+      toast.error(error.message || "Failed to update account");
+    }
   });
 
   const deleteAccountMutation = trpc.account.deleteAccount.useMutation({
@@ -563,110 +577,21 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
               </div>
             </div>
 
-        <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full md:w-auto">
-          <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-md border border-slate-100 w-full sm:w-auto">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap">Account Filter:</span>
-            <select 
-              className="bg-transparent border-none p-0 text-xs font-bold text-slate-600 focus:outline-none h-6 flex-1 sm:min-w-[140px]"
-              value={selectedAccountId || ""}
-              onChange={(e) => setSelectedAccountId(e.target.value ? Number(e.target.value) : undefined)}
-            >
-              <option value="">All Accounts</option>
-              {accounts?.map((acc: any) => (
-                <option key={acc.id} value={acc.id}>{acc.name} {acc.number ? `(${acc.number})` : ""}</option>
-              ))}
-            </select>
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full md:w-auto">
+            <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-md border border-slate-100 w-full sm:w-auto">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap">Account Filter:</span>
+              <select 
+                className="bg-transparent border-none p-0 text-xs font-bold text-slate-600 focus:outline-none h-6 flex-1 sm:min-w-[140px]"
+                value={selectedAccountId || ""}
+                onChange={(e) => setSelectedAccountId(e.target.value ? Number(e.target.value) : undefined)}
+              >
+                <option value="">All Accounts</option>
+                {accounts?.map((acc: any) => (
+                  <option key={acc.id} value={acc.id}>{acc.name} {acc.number ? `(${acc.number})` : ""}</option>
+                ))}
+              </select>
+            </div>
           </div>
-          
-          <Dialog open={isAccountsDialogOpen} onOpenChange={setIsAccountsDialogOpen}>
-            <DialogTrigger asChild>
-              <Button variant="outline" size="sm" className="h-9 text-xs font-bold uppercase tracking-wider border-slate-200 text-slate-600 w-full sm:w-auto">
-                <Plus className="w-3.5 h-3.5 mr-1.5" />
-                NEW ACCOUNT
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-[425px]">
-              <DialogHeader>
-                <DialogTitle>Portfolio Accounts</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4 pt-4">
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="grid gap-2">
-                    <label className="text-xs font-bold text-slate-500 uppercase">Account Name</label>
-                    <Input 
-                      placeholder="e.g. Robinhood" 
-                      value={accountFormData.name} 
-                      onChange={(e) => setAccountFormData(prev => ({ ...prev, name: e.target.value }))} 
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <label className="text-xs font-bold text-slate-500 uppercase">Number (optional)</label>
-                    <Input 
-                      placeholder="e.g. 1234" 
-                      value={accountFormData.number} 
-                      onChange={(e) => setAccountFormData(prev => ({ ...prev, number: e.target.value }))} 
-                    />
-                  </div>
-                </div>
-                <Button 
-                  className="w-full h-10 font-bold uppercase tracking-wider" 
-                  disabled={addAccountMutation.isPending || !accountFormData.name}
-                  onClick={() => addAccountMutation.mutate({ 
-                    portfolioId: selectedPortfolioId, 
-                    name: accountFormData.name, 
-                    number: accountFormData.number 
-                  })}
-                >
-                  Add Account
-                </Button>
-
-                <div className="border-t pt-4">
-                  <h4 className="text-xs font-bold text-slate-500 uppercase mb-3">Existing Accounts</h4>
-                  <div className="space-y-2 max-h-[200px] overflow-y-auto pr-2">
-                    {accounts && accounts.length > 0 ? (
-                      accounts.map((acc: any) => (
-                        <div key={acc.id} className="flex items-center justify-between p-2 rounded bg-slate-50 border border-slate-100">
-                          <div>
-                            <p className="text-sm font-bold text-slate-800">{acc.name}</p>
-                            <p className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">{acc.number || "No number"}</p>
-                          </div>
-                          <Button 
-                            variant="ghost" 
-                            size="sm" 
-                            className="h-8 w-8 text-slate-400 hover:text-red-500 hover:bg-red-50"
-                            onClick={() => {
-                              if (confirm("Delete this account? Associated holdings will remain but lose their account link.")) {
-                                deleteAccountMutation.mutate({ id: acc.id });
-                              }
-                            }}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      ))
-                    ) : (
-                      <p className="text-xs text-slate-400 italic py-4 text-center">No accounts added yet</p>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </DialogContent>
-          </Dialog>
-
-          {selectedAccountId && (
-            <button 
-              onClick={() => {
-                if (confirm("Delete this account? Associated holdings will remain but lose their account link.")) {
-                  deleteAccountMutation.mutate({ id: selectedAccountId });
-                }
-              }}
-              className="p-1 text-slate-400 hover:text-red-600 transition-colors rounded-md hover:bg-red-50" 
-              title="Delete Selected Account"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
-          )}
-        </div>
       </div>
 
       {accounts && accounts.length > 0 && (
@@ -714,13 +639,13 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
             </div>
           </div>
 
-          {/* Cash Accounts Table */}
+          {/* Accounts Table */}
           <Card className="bg-white shadow-sm border border-border overflow-hidden">
             <div className="px-6 py-4 border-b border-border bg-slate-50/50 flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
                   <Wallet className="w-5 h-5 text-primary" />
-                  Cash Accounts
+                  Accounts
                 </h2>
                 <span className="text-[10px] font-bold text-slate-400 bg-slate-200/50 px-2 py-0.5 rounded-full uppercase tracking-widest">
                   {selectedAccountId ? "1 Account Selected" : `${accounts?.length || 0} Accounts`}
@@ -731,25 +656,48 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-slate-50/50 border-b border-border">
-                    <th className="text-left py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Account Name</th>
-                    <th className="text-right py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Cash Balance</th>
+                    <th className="text-left py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Account</th>
+                    <th className="text-right py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Investments</th>
+                    <th className="text-right py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Cash</th>
+                    <th className="text-right py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Total</th>
                     <th className="text-center py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {(selectedAccountId ? accounts?.filter((a: any) => a.id === selectedAccountId) : accounts)?.map((account: any) => {
-                    const balance = (summary as any)?.cashBalances?.[account.id] || "0.00";
+                    const accDetails = (summary as any)?.accountSummaries?.[account.id] || { investmentValue: "0.00", cashValue: "0.00", totalValue: "0.00" };
+                    const totalVal = parseFloat(accDetails.totalValue);
+                    const invPercent = totalVal > 0 ? ((parseFloat(accDetails.investmentValue) / totalVal) * 100).toFixed(1) : "0";
+                    const cashPercent = totalVal > 0 ? ((parseFloat(accDetails.cashValue) / totalVal) * 100).toFixed(1) : "0";
+
                     return (
                       <tr key={account.id} className="border-b border-border hover:bg-slate-50 transition-colors">
                         <td className="py-4 px-6">
                           <div className="font-bold text-slate-800">{account.name}</div>
                           {account.number && <div className="text-[10px] text-slate-500 font-mono mt-0.5">{account.number}</div>}
                         </td>
-                        <td className="py-4 px-6 text-right font-mono font-bold text-slate-700">
-                          {formatCurrency(balance)}
+                        <td className="py-4 px-6 text-right">
+                          <div className="font-mono font-medium text-green-600">{formatCurrency(accDetails.investmentValue)}</div>
+                          <div className="text-[9px] font-bold text-slate-400 uppercase">{invPercent}%</div>
+                        </td>
+                        <td className="py-4 px-6 text-right">
+                          <div className="font-mono font-medium text-slate-600">{formatCurrency(accDetails.cashValue)}</div>
+                          <div className="text-[9px] font-bold text-slate-400 uppercase">{cashPercent}%</div>
+                        </td>
+                        <td className="py-4 px-6 text-right font-mono font-bold text-primary">
+                          {formatCurrency(accDetails.totalValue)}
                         </td>
                         <td className="py-4 px-6">
                           <div className="flex items-center justify-center gap-2">
+                            <Button 
+                              size="sm" 
+                              variant="ghost"
+                              onClick={() => setEditingAccount({ id: account.id, name: account.name, number: account.number || "" })}
+                              className="h-8 w-8 p-0 text-slate-400 hover:text-primary"
+                              title="Rename Account"
+                            >
+                              <Edit2 className="h-3.5 w-3.5" />
+                            </Button>
                             <Button 
                               size="sm" 
                               variant="outline"
@@ -805,6 +753,18 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                             >
                               <History className="h-4 w-4" />
                             </Button>
+                            <Button 
+                              size="sm" 
+                              variant="ghost" 
+                              className="h-8 w-8 p-0 text-slate-300 hover:text-red-600"
+                              onClick={() => {
+                                if (confirm("Delete this account? Associated holdings will remain but lose their account link.")) {
+                                  deleteAccountMutation.mutate({ id: account.id });
+                                }
+                              }}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
                           </div>
                         </td>
                       </tr>
@@ -812,8 +772,8 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                   })}
                   {(!accounts || accounts.length === 0) && (
                     <tr>
-                      <td colSpan={3} className="py-10 text-center text-slate-400">
-                        No accounts found. Add an account to manage cash.
+                      <td colSpan={5} className="py-10 text-center text-slate-400 italic">
+                        No accounts found for this portfolio.
                       </td>
                     </tr>
                   )}
@@ -821,9 +781,21 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                 {accounts && accounts.length > 0 && !selectedAccountId && (
                   <tfoot className="bg-slate-50 border-t-2 border-slate-200">
                     <tr className="font-bold text-slate-800">
-                      <td className="py-4 px-6 uppercase text-[10px] tracking-widest text-slate-500">Total Cash Reserve</td>
+                      <td className="py-4 px-6 uppercase text-[10px] tracking-widest text-slate-500">Portfolio Totals</td>
+                      <td className="text-right py-4 px-6">
+                        <div className="font-mono text-sm text-green-700">{formatCurrency(summary?.investmentValue)}</div>
+                        <div className="text-[9px] font-bold text-slate-400 uppercase">
+                          {summary?.totalValue && parseFloat(summary.totalValue) > 0 ? ((parseFloat(summary.investmentValue) / parseFloat(summary.totalValue)) * 100).toFixed(1) : "0"}%
+                        </div>
+                      </td>
+                      <td className="text-right py-4 px-6">
+                        <div className="font-mono text-sm text-slate-700">{formatCurrency(summary?.cashBalance)}</div>
+                        <div className="text-[9px] font-bold text-slate-400 uppercase">
+                          {summary?.totalValue && parseFloat(summary.totalValue) > 0 ? ((parseFloat(summary.cashBalance) / parseFloat(summary.totalValue)) * 100).toFixed(1) : "0"}%
+                        </div>
+                      </td>
                       <td className="text-right py-4 px-6 font-mono text-sm text-primary">
-                        {formatCurrency(accounts.reduce((acc: number, account: any) => acc + parseFloat((summary as any)?.cashBalances?.[account.id] || "0"), 0))}
+                        {formatCurrency(summary?.totalValue)}
                       </td>
                       <td></td>
                     </tr>
@@ -831,7 +803,89 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                 )}
               </table>
             </div>
+            <div className="px-6 py-4 bg-slate-50/30 border-t border-border flex justify-center">
+              <Dialog open={isAccountsDialogOpen} onOpenChange={setIsAccountsDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-9 text-xs font-bold uppercase tracking-wider border-slate-200 text-slate-600 hover:bg-white hover:text-primary hover:border-primary/30 transition-all">
+                    <Plus className="w-3.5 h-3.5 mr-1.5" />
+                    New Account
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-[425px]">
+                  <DialogHeader>
+                    <DialogTitle>Add New Account</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4 pt-4">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="grid gap-2">
+                        <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Account Name</label>
+                        <Input 
+                          placeholder="e.g. Robinhood" 
+                          value={accountFormData.name} 
+                          onChange={(e) => setAccountFormData(prev => ({ ...prev, name: e.target.value }))} 
+                        />
+                      </div>
+                      <div className="grid gap-2">
+                        <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Number (optional)</label>
+                        <Input 
+                          placeholder="e.g. 1234" 
+                          value={accountFormData.number} 
+                          onChange={(e) => setAccountFormData(prev => ({ ...prev, number: e.target.value }))} 
+                        />
+                      </div>
+                    </div>
+                    <Button 
+                      className="w-full h-10 font-bold uppercase tracking-wider" 
+                      disabled={addAccountMutation.isPending || !accountFormData.name}
+                      onClick={() => addAccountMutation.mutate({ 
+                        portfolioId: selectedPortfolioId, 
+                        name: accountFormData.name, 
+                        number: accountFormData.number 
+                      })}
+                    >
+                      {addAccountMutation.isPending ? "Adding..." : "Create Account"}
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            </div>
           </Card>
+
+          {/* Rename Account Dialog */}
+          <Dialog open={!!editingAccount} onOpenChange={(open) => !open && setEditingAccount(null)}>
+            <DialogContent className="sm:max-w-[425px]">
+              <DialogHeader>
+                <DialogTitle>Rename Account</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4 pt-4">
+                <div className="grid gap-2">
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Account Name</label>
+                  <Input 
+                    value={editingAccount?.name || ""} 
+                    onChange={(e) => setEditingAccount(prev => prev ? { ...prev, name: e.target.value } : null)} 
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Account Number</label>
+                  <Input 
+                    value={editingAccount?.number || ""} 
+                    onChange={(e) => setEditingAccount(prev => prev ? { ...prev, number: e.target.value } : null)} 
+                  />
+                </div>
+                <Button 
+                  className="w-full h-10 font-bold uppercase tracking-wider" 
+                  disabled={updateAccountMutation.isPending || !editingAccount?.name}
+                  onClick={() => editingAccount && updateAccountMutation.mutate({ 
+                    id: editingAccount.id, 
+                    name: editingAccount.name, 
+                    number: editingAccount.number 
+                  })}
+                >
+                  Save Changes
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
 
           {/* Main Holdings Table */}
           <Card className="bg-white shadow-sm border border-border overflow-hidden">

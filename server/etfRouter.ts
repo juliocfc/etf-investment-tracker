@@ -1262,10 +1262,40 @@ export const etfRouter = router({
       const cashAmount = currentCashBalance ? parseFloat(currentCashBalance.amount.toString()) : 0;
       const totalValue = totalInvestmentValue + cashAmount;
 
+      // Calculate per-account summaries
+      const accountSummaries: Record<number, { investmentValue: string, cashValue: string, totalValue: string }> = {};
+      
+      // Initialize with cash balances
+      allCashBalances.forEach((cb: any) => {
+        if (cb.accountId) {
+          const cash = parseFloat(cb.amount);
+          accountSummaries[cb.accountId] = {
+            investmentValue: "0.00",
+            cashValue: cash.toFixed(2),
+            totalValue: cash.toFixed(2)
+          };
+        }
+      });
+
+      // Add investment values
+      holdingsWithValues.forEach((h: any) => {
+        if (h.accountId) {
+          const existing = accountSummaries[h.accountId] || { investmentValue: "0.00", cashValue: "0.00", totalValue: "0.00" };
+          const inv = parseFloat(existing.investmentValue) + h.currentValueNum;
+          const cash = parseFloat(existing.cashValue);
+          accountSummaries[h.accountId] = {
+            investmentValue: inv.toFixed(2),
+            cashValue: cash.toFixed(2),
+            totalValue: (inv + cash).toFixed(2)
+          };
+        }
+      });
+
       return {
         holdings: processedHoldings,
         cashBalance: cashAmount.toFixed(2),
         cashBalances: cashBalancesMap,
+        accountSummaries,
         investmentValue: totalInvestmentValue.toFixed(2),
         totalValue: totalValue.toFixed(2),
         allocationBreakdown: processedHoldings.map((h: any) => ({
