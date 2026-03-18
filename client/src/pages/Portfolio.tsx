@@ -641,7 +641,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
 
           {/* Accounts Table */}
           <Card className="bg-white shadow-sm border border-border overflow-hidden">
-            <div className="px-6 py-4 border-b border-border bg-slate-50/50 flex items-center justify-between">
+            <div className="px-6 py-4 border-b border-border bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div className="flex items-center gap-3">
                 <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
                   <Wallet className="w-5 h-5 text-primary" />
@@ -650,6 +650,53 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                 <span className="text-[10px] font-bold text-slate-400 bg-slate-200/50 px-2 py-0.5 rounded-full uppercase tracking-widest">
                   {selectedAccountId ? "1 Account Selected" : `${accounts?.length || 0} Accounts`}
                 </span>
+              </div>
+
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto">
+                <Dialog open={isAccountsDialogOpen} onOpenChange={setIsAccountsDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button variant="outline" size="sm" className="h-9 text-xs font-bold uppercase tracking-wider border-slate-200 text-slate-600 hover:bg-white hover:text-primary hover:border-primary/30 transition-all flex-1 sm:flex-none">
+                      <Plus className="w-3.5 h-3.5 mr-1.5" />
+                      New Account
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="sm:max-w-[425px]">
+                    <DialogHeader>
+                      <DialogTitle>Add New Account</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4 pt-4">
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="grid gap-2">
+                          <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Account Name</label>
+                          <Input 
+                            placeholder="e.g. Robinhood" 
+                            value={accountFormData.name} 
+                            onChange={(e) => setAccountFormData(prev => ({ ...prev, name: e.target.value }))} 
+                          />
+                        </div>
+                        <div className="grid gap-2">
+                          <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Number (optional)</label>
+                          <Input 
+                            placeholder="e.g. 1234" 
+                            value={accountFormData.number} 
+                            onChange={(e) => setAccountFormData(prev => ({ ...prev, number: e.target.value }))} 
+                          />
+                        </div>
+                      </div>
+                      <Button 
+                        className="w-full h-10 font-bold uppercase tracking-wider" 
+                        disabled={addAccountMutation.isPending || !accountFormData.name}
+                        onClick={() => addAccountMutation.mutate({ 
+                          portfolioId: selectedPortfolioId, 
+                          name: accountFormData.name, 
+                          number: accountFormData.number 
+                        })}
+                      >
+                        {addAccountMutation.isPending ? "Adding..." : "Create Account"}
+                      </Button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
               </div>
             </div>
             <div className="overflow-x-auto">
@@ -792,52 +839,6 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                   </tfoot>
                 )}
               </table>
-            </div>
-            <div className="px-6 py-4 bg-slate-50/30 border-t border-border flex justify-center">
-              <Dialog open={isAccountsDialogOpen} onOpenChange={setIsAccountsDialogOpen}>
-                <DialogTrigger asChild>
-                  <Button variant="outline" size="sm" className="h-9 text-xs font-bold uppercase tracking-wider border-slate-200 text-slate-600 hover:bg-white hover:text-primary hover:border-primary/30 transition-all">
-                    <Plus className="w-3.5 h-3.5 mr-1.5" />
-                    New Account
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="sm:max-w-[425px]">
-                  <DialogHeader>
-                    <DialogTitle>Add New Account</DialogTitle>
-                  </DialogHeader>
-                  <div className="space-y-4 pt-4">
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="grid gap-2">
-                        <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Account Name</label>
-                        <Input 
-                          placeholder="e.g. Robinhood" 
-                          value={accountFormData.name} 
-                          onChange={(e) => setAccountFormData(prev => ({ ...prev, name: e.target.value }))} 
-                        />
-                      </div>
-                      <div className="grid gap-2">
-                        <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Number (optional)</label>
-                        <Input 
-                          placeholder="e.g. 1234" 
-                          value={accountFormData.number} 
-                          onChange={(e) => setAccountFormData(prev => ({ ...prev, number: e.target.value }))} 
-                        />
-                      </div>
-                    </div>
-                    <Button 
-                      className="w-full h-10 font-bold uppercase tracking-wider" 
-                      disabled={addAccountMutation.isPending || !accountFormData.name}
-                      onClick={() => addAccountMutation.mutate({ 
-                        portfolioId: selectedPortfolioId, 
-                        name: accountFormData.name, 
-                        number: accountFormData.number 
-                      })}
-                    >
-                      {addAccountMutation.isPending ? "Adding..." : "Create Account"}
-                    </Button>
-                  </div>
-                </DialogContent>
-              </Dialog>
             </div>
           </Card>
 
