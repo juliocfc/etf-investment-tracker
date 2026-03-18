@@ -3,7 +3,7 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import { formatCurrency } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Menu, X, LogOut, TrendingUp, PieChart, Activity, DollarSign, Wallet, Briefcase, Plus, Trash2, List, Mail } from "lucide-react";
+import { Menu, X, LogOut, TrendingUp, PieChart, Wallet, Briefcase, Plus, Trash2, Mail } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 
@@ -40,9 +40,6 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
   const navItems = [
     { id: "portfolio", label: "Holdings & Cash", icon: <Wallet className="w-4 h-4" /> },
     { id: "portfolios", label: "Portfolios", icon: <Briefcase className="w-4 h-4" /> },
-    { id: "activities", label: "Activities", icon: <List className="w-4 h-4" /> },
-    { id: "performance", label: "Performance", icon: <Activity className="w-4 h-4" /> },
-    { id: "dividends", label: "Dividends", icon: <DollarSign className="w-4 h-4" /> },
     { id: "contact", label: "Contact Us", icon: <Mail className="w-4 h-4" /> },
   ];
 

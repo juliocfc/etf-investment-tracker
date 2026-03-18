@@ -13,10 +13,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Plus, Trash2, RefreshCw, ShoppingCart, History, FolderPlus, FileUp, Wallet, TrendingUp, Info, ArrowUpCircle, CheckCircle2, MoreVertical, CalendarPlus, Download } from "lucide-react";
+import { Plus, Trash2, RefreshCw, ShoppingCart, History, FolderPlus, FileUp, Wallet, TrendingUp, Info, ArrowUpCircle, CheckCircle2, MoreVertical, CalendarPlus, Download, List, Activity, DollarSign, LayoutDashboard } from "lucide-react";
 import { toast } from "sonner";
 import { formatCurrency, formatNumber, formatDate } from "@/lib/utils";
 import React, { useEffect, useRef, useState, useMemo } from "react";
+import Activities from "./Activities";
+import Performance from "./Performance";
+import Dividends from "./Dividends";
 
 const CHART_COLORS = ["#004a99", "#3d8a3d", "#f2a900", "#cc0000", "#666666", "#94a3b8", "#38bdf8", "#10b981", "#fbbf24"];
 
@@ -33,6 +36,7 @@ const getLastTradingDay = () => {
 };
 
 export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId: number }) {
+  const [activeSubTab, setActiveSubTab] = useState("overview");
   const [selectedAccountId, setSelectedAccountId] = useState<number | undefined>(undefined);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isTradeDialogOpen, setIsTradeDialogOpen] = useState<{ id: number, symbol: string } | null>(null);
@@ -512,19 +516,46 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
     );
   }
 
+  const subTabs = [
+    { id: "overview", label: "Overview", icon: <LayoutDashboard className="w-3.5 h-3.5" /> },
+    { id: "activities", label: "Activities", icon: <List className="w-3.5 h-3.5" /> },
+    { id: "performance", label: "Performance", icon: <Activity className="w-3.5 h-3.5" /> },
+    { id: "dividends", label: "Dividends", icon: <DollarSign className="w-3.5 h-3.5" /> },
+  ];
+
   return (
-    <div className="space-y-8">
-      {/* Action Bar */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-lg shadow-sm border border-border">
-        <div className="flex items-center gap-4">
-          <div className="p-2 bg-slate-100 rounded-lg text-primary">
-            <TrendingUp className="w-5 h-5" />
-          </div>
-          <div>
-            <h2 className="text-lg font-bold text-slate-800">Portfolio Overview</h2>
-            <p className="text-xs text-slate-500 font-medium">Monitor performance and manage your assets across accounts</p>
-          </div>
-        </div>
+    <div className="space-y-6">
+      {/* Sub-tab Navigation */}
+      <div className="flex items-center gap-1 border-b border-slate-200 pb-px">
+        {subTabs.map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveSubTab(tab.id)}
+            className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold uppercase tracking-wider transition-all border-b-2 -mb-px ${
+              activeSubTab === tab.id
+                ? "border-primary text-primary bg-primary/5"
+                : "border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-50"
+            }`}
+          >
+            {tab.icon}
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {activeSubTab === "overview" ? (
+        <div className="space-y-8">
+          {/* Action Bar */}
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-lg shadow-sm border border-border">
+            <div className="flex items-center gap-4">
+              <div className="p-2 bg-slate-100 rounded-lg text-primary">
+                <TrendingUp className="w-5 h-5" />
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-slate-800">Portfolio Overview</h2>
+                <p className="text-xs text-slate-500 font-medium">Monitor performance and manage your assets across accounts</p>
+              </div>
+            </div>
 
         <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full md:w-auto">
           <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-md border border-slate-100 w-full sm:w-auto">
@@ -1426,6 +1457,14 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
             />
           </DialogContent>
         </Dialog>
+      )}
+    </div>
+      ) : activeSubTab === "activities" ? (
+        <Activities selectedPortfolioId={selectedPortfolioId} />
+      ) : activeSubTab === "performance" ? (
+        <Performance selectedPortfolioId={selectedPortfolioId} />
+      ) : (
+        <Dividends selectedPortfolioId={selectedPortfolioId} />
       )}
     </div>
   );
