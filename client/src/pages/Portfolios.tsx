@@ -52,12 +52,17 @@ const Portfolios: React.FC = () => {
   });
 
   const totals = useMemo(() => {
-    if (!portfolios) return { investment: 0, cash: 0, overall: 0 };
-    return portfolios.reduce((acc, p) => ({
-      investment: acc.investment + parseFloat(p.investmentValue),
-      cash: acc.cash + parseFloat(p.cashValue),
-      overall: acc.overall + parseFloat(p.totalValue),
-    }), { investment: 0, cash: 0, overall: 0 });
+    if (!portfolios) return { investment: 0, cash: 0, overall: 0, investmentPercent: "0", cashPercent: "0" };
+    const investment = portfolios.reduce((acc, p) => acc + parseFloat(p.investmentValue), 0);
+    const cash = portfolios.reduce((acc, p) => acc + parseFloat(p.cashValue), 0);
+    const overall = investment + cash;
+    return {
+      investment,
+      cash,
+      overall,
+      investmentPercent: overall > 0 ? ((investment / overall) * 100).toFixed(1) : "0",
+      cashPercent: overall > 0 ? ((cash / overall) * 100).toFixed(1) : "0",
+    };
   }, [portfolios]);
 
   if (isLoading) {
@@ -90,8 +95,13 @@ const Portfolios: React.FC = () => {
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total Investments</span>
               <PieChart className="w-4 h-4 text-green-500" />
             </div>
-            <div className="text-2xl font-bold text-slate-800 font-mono">
-              {formatCurrency(totals.investment)}
+            <div className="flex items-baseline gap-2">
+              <div className="text-2xl font-bold text-slate-800 font-mono">
+                {formatCurrency(totals.investment)}
+              </div>
+              <div className="text-xs font-bold text-green-600 bg-green-50 px-1.5 py-0.5 rounded">
+                {totals.investmentPercent}%
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -101,8 +111,13 @@ const Portfolios: React.FC = () => {
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total Cash Reserve</span>
               <Wallet className="w-4 h-4 text-slate-400" />
             </div>
-            <div className="text-2xl font-bold text-slate-800 font-mono">
-              {formatCurrency(totals.cash)}
+            <div className="flex items-baseline gap-2">
+              <div className="text-2xl font-bold text-slate-800 font-mono">
+                {formatCurrency(totals.cash)}
+              </div>
+              <div className="text-xs font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
+                {totals.cashPercent}%
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -133,103 +148,140 @@ const Portfolios: React.FC = () => {
               </tr>
             </thead>
             <tbody>
-              {portfolios?.map((portfolio) => (
-                <React.Fragment key={portfolio.id}>
-                  <tr className={`border-b border-border transition-colors ${expandedPortfolios.has(portfolio.id) ? "bg-slate-50/50" : "hover:bg-slate-50/30"}`}>
-                    <td className="py-4 px-2 text-center">
-                      <button 
-                        onClick={() => toggleExpand(portfolio.id)}
-                        className="p-1 hover:bg-slate-200 rounded transition-colors text-slate-400"
-                      >
-                        {expandedPortfolios.has(portfolio.id) ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-                      </button>
-                    </td>
-                    <td className="py-4 px-4 font-bold text-slate-800">{portfolio.name}</td>
-                    <td className="py-4 px-4 text-right font-mono font-medium text-green-600">{formatCurrency(portfolio.investmentValue)}</td>
-                    <td className="py-4 px-4 text-right font-mono font-medium text-slate-600">{formatCurrency(portfolio.cashValue)}</td>
-                    <td className="py-4 px-4 text-right font-mono font-bold text-primary">{formatCurrency(portfolio.totalValue)}</td>
-                    <td className="py-4 px-4">
-                      <div className="flex items-center justify-center gap-2">
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          className="h-8 w-8 p-0 text-slate-400 hover:text-primary"
-                          onClick={() => setEditingPortfolio({ id: portfolio.id, name: portfolio.name })}
+              {portfolios?.map((portfolio) => {
+                const pTotal = parseFloat(portfolio.totalValue);
+                const pInvPercent = pTotal > 0 ? ((parseFloat(portfolio.investmentValue) / pTotal) * 100).toFixed(1) : "0";
+                const pCashPercent = pTotal > 0 ? ((parseFloat(portfolio.cashValue) / pTotal) * 100).toFixed(1) : "0";
+
+                return (
+                  <React.Fragment key={portfolio.id}>
+                    <tr className={`border-b border-border transition-colors ${expandedPortfolios.has(portfolio.id) ? "bg-slate-50/50" : "hover:bg-slate-50/30"}`}>
+                      <td className="py-4 px-2 text-center">
+                        <button 
+                          onClick={() => toggleExpand(portfolio.id)}
+                          className="p-1 hover:bg-slate-200 rounded transition-colors text-slate-400"
                         >
-                          <Edit2 className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          className="h-8 w-8 p-0 text-slate-400 hover:text-destructive"
-                          onClick={() => setIsDeleteDialogOpen(portfolio.id)}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                  <AnimatePresence>
-                    {expandedPortfolios.has(portfolio.id) && (
-                      <tr>
-                        <td colSpan={6} className="p-0 border-b border-border bg-slate-50/30">
-                          <motion.div
-                            initial={{ height: 0, opacity: 0 }}
-                            animate={{ height: "auto", opacity: 1 }}
-                            exit={{ height: 0, opacity: 0 }}
-                            transition={{ duration: 0.2 }}
-                            className="overflow-hidden"
+                          {expandedPortfolios.has(portfolio.id) ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                        </button>
+                      </td>
+                      <td className="py-4 px-4 font-bold text-slate-800">{portfolio.name}</td>
+                      <td className="py-4 px-4 text-right">
+                        <div className="font-mono font-medium text-green-600">{formatCurrency(portfolio.investmentValue)}</div>
+                        <div className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter">{pInvPercent}%</div>
+                      </td>
+                      <td className="py-4 px-4 text-right">
+                        <div className="font-mono font-medium text-slate-600">{formatCurrency(portfolio.cashValue)}</div>
+                        <div className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter">{pCashPercent}%</div>
+                      </td>
+                      <td className="py-4 px-4 text-right font-mono font-bold text-primary">{formatCurrency(portfolio.totalValue)}</td>
+                      <td className="py-4 px-4">
+                        <div className="flex items-center justify-center gap-2">
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            className="h-8 w-8 p-0 text-slate-400 hover:text-primary"
+                            onClick={() => setEditingPortfolio({ id: portfolio.id, name: portfolio.name })}
                           >
-                            <div className="py-4 px-12 space-y-4">
-                              <div className="flex items-center gap-2 mb-2">
-                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Account Breakdown</span>
-                                <div className="h-[1px] flex-1 bg-slate-200"></div>
-                              </div>
-                              
-                              <table className="w-full text-sm">
-                                <thead>
-                                  <tr className="border-b border-slate-200">
-                                    <th className="text-left py-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Account</th>
-                                    <th className="text-right py-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Investments</th>
-                                    <th className="text-right py-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Cash</th>
-                                    <th className="text-right py-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Overall</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {portfolio.accounts.map((acc: any) => (
-                                    <tr key={acc.id} className="border-b border-slate-100 last:border-0">
-                                      <td className="py-2.5">
-                                        <div className="font-semibold text-slate-700">{acc.name}</div>
-                                        {acc.number && <div className="text-[10px] font-mono text-slate-400">{acc.number}</div>}
-                                      </td>
-                                      <td className="py-2.5 text-right font-mono text-slate-600">{formatCurrency(acc.investmentValue)}</td>
-                                      <td className="py-2.5 text-right font-mono text-slate-600">{formatCurrency(acc.cashValue)}</td>
-                                      <td className="py-2.5 text-right font-mono font-bold text-slate-700">{formatCurrency(acc.totalValue)}</td>
+                            <Edit2 className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            className="h-8 w-8 p-0 text-slate-400 hover:text-destructive"
+                            onClick={() => setIsDeleteDialogOpen(portfolio.id)}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                    <AnimatePresence>
+                      {expandedPortfolios.has(portfolio.id) && (
+                        <tr>
+                          <td colSpan={6} className="p-0 border-b border-border bg-slate-50/30">
+                            <motion.div
+                              initial={{ height: 0, opacity: 0 }}
+                              animate={{ height: "auto", opacity: 1 }}
+                              exit={{ height: 0, opacity: 0 }}
+                              transition={{ duration: 0.2 }}
+                              className="overflow-hidden"
+                            >
+                              <div className="py-4 px-12 space-y-4">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Account Breakdown</span>
+                                  <div className="h-[1px] flex-1 bg-slate-200"></div>
+                                </div>
+                                
+                                <table className="w-full text-sm">
+                                  <thead>
+                                    <tr className="border-b border-slate-200">
+                                      <th className="text-left py-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Account</th>
+                                      <th className="text-right py-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Investments</th>
+                                      <th className="text-right py-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Cash</th>
+                                      <th className="text-right py-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Overall</th>
                                     </tr>
-                                  ))}
-                                  <tr className="bg-slate-100/50 font-bold border-t border-slate-200">
-                                    <td className="py-2.5 px-2 uppercase text-[10px] tracking-widest text-slate-500">Portfolio Totals</td>
-                                    <td className="py-2.5 text-right font-mono text-slate-700">{formatCurrency(portfolio.investmentValue)}</td>
-                                    <td className="py-2.5 text-right font-mono text-slate-700">{formatCurrency(portfolio.cashValue)}</td>
-                                    <td className="py-2.5 text-right font-mono text-primary">{formatCurrency(portfolio.totalValue)}</td>
-                                  </tr>
-                                </tbody>
-                              </table>
-                            </div>
-                          </motion.div>
-                        </td>
-                      </tr>
-                    )}
-                  </AnimatePresence>
-                </React.Fragment>
-              ))}
+                                  </thead>
+                                  <tbody>
+                                    {portfolio.accounts.map((acc: any) => {
+                                      const accTotal = parseFloat(acc.totalValue);
+                                      const accInvPercent = accTotal > 0 ? ((parseFloat(acc.investmentValue) / accTotal) * 100).toFixed(1) : "0";
+                                      const accCashPercent = accTotal > 0 ? ((parseFloat(acc.cashValue) / accTotal) * 100).toFixed(1) : "0";
+
+                                      return (
+                                        <tr key={acc.id} className="border-b border-slate-100 last:border-0">
+                                          <td className="py-2.5">
+                                            <div className="font-semibold text-slate-700">{acc.name}</div>
+                                            {acc.number && <div className="text-[10px] font-mono text-slate-400">{acc.number}</div>}
+                                          </td>
+                                          <td className="py-2.5 text-right">
+                                            <div className="font-mono text-slate-600">{formatCurrency(acc.investmentValue)}</div>
+                                            <div className="text-[8px] font-bold text-slate-400 uppercase">{accInvPercent}%</div>
+                                          </td>
+                                          <td className="py-2.5 text-right">
+                                            <div className="font-mono text-slate-600">{formatCurrency(acc.cashValue)}</div>
+                                            <div className="text-[8px] font-bold text-slate-400 uppercase">{accCashPercent}%</div>
+                                          </td>
+                                          <td className="py-2.5 text-right font-mono font-bold text-slate-700">{formatCurrency(acc.totalValue)}</td>
+                                        </tr>
+                                      );
+                                    })}
+                                    <tr className="bg-slate-100/50 font-bold border-t border-slate-200">
+                                      <td className="py-2.5 px-2 uppercase text-[10px] tracking-widest text-slate-500">Portfolio Totals</td>
+                                      <td className="py-2.5 text-right">
+                                        <div className="font-mono text-slate-700">{formatCurrency(portfolio.investmentValue)}</div>
+                                        <div className="text-[8px] font-bold text-slate-400 uppercase">{pInvPercent}%</div>
+                                      </td>
+                                      <td className="py-2.5 text-right">
+                                        <div className="font-mono text-slate-700">{formatCurrency(portfolio.cashValue)}</div>
+                                        <div className="text-[8px] font-bold text-slate-400 uppercase">{pCashPercent}%</div>
+                                      </td>
+                                      <td className="py-2.5 text-right font-mono text-primary">{formatCurrency(portfolio.totalValue)}</td>
+                                    </tr>
+                                  </tbody>
+                                </table>
+                              </div>
+                            </motion.div>
+                          </td>
+                        </tr>
+                      )}
+                    </AnimatePresence>
+                  </React.Fragment>
+                );
+              })}
             </tbody>
             <tfoot>
               <tr className="bg-slate-100/80 font-bold border-t-2 border-slate-200">
                 <td colSpan={2} className="py-5 px-4 uppercase text-xs tracking-widest text-slate-600">Consolidated Totals</td>
-                <td className="py-5 px-4 text-right font-mono text-lg text-green-700">{formatCurrency(totals.investment)}</td>
-                <td className="py-5 px-4 text-right font-mono text-lg text-slate-700">{formatCurrency(totals.cash)}</td>
-                <td className="py-5 px-4 text-right font-mono text-xl text-primary" colSpan={2}>{formatCurrency(totals.overall)}</td>
+                <td className="py-5 px-4 text-right">
+                  <div className="font-mono text-lg text-green-700">{formatCurrency(totals.investment)}</div>
+                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">{totals.investmentPercent}%</div>
+                </td>
+                <td className="py-5 px-4 text-right">
+                  <div className="font-mono text-lg text-slate-700">{formatCurrency(totals.cash)}</div>
+                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">{totals.cashPercent}%</div>
+                </td>
+                <td className="py-5 px-4 text-right font-mono text-xl text-primary">{formatCurrency(totals.overall)}</td>
+                <td className="py-5 px-4"></td>
               </tr>
             </tfoot>
           </table>
