@@ -714,6 +714,125 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
             </div>
           </div>
 
+          {/* Cash Accounts Table */}
+          <Card className="bg-white shadow-sm border border-border overflow-hidden">
+            <div className="px-6 py-4 border-b border-border bg-slate-50/50 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                  <Wallet className="w-5 h-5 text-primary" />
+                  Cash Accounts
+                </h2>
+                <span className="text-[10px] font-bold text-slate-400 bg-slate-200/50 px-2 py-0.5 rounded-full uppercase tracking-widest">
+                  {selectedAccountId ? "1 Account Selected" : `${accounts?.length || 0} Accounts`}
+                </span>
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-slate-50/50 border-b border-border">
+                    <th className="text-left py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Account Name</th>
+                    <th className="text-right py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Cash Balance</th>
+                    <th className="text-center py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(selectedAccountId ? accounts?.filter((a: any) => a.id === selectedAccountId) : accounts)?.map((account: any) => {
+                    const balance = (summary as any)?.cashBalances?.[account.id] || "0.00";
+                    return (
+                      <tr key={account.id} className="border-b border-border hover:bg-slate-50 transition-colors">
+                        <td className="py-4 px-6">
+                          <div className="font-bold text-slate-800">{account.name}</div>
+                          {account.number && <div className="text-[10px] text-slate-500 font-mono mt-0.5">{account.number}</div>}
+                        </td>
+                        <td className="py-4 px-6 text-right font-mono font-bold text-slate-700">
+                          {formatCurrency(balance)}
+                        </td>
+                        <td className="py-4 px-6">
+                          <div className="flex items-center justify-center gap-2">
+                            <Button 
+                              size="sm" 
+                              variant="outline"
+                              onClick={() => {
+                                setAdjustCashData({ 
+                                  accountId: account.id.toString(), 
+                                  amount: "", 
+                                  type: "deposit", 
+                                  description: "", 
+                                  date: formatDate(new Date()) 
+                                });
+                                setIsAdjustCashDialogOpen(true);
+                              }}
+                              className="h-8 text-[10px] font-bold uppercase border-green-200 text-green-700 hover:bg-green-50 hover:text-green-800"
+                            >
+                              Deposit
+                            </Button>
+                            <Button 
+                              size="sm" 
+                              variant="outline"
+                              onClick={() => {
+                                setAdjustCashData({ 
+                                  accountId: account.id.toString(), 
+                                  amount: "", 
+                                  type: "withdrawal", 
+                                  description: "", 
+                                  date: formatDate(new Date()) 
+                                });
+                                setIsAdjustCashDialogOpen(true);
+                              }}
+                              className="h-8 text-[10px] font-bold uppercase border-red-200 text-red-700 hover:bg-red-50 hover:text-red-800"
+                            >
+                              Withdraw
+                            </Button>
+                            <Button 
+                              size="sm" 
+                              variant="ghost"
+                              onClick={() => {
+                                setHistoricalCashData(prev => ({ ...prev, accountId: account.id.toString(), amount: "" }));
+                                setIsHistoricalCashDialogOpen(true);
+                              }}
+                              className="h-8 w-8 p-0 text-slate-400 hover:text-primary hover:bg-slate-100"
+                              title="Record Historical Balance"
+                            >
+                              <CalendarPlus className="h-4 w-4" />
+                            </Button>
+                            <Button 
+                              size="sm" 
+                              variant="ghost"
+                              onClick={() => setCashHistoryOpen({ id: account.id, name: account.name })}
+                              className="h-8 w-8 p-0 text-slate-400 hover:text-primary hover:bg-slate-100"
+                              title="View History"
+                            >
+                              <History className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {(!accounts || accounts.length === 0) && (
+                    <tr>
+                      <td colSpan={3} className="py-10 text-center text-slate-400">
+                        No accounts found. Add an account to manage cash.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+                {accounts && accounts.length > 0 && !selectedAccountId && (
+                  <tfoot className="bg-slate-50 border-t-2 border-slate-200">
+                    <tr className="font-bold text-slate-800">
+                      <td className="py-4 px-6 uppercase text-[10px] tracking-widest text-slate-500">Total Cash Reserve</td>
+                      <td className="text-right py-4 px-6 font-mono text-sm text-primary">
+                        {formatCurrency(accounts.reduce((acc: number, account: any) => acc + parseFloat((summary as any)?.cashBalances?.[account.id] || "0"), 0))}
+                      </td>
+                      <td></td>
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
+            </div>
+          </Card>
+
           {/* Main Holdings Table */}
           <Card className="bg-white shadow-sm border border-border overflow-hidden">
             <div className="px-6 py-4 border-b border-border bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -1017,123 +1136,6 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                         ).toFixed(2)}%
                       </td>
                       <td className="text-right py-4 px-3 font-mono text-slate-500 text-xs">100%</td>
-                      <td></td>
-                    </tr>
-                  </tfoot>
-                )}
-              </table>
-            </div>
-          </Card>
-
-          {/* Cash Accounts Table */}
-          <Card className="bg-white shadow-sm border border-border overflow-hidden">
-            <div className="px-6 py-4 border-b border-border bg-slate-50/50 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                  <Wallet className="w-5 h-5 text-primary" />
-                  Cash Accounts
-                </h2>
-                <span className="text-[10px] font-bold text-slate-400 bg-slate-200/50 px-2 py-0.5 rounded-full uppercase tracking-widest">{accounts?.length || 0} Accounts</span>
-              </div>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-slate-50/50 border-b border-border">
-                    <th className="text-left py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Account Name</th>
-                    <th className="text-right py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Cash Balance</th>
-                    <th className="text-center py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {accounts?.map((account: any) => {
-                    const balance = (summary as any)?.cashBalances?.[account.id] || "0.00";
-                    return (
-                      <tr key={account.id} className="border-b border-border hover:bg-slate-50 transition-colors">
-                        <td className="py-4 px-6">
-                          <div className="font-bold text-slate-800">{account.name}</div>
-                          {account.number && <div className="text-[10px] text-slate-500 font-mono mt-0.5">{account.number}</div>}
-                        </td>
-                        <td className="py-4 px-6 text-right font-mono font-bold text-slate-700">
-                          {formatCurrency(balance)}
-                        </td>
-                        <td className="py-4 px-6">
-                          <div className="flex items-center justify-center gap-2">
-                            <Button 
-                              size="sm" 
-                              variant="outline"
-                              onClick={() => {
-                                setAdjustCashData({ 
-                                  accountId: account.id.toString(), 
-                                  amount: "", 
-                                  type: "deposit", 
-                                  description: "", 
-                                  date: formatDate(new Date()) 
-                                });
-                                setIsAdjustCashDialogOpen(true);
-                              }}
-                              className="h-8 text-[10px] font-bold uppercase border-green-200 text-green-700 hover:bg-green-50 hover:text-green-800"
-                            >
-                              Deposit
-                            </Button>
-                            <Button 
-                              size="sm" 
-                              variant="outline"
-                              onClick={() => {
-                                setAdjustCashData({ 
-                                  accountId: account.id.toString(), 
-                                  amount: "", 
-                                  type: "withdrawal", 
-                                  description: "", 
-                                  date: formatDate(new Date()) 
-                                });
-                                setIsAdjustCashDialogOpen(true);
-                              }}
-                              className="h-8 text-[10px] font-bold uppercase border-red-200 text-red-700 hover:bg-red-50 hover:text-red-800"
-                            >
-                              Withdraw
-                            </Button>
-                            <Button 
-                              size="sm" 
-                              variant="ghost"
-                              onClick={() => {
-                                setHistoricalCashData(prev => ({ ...prev, accountId: account.id.toString(), amount: "" }));
-                                setIsHistoricalCashDialogOpen(true);
-                              }}
-                              className="h-8 w-8 p-0 text-slate-400 hover:text-primary hover:bg-slate-100"
-                              title="Record Historical Balance"
-                            >
-                              <CalendarPlus className="h-4 w-4" />
-                            </Button>
-                            <Button 
-                              size="sm" 
-                              variant="ghost"
-                              onClick={() => setCashHistoryOpen({ id: account.id, name: account.name })}
-                              className="h-8 w-8 p-0 text-slate-400 hover:text-primary hover:bg-slate-100"
-                              title="View History"
-                            >
-                              <History className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                  {(!accounts || accounts.length === 0) && (
-                    <tr>
-                      <td colSpan={3} className="py-10 text-center text-slate-400">
-                        No accounts found. Add an account to manage cash.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-                {accounts && accounts.length > 0 && (
-                  <tfoot className="bg-slate-50 border-t-2 border-slate-200">
-                    <tr className="font-bold text-slate-800">
-                      <td className="py-4 px-6 uppercase text-[10px] tracking-widest text-slate-500">Total Cash Reserve</td>
-                      <td className="text-right py-4 px-6 font-mono text-sm text-primary">
-                        {formatCurrency(accounts.reduce((acc: number, account: any) => acc + parseFloat((summary as any)?.cashBalances?.[account.id] || "0"), 0))}
-                      </td>
                       <td></td>
                     </tr>
                   </tfoot>
