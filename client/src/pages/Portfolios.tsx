@@ -90,6 +90,17 @@ const Portfolios: React.FC = () => {
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Card className="bg-white border-none shadow-sm shadow-slate-200/50">
+          <CardContent className="pt-6 text-primary">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[10px] font-bold text-primary/60 uppercase tracking-widest">Grand Total</span>
+              <DollarSign className="w-4 h-4" />
+            </div>
+            <div className="text-2xl font-bold font-mono">
+              {formatCurrency(totals.overall)}
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="bg-white border-none shadow-sm shadow-slate-200/50">
           <CardContent className="pt-6">
             <div className="flex items-center justify-between mb-2">
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total Investments</span>
@@ -121,17 +132,6 @@ const Portfolios: React.FC = () => {
             </div>
           </CardContent>
         </Card>
-        <Card className="bg-white border-none shadow-sm shadow-slate-200/50">
-          <CardContent className="pt-6 text-primary">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-[10px] font-bold text-primary/60 uppercase tracking-widest">Grand Total</span>
-              <DollarSign className="w-4 h-4" />
-            </div>
-            <div className="text-2xl font-bold font-mono">
-              {formatCurrency(totals.overall)}
-            </div>
-          </CardContent>
-        </Card>
       </div>
 
       <div className="bg-white rounded-lg shadow-sm border border-border overflow-hidden">
@@ -141,9 +141,9 @@ const Portfolios: React.FC = () => {
               <tr className="bg-slate-50 border-b border-border">
                 <th className="w-10"></th>
                 <th className="text-left py-4 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Portfolio Name</th>
+                <th className="text-right py-4 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Total Value</th>
                 <th className="text-right py-4 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Investments</th>
                 <th className="text-right py-4 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Cash Reserve</th>
-                <th className="text-right py-4 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Total Value</th>
                 <th className="text-center py-4 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Actions</th>
               </tr>
             </thead>
@@ -165,6 +165,7 @@ const Portfolios: React.FC = () => {
                         </button>
                       </td>
                       <td className="py-4 px-4 font-bold text-slate-800">{portfolio.name}</td>
+                      <td className="py-4 px-4 text-right font-mono font-bold text-primary">{formatCurrency(portfolio.totalValue)}</td>
                       <td className="py-4 px-4 text-right">
                         <div className="font-mono font-medium text-green-600">{formatCurrency(portfolio.investmentValue)}</div>
                         <div className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter">{pInvPercent}%</div>
@@ -173,7 +174,6 @@ const Portfolios: React.FC = () => {
                         <div className="font-mono font-medium text-slate-600">{formatCurrency(portfolio.cashValue)}</div>
                         <div className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter">{pCashPercent}%</div>
                       </td>
-                      <td className="py-4 px-4 text-right font-mono font-bold text-primary">{formatCurrency(portfolio.totalValue)}</td>
                       <td className="py-4 px-4">
                         <div className="flex items-center justify-center gap-2">
                           <Button 
@@ -216,9 +216,9 @@ const Portfolios: React.FC = () => {
                                   <thead>
                                     <tr className="border-b border-slate-200">
                                       <th className="text-left py-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Account</th>
+                                      <th className="text-right py-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total Value</th>
                                       <th className="text-right py-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Investments</th>
                                       <th className="text-right py-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Cash</th>
-                                      <th className="text-right py-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Overall</th>
                                     </tr>
                                   </thead>
                                   <tbody>
@@ -233,6 +233,7 @@ const Portfolios: React.FC = () => {
                                             <div className="font-semibold text-slate-700">{acc.name}</div>
                                             {acc.number && <div className="text-[10px] font-mono text-slate-400">{acc.number}</div>}
                                           </td>
+                                          <td className="py-2.5 text-right font-mono font-bold text-slate-700">{formatCurrency(acc.totalValue)}</td>
                                           <td className="py-2.5 text-right">
                                             <div className="font-mono text-slate-600">{formatCurrency(acc.investmentValue)}</div>
                                             <div className="text-[8px] font-bold text-slate-400 uppercase">{accInvPercent}%</div>
@@ -241,12 +242,12 @@ const Portfolios: React.FC = () => {
                                             <div className="font-mono text-slate-600">{formatCurrency(acc.cashValue)}</div>
                                             <div className="text-[8px] font-bold text-slate-400 uppercase">{accCashPercent}%</div>
                                           </td>
-                                          <td className="py-2.5 text-right font-mono font-bold text-slate-700">{formatCurrency(acc.totalValue)}</td>
                                         </tr>
                                       );
                                     })}
                                     <tr className="bg-slate-100/50 font-bold border-t border-slate-200">
                                       <td className="py-2.5 px-2 uppercase text-[10px] tracking-widest text-slate-500">Portfolio Totals</td>
+                                      <td className="py-2.5 text-right font-mono text-primary">{formatCurrency(portfolio.totalValue)}</td>
                                       <td className="py-2.5 text-right">
                                         <div className="font-mono text-slate-700">{formatCurrency(portfolio.investmentValue)}</div>
                                         <div className="text-[8px] font-bold text-slate-400 uppercase">{pInvPercent}%</div>
@@ -255,7 +256,6 @@ const Portfolios: React.FC = () => {
                                         <div className="font-mono text-slate-700">{formatCurrency(portfolio.cashValue)}</div>
                                         <div className="text-[8px] font-bold text-slate-400 uppercase">{pCashPercent}%</div>
                                       </td>
-                                      <td className="py-2.5 text-right font-mono text-primary">{formatCurrency(portfolio.totalValue)}</td>
                                     </tr>
                                   </tbody>
                                 </table>
@@ -272,6 +272,7 @@ const Portfolios: React.FC = () => {
             <tfoot>
               <tr className="bg-slate-100/80 font-bold border-t-2 border-slate-200">
                 <td colSpan={2} className="py-5 px-4 uppercase text-xs tracking-widest text-slate-600">Consolidated Totals</td>
+                <td className="py-5 px-4 text-right font-mono text-xl text-primary">{formatCurrency(totals.overall)}</td>
                 <td className="py-5 px-4 text-right">
                   <div className="font-mono text-lg text-green-700">{formatCurrency(totals.investment)}</div>
                   <div className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">{totals.investmentPercent}%</div>
@@ -280,7 +281,6 @@ const Portfolios: React.FC = () => {
                   <div className="font-mono text-lg text-slate-700">{formatCurrency(totals.cash)}</div>
                   <div className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">{totals.cashPercent}%</div>
                 </td>
-                <td className="py-5 px-4 text-right font-mono text-xl text-primary">{formatCurrency(totals.overall)}</td>
                 <td className="py-5 px-4"></td>
               </tr>
             </tfoot>

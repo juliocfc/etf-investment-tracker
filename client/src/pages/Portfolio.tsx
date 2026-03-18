@@ -704,9 +704,9 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                 <thead>
                   <tr className="bg-slate-50/50 border-b border-border">
                     <th className="text-left py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Account</th>
+                    <th className="text-right py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Total</th>
                     <th className="text-right py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Investments</th>
                     <th className="text-right py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Cash</th>
-                    <th className="text-right py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Total</th>
                     <th className="text-center py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Actions</th>
                   </tr>
                 </thead>
@@ -723,6 +723,9 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                           <div className="font-bold text-slate-800">{account.name}</div>
                           {account.number && <div className="text-[10px] text-slate-500 font-mono mt-0.5">{account.number}</div>}
                         </td>
+                        <td className="py-4 px-6 text-right font-mono font-bold text-primary">
+                          {formatCurrency(accDetails.totalValue)}
+                        </td>
                         <td className="py-4 px-6 text-right">
                           <div className="font-mono font-medium text-green-600">{formatCurrency(accDetails.investmentValue)}</div>
                           <div className="text-[9px] font-bold text-slate-400 uppercase">{invPercent}%</div>
@@ -730,9 +733,6 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                         <td className="py-4 px-6 text-right">
                           <div className="font-mono font-medium text-slate-600">{formatCurrency(accDetails.cashValue)}</div>
                           <div className="text-[9px] font-bold text-slate-400 uppercase">{cashPercent}%</div>
-                        </td>
-                        <td className="py-4 px-6 text-right font-mono font-bold text-primary">
-                          {formatCurrency(accDetails.totalValue)}
                         </td>
                         <td className="py-4 px-6">
                           <div className="flex items-center justify-center">
@@ -819,6 +819,9 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                   <tfoot className="bg-slate-50 border-t-2 border-slate-200">
                     <tr className="font-bold text-slate-800">
                       <td className="py-4 px-6 uppercase text-[10px] tracking-widest text-slate-500">Portfolio Totals</td>
+                      <td className="text-right py-4 px-6 font-mono text-sm text-primary">
+                        {formatCurrency(summary?.totalValue)}
+                      </td>
                       <td className="text-right py-4 px-6">
                         <div className="font-mono text-sm text-green-700">{formatCurrency(summary?.investmentValue)}</div>
                         <div className="text-[9px] font-bold text-slate-400 uppercase">
@@ -830,9 +833,6 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                         <div className="text-[9px] font-bold text-slate-400 uppercase">
                           {summary?.totalValue && parseFloat(summary.totalValue) > 0 ? ((parseFloat(summary.cashBalance) / parseFloat(summary.totalValue)) * 100).toFixed(1) : "0"}%
                         </div>
-                      </td>
-                      <td className="text-right py-4 px-6 font-mono text-sm text-primary">
-                        {formatCurrency(summary?.totalValue)}
                       </td>
                       <td></td>
                     </tr>
