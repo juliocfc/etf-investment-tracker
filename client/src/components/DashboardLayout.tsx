@@ -3,7 +3,7 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import { formatCurrency } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Menu, X, LogOut, TrendingUp, PieChart, Wallet, Briefcase, Plus, Trash2, Mail } from "lucide-react";
+import { Menu, X, LogOut, TrendingUp, Wallet, Briefcase, Plus, Mail } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 
@@ -26,7 +26,6 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
   selectedPortfolioId,
   onPortfolioChange,
   onCreatePortfolio,
-  onDeletePortfolio,
 }) => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [isAddPortfolioOpen, setIsAddPortfolioOpen] = useState(false);
@@ -36,11 +35,6 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
   const { data: consolidated } = trpc.portfolio.getConsolidatedSummary.useQuery(undefined, {
     staleTime: 30000,
   });
-
-  const navItems = [
-    { id: "portfolios", label: "Portfolios Admin", icon: <Briefcase className="w-4 h-4" /> },
-    { id: "contact", label: "Contact Us", icon: <Mail className="w-4 h-4" /> },
-  ];
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col">
@@ -126,95 +120,114 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
             sidebarOpen ? "w-64" : "w-0"
           } bg-white border-r border-slate-200 transition-all duration-300 overflow-hidden lg:static absolute z-30 h-full shadow-lg lg:shadow-none flex flex-col`}
         >
-          <div className="p-4 flex-1 overflow-y-auto space-y-6 custom-scrollbar">
-            <div className="space-y-1">
-              <div className="px-4 py-2 mb-1">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Portfolios</span>
-              </div>
-              {portfolios.map((p) => (
-                <button
-                  key={p.id}
-                  onClick={() => {
-                    onPortfolioChange(p.id);
-                    onTabChange?.("portfolio");
-                    if (window.innerWidth < 1024) setSidebarOpen(false);
-                  }}
-                  className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-md transition-all duration-200 font-medium ${
-                    activeTab === "portfolio" && selectedPortfolioId === p.id
-                      ? "bg-primary/10 text-primary shadow-sm"
-                      : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
-                  }`}
-                >
-                  <Wallet className={`w-4 h-4 ${activeTab === "portfolio" && selectedPortfolioId === p.id ? "text-primary" : "text-slate-400"}`} />
-                  <span className="text-sm truncate">{p.name}</span>
-                  {activeTab === "portfolio" && selectedPortfolioId === p.id && (
-                    <div className="ml-auto w-1 h-4 rounded-full bg-primary" />
-                  )}
-                </button>
-              ))}
-              
-              <Dialog open={isAddPortfolioOpen} onOpenChange={setIsAddPortfolioOpen}>
-                <DialogTrigger asChild>
-                  <button className="w-full flex items-center gap-3 px-4 py-2.5 rounded-md transition-all duration-200 font-medium text-slate-400 hover:text-primary hover:bg-slate-50 group">
-                    <Plus className="w-4 h-4 group-hover:scale-110 transition-transform" />
-                    <span className="text-sm uppercase tracking-wider font-bold">New Portfolio</span>
-                  </button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Create New Portfolio</DialogTitle>
-                  </DialogHeader>
-                  <div className="space-y-4 pt-4">
-                    <div className="space-y-2">
-                      <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Portfolio Name</label>
-                      <Input
-                        placeholder="e.g., Retirement, Growth, Dividend"
-                        value={newPortfolioName}
-                        onChange={(e) => setNewPortfolioName(e.target.value)}
-                        autoFocus
-                      />
-                    </div>
-                    <Button 
-                      onClick={() => {
-                        onCreatePortfolio(newPortfolioName);
-                        setIsAddPortfolioOpen(false);
-                        setNewPortfolioName("");
-                      }}
-                      className="w-full bg-[#004a99] hover:bg-[#003d7a]"
-                      disabled={!newPortfolioName}
-                    >
-                      Create Portfolio
-                    </Button>
-                  </div>
-                </DialogContent>
-              </Dialog>
+          <div className="p-4 flex-1 overflow-y-auto space-y-1 custom-scrollbar">
+            <div className="px-4 py-2 mb-1">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Portfolios</span>
+            </div>
+            
+            {/* All Portfolios Link */}
+            <button
+              onClick={() => {
+                onTabChange?.("portfolios");
+                if (window.innerWidth < 1024) setSidebarOpen(false);
+              }}
+              className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-md transition-all duration-200 font-medium ${
+                activeTab === "portfolios"
+                  ? "bg-slate-100 text-[#004a99]"
+                  : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+              }`}
+            >
+              <Briefcase className="w-4 h-4" />
+              <span className="text-sm font-bold uppercase tracking-wider">All Portfolios</span>
+              {activeTab === "portfolios" && (
+                <div className="ml-auto w-1.5 h-1.5 rounded-full bg-[#004a99]" />
+              )}
+            </button>
+
+            <div className="pt-2 pb-1 px-4">
+              <div className="h-px bg-slate-100 w-full" />
             </div>
 
-            <div className="space-y-1">
-              <div className="px-4 py-2 mb-1">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">System</span>
-              </div>
-              {navItems.map((item) => (
-                <button
-                  key={item.id}
-                  onClick={() => {
-                    onTabChange?.(item.id);
-                    if (window.innerWidth < 1024) setSidebarOpen(false);
-                  }}
-                  className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-md transition-all duration-200 font-medium ${
-                    activeTab === item.id
-                      ? "bg-slate-100 text-[#004a99]"
-                      : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
-                  }`}
-                >
-                  {item.icon}
-                  <span className="text-sm">{item.label}</span>
-                  {activeTab === item.id && (
-                    <div className="ml-auto w-1.5 h-1.5 rounded-full bg-[#004a99]" />
-                  )}
+            {/* Individual Portfolios */}
+            {portfolios.map((p) => (
+              <button
+                key={p.id}
+                onClick={() => {
+                  onPortfolioChange(p.id);
+                  onTabChange?.("portfolio");
+                  if (window.innerWidth < 1024) setSidebarOpen(false);
+                }}
+                className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-md transition-all duration-200 font-medium ${
+                  activeTab === "portfolio" && selectedPortfolioId === p.id
+                    ? "bg-primary/10 text-primary shadow-sm"
+                    : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+                }`}
+              >
+                <Wallet className={`w-4 h-4 ${activeTab === "portfolio" && selectedPortfolioId === p.id ? "text-primary" : "text-slate-400"}`} />
+                <span className="text-sm truncate">{p.name}</span>
+                {activeTab === "portfolio" && selectedPortfolioId === p.id && (
+                  <div className="ml-auto w-1 h-4 rounded-full bg-primary" />
+                )}
+              </button>
+            ))}
+            
+            {/* New Portfolio Dialog */}
+            <Dialog open={isAddPortfolioOpen} onOpenChange={setIsAddPortfolioOpen}>
+              <DialogTrigger asChild>
+                <button className="w-full flex items-center gap-3 px-4 py-2.5 rounded-md transition-all duration-200 font-medium text-slate-400 hover:text-primary hover:bg-slate-50 group">
+                  <Plus className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                  <span className="text-sm uppercase tracking-wider font-bold">New Portfolio</span>
                 </button>
-              ))}
-            </div>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Create New Portfolio</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4 pt-4">
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Portfolio Name</label>
+                    <Input
+                      placeholder="e.g., Retirement, Growth, Dividend"
+                      value={newPortfolioName}
+                      onChange={(e) => setNewPortfolioName(e.target.value)}
+                      autoFocus
+                    />
+                  </div>
+                  <Button 
+                    onClick={() => {
+                      onCreatePortfolio(newPortfolioName);
+                      setIsAddPortfolioOpen(false);
+                      setNewPortfolioName("");
+                    }}
+                    className="w-full bg-[#004a99] hover:bg-[#003d7a]"
+                    disabled={!newPortfolioName}
+                  >
+                    Create Portfolio
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+          </div>
+
+          {/* Contact Us at the bottom */}
+          <div className="p-4 border-t border-slate-100 mt-auto">
+            <button
+              onClick={() => {
+                onTabChange?.("contact");
+                if (window.innerWidth < 1024) setSidebarOpen(false);
+              }}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-md transition-all duration-200 font-medium ${
+                activeTab === "contact"
+                  ? "bg-slate-100 text-[#004a99]"
+                  : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+              }`}
+            >
+              <Mail className="w-4 h-4" />
+              <span className="text-sm">Contact Us</span>
+              {activeTab === "contact" && (
+                <div className="ml-auto w-1.5 h-1.5 rounded-full bg-[#004a99]" />
+              )}
+            </button>
           </div>
         </aside>
 
