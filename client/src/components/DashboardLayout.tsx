@@ -39,6 +39,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
 
   const navItems = [
     { id: "portfolio", label: "Holdings & Cash", icon: <Wallet className="w-4 h-4" /> },
+    { id: "portfolios", label: "Portfolios", icon: <Briefcase className="w-4 h-4" /> },
     { id: "activities", label: "Activities", icon: <List className="w-4 h-4" /> },
     { id: "performance", label: "Performance", icon: <Activity className="w-4 h-4" /> },
     { id: "dividends", label: "Dividends", icon: <DollarSign className="w-4 h-4" /> },

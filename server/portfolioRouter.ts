@@ -18,6 +18,84 @@ export const portfolioRouter = router({
     return userPortfolios;
   }),
 
+  // Get detailed summary for all portfolios including account breakdown
+  getDetailedAll: protectedProcedure.query(async ({ ctx }) => {
+    const db = await getDb();
+    if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database unavailable" });
+
+    const { getUserEtfHoldings } = await import("./db");
+    const { accounts: accountsTable, cashBalance: cashBalanceTable } = await import("../drizzle/schema");
+
+    const userPortfolios = await db
+      .select()
+      .from(portfolios)
+      .where(eq(portfolios.userId, ctx.user.id));
+
+    const result = [];
+
+    for (const portfolio of userPortfolios) {
+      const portfolioAccounts = await db
+        .select()
+        .from(accountsTable)
+        .where(and(
+          eq(accountsTable.userId, ctx.user.id),
+          eq(accountsTable.portfolioId, portfolio.id)
+        ));
+
+      const accountDetails = [];
+      let portfolioInvestmentValue = 0;
+      let portfolioCashValue = 0;
+
+      for (const account of portfolioAccounts) {
+        // Calculate investment value for this account
+        const holdings = await getUserEtfHoldings(ctx.user.id, portfolio.id, account.id);
+        let accountInvestmentValue = 0;
+        for (const holding of holdings) {
+          const currentPrice = holding.currentPrice ? parseFloat(holding.currentPrice.toString()) : 0;
+          const quantity = parseFloat(holding.quantity.toString());
+          accountInvestmentValue += currentPrice * quantity;
+        }
+
+        // Calculate cash value for this account
+        const cashRow = await db
+          .select()
+          .from(cashBalanceTable)
+          .where(and(
+            eq(cashBalanceTable.userId, ctx.user.id),
+            eq(cashBalanceTable.portfolioId, portfolio.id),
+            eq(cashBalanceTable.accountId, account.id)
+          ))
+          .then((rows: any[]) => rows[0]);
+        
+        const accountCashValue = cashRow ? parseFloat(cashRow.amount.toString()) : 0;
+
+        accountDetails.push({
+          id: account.id,
+          name: account.name,
+          number: account.number,
+          investmentValue: accountInvestmentValue.toFixed(2),
+          cashValue: accountCashValue.toFixed(2),
+          totalValue: (accountInvestmentValue + accountCashValue).toFixed(2),
+        });
+
+        portfolioInvestmentValue += accountInvestmentValue;
+        portfolioCashValue += accountCashValue;
+      }
+
+      result.push({
+        id: portfolio.id,
+        name: portfolio.name,
+        description: portfolio.description,
+        investmentValue: portfolioInvestmentValue.toFixed(2),
+        cashValue: portfolioCashValue.toFixed(2),
+        totalValue: (portfolioInvestmentValue + portfolioCashValue).toFixed(2),
+        accounts: accountDetails,
+      });
+    }
+
+    return result;
+  }),
+
   // Get consolidated summary for all portfolios
   getConsolidatedSummary: protectedProcedure.query(async ({ ctx }) => {
     const db = await getDb();

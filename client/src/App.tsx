@@ -10,6 +10,7 @@ import Activities from "./pages/Activities";
 import Performance from "./pages/Performance";
 import Dividends from "./pages/Dividends";
 import Contact from "./pages/Contact";
+import Portfolios from "./pages/Portfolios";
 import { trpc } from "@/lib/trpc";
 import { useState, useEffect } from "react";
 import { TrendingUp, ShieldCheck, Globe, Zap, BarChart3 } from "lucide-react";
@@ -85,6 +86,8 @@ function DashboardRouter() {
         return <Dividends selectedPortfolioId={selectedPortfolioId!} />;
       case "contact":
         return <Contact />;
+      case "portfolios":
+        return <Portfolios />;
       default:
         return <Holdings selectedPortfolioId={selectedPortfolioId!} />;
     }
