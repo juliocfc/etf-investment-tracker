@@ -45,15 +45,15 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
   const [isAccountsDialogOpen, setIsAccountsDialogOpen] = useState(false);
   const [isAdjustCashDialogOpen, setIsAdjustCashDialogOpen] = useState(false);
   const [isHistoricalCashDialogOpen, setIsHistoricalCashDialogOpen] = useState(false);
-  const [adjustCashData, setAdjustCashData] = useState({ 
-    accountId: "", 
-    amount: "", 
-    type: "deposit", 
-    description: "", 
-    date: formatDate(new Date()) 
+  const [adjustCashData, setAdjustCashData] = useState({
+    accountId: "",
+    amount: "",
+    type: "deposit",
+    description: "",
+    date: formatDate(new Date())
   });
   const [historicalCashData, setHistoricalCashData] = useState({ accountId: "", amount: "", date: formatDate(new Date()) });
-  
+
   const defaultDate = useMemo(() => getLastTradingDay(), []);
 
   const [formData, setFormData] = useState({
@@ -307,10 +307,10 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
       refetchSummary();
       utils.portfolio.getConsolidatedSummary.invalidate();
       // Invalidate the specific holding's purchases to update the Audit Trail dialog
-      utils.etf.getPurchases.invalidate({ 
-        holdingId: variables.holdingId, 
-        symbol: variables.symbol, 
-        portfolioId: selectedPortfolioId 
+      utils.etf.getPurchases.invalidate({
+        holdingId: variables.holdingId,
+        symbol: variables.symbol,
+        portfolioId: selectedPortfolioId
       });
     },
     onError: (error) => {
@@ -399,8 +399,8 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
 
   const doesHoldingExistInAccount = useMemo(() => {
     if (!formData.symbol || !formData.accountId || !holdings) return false;
-    return holdings.some(h => 
-      h.symbol.toUpperCase() === formData.symbol.toUpperCase() && 
+    return holdings.some(h =>
+      h.symbol.toUpperCase() === formData.symbol.toUpperCase() &&
       (h as any).accountId.toString() === formData.accountId
     );
   }, [formData.symbol, formData.accountId, holdings]);
@@ -408,7 +408,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
   // Handlers
   const handleSymbolChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const symbol = e.target.value.toUpperCase();
-    
+
     // Update symbol immediately for smooth typing
     setFormData(prev => ({ ...prev, symbol }));
 
@@ -447,7 +447,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
     }
   };
 
-    const handleAddHolding = async () => {
+  const handleAddHolding = async () => {
     if (!selectedPortfolioId) {
       toast.error("Please select a portfolio");
       return;
@@ -540,7 +540,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
     { id: "overview", label: "Overview", icon: <LayoutDashboard className="w-3.5 h-3.5" /> },
     { id: "activities", label: "Activities", icon: <List className="w-3.5 h-3.5" /> },
     { id: "dividends", label: "Dividends", icon: <DollarSign className="w-3.5 h-3.5" /> },
-    { id: "performance", label: "Performance", icon: <Activity className="w-3.5 h-3.5" /> }, 
+    { id: "performance", label: "Performance", icon: <Activity className="w-3.5 h-3.5" /> },
   ];
 
   return (
@@ -551,11 +551,10 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
           <button
             key={tab.id}
             onClick={() => setActiveSubTab(tab.id)}
-            className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold uppercase tracking-wider transition-all border-b-2 -mb-px ${
-              activeSubTab === tab.id
+            className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold uppercase tracking-wider transition-all border-b-2 -mb-px ${activeSubTab === tab.id
                 ? "border-primary text-primary bg-primary/5"
                 : "border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-50"
-            }`}
+              }`}
           >
             {tab.icon}
             {tab.label}
@@ -577,165 +576,544 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
               </div>
             </div>
 
-          <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full md:w-auto">
-            <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-md border border-slate-100 w-full sm:w-auto">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap">Account Filter:</span>
-              <select 
-                className="bg-transparent border-none p-0 text-xs font-bold text-slate-600 focus:outline-none h-6 flex-1 sm:min-w-[140px]"
-                value={selectedAccountId || ""}
-                onChange={(e) => setSelectedAccountId(e.target.value ? Number(e.target.value) : undefined)}
-              >
-                <option value="">All Accounts</option>
-                {accounts?.map((acc: any) => (
-                  <option key={acc.id} value={acc.id}>{acc.name} {acc.number ? `(${acc.number})` : ""}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-      </div>
-
-      {accounts && accounts.length > 0 && (
-        <>
-          {/* Stats Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-            <div className="data-card border-l-4 border-l-primary">
-              <div className="data-card-title">Total Portfolio</div>
-              <div className="data-card-value">{formatCurrency(summary?.totalValue)}</div>
-              <div className="data-card-subtitle flex items-center gap-1 text-slate-500">
-                <Info className="w-3 h-3" /> Includes Cash
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full md:w-auto">
+              <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-md border border-slate-100 w-full sm:w-auto">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap">Account Filter:</span>
+                <select
+                  className="bg-transparent border-none p-0 text-xs font-bold text-slate-600 focus:outline-none h-6 flex-1 sm:min-w-[140px]"
+                  value={selectedAccountId || ""}
+                  onChange={(e) => setSelectedAccountId(e.target.value ? Number(e.target.value) : undefined)}
+                >
+                  <option value="">All Accounts</option>
+                  {accounts?.map((acc: any) => (
+                    <option key={acc.id} value={acc.id}>{acc.name} {acc.number ? `(${acc.number})` : ""}</option>
+                  ))}
+                </select>
               </div>
-            </div>
-
-            <div className="data-card border-l-4 border-l-green-600">
-              <div className="data-card-title">Investment Value</div>
-              <div className="data-card-value">{formatCurrency(summary?.investmentValue)}</div>
-              <div className="data-card-subtitle flex items-center justify-between text-slate-500">
-                <span>Market Assets</span>
-                <span className="font-bold text-primary bg-slate-100 px-1.5 py-0.5 rounded text-[10px]">
-                  {summary?.totalValue && parseFloat(summary.totalValue) > 0 
-                    ? ((parseFloat(summary.investmentValue) / parseFloat(summary.totalValue)) * 100).toFixed(1) 
-                    : "0"}%
-                </span>
-              </div>
-            </div>
-
-            <div className="data-card border-l-4 border-l-slate-400">
-              <div className="data-card-title">Cash Reserve</div>
-              <div className="data-card-value">{formatCurrency(summary?.cashBalance)}</div>
-              <div className="data-card-subtitle flex items-center justify-between text-slate-500">
-                <span>Liquid Funds</span>
-                <span className="font-bold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded text-[10px]">
-                  {summary?.totalValue && parseFloat(summary.totalValue) > 0 
-                    ? ((parseFloat(summary.cashBalance) / parseFloat(summary.totalValue)) * 100).toFixed(1) 
-                    : "0"}%
-                </span>
-              </div>
-            </div>
-
-            <div className="data-card border-l-4 border-l-orange-500">
-              <div className="data-card-title">Asset Count</div>
-              <div className="data-card-value">{holdings?.length || 0}</div>
-              <div className="data-card-subtitle text-slate-500">Diversified Holdings</div>
             </div>
           </div>
 
-          {/* Accounts Table */}
-          <Card className="bg-white shadow-sm border border-border overflow-hidden">
-            <div className="px-6 py-4 border-b border-border bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                  <Wallet className="w-5 h-5 text-primary" />
-                  Accounts
-                </h2>
-                <span className="text-[10px] font-bold text-slate-400 bg-slate-200/50 px-2 py-0.5 rounded-full uppercase tracking-widest">
-                  {selectedAccountId ? "1 Account Selected" : `${accounts?.length || 0} Accounts`}
-                </span>
+          <>
+            {/* Stats Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+              <div className="data-card border-l-4 border-l-primary">
+                <div className="data-card-title">Total Portfolio</div>
+                <div className="data-card-value">{formatCurrency(summary?.totalValue)}</div>
+                <div className="data-card-subtitle flex items-center gap-1 text-slate-500">
+                  <Info className="w-3 h-3" /> Includes Cash
+                </div>
               </div>
 
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto">
-                <Dialog open={isAccountsDialogOpen} onOpenChange={setIsAccountsDialogOpen}>
-                  <DialogTrigger asChild>
-                    <Button variant="outline" size="sm" className="h-9 text-xs font-bold uppercase tracking-wider border-slate-200 text-slate-600 hover:bg-white hover:text-primary hover:border-primary/30 transition-all flex-1 sm:flex-none">
-                      <Plus className="w-3.5 h-3.5 mr-1.5" />
-                      New Account
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="sm:max-w-[425px]">
-                    <DialogHeader>
-                      <DialogTitle>Add New Account</DialogTitle>
-                    </DialogHeader>
-                    <div className="space-y-4 pt-4">
-                      <div className="grid grid-cols-2 gap-2">
-                        <div className="grid gap-2">
-                          <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Account Name</label>
-                          <Input 
-                            placeholder="e.g. Robinhood" 
-                            value={accountFormData.name} 
-                            onChange={(e) => setAccountFormData(prev => ({ ...prev, name: e.target.value }))} 
-                          />
-                        </div>
-                        <div className="grid gap-2">
-                          <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Number (optional)</label>
-                          <Input 
-                            placeholder="e.g. 1234" 
-                            value={accountFormData.number} 
-                            onChange={(e) => setAccountFormData(prev => ({ ...prev, number: e.target.value }))} 
-                          />
-                        </div>
-                      </div>
-                      <Button 
-                        className="w-full h-10 font-bold uppercase tracking-wider" 
-                        disabled={addAccountMutation.isPending || !accountFormData.name}
-                        onClick={() => addAccountMutation.mutate({ 
-                          portfolioId: selectedPortfolioId, 
-                          name: accountFormData.name, 
-                          number: accountFormData.number 
-                        })}
-                      >
-                        {addAccountMutation.isPending ? "Adding..." : "Create Account"}
+              <div className="data-card border-l-4 border-l-green-600">
+                <div className="data-card-title">Investment Value</div>
+                <div className="data-card-value">{formatCurrency(summary?.investmentValue)}</div>
+                <div className="data-card-subtitle flex items-center justify-between text-slate-500">
+                  <span>Market Assets</span>
+                  <span className="font-bold text-primary bg-slate-100 px-1.5 py-0.5 rounded text-[10px]">
+                    {summary?.totalValue && parseFloat(summary.totalValue) > 0
+                      ? ((parseFloat(summary.investmentValue) / parseFloat(summary.totalValue)) * 100).toFixed(1)
+                      : "0"}%
+                  </span>
+                </div>
+              </div>
+
+              <div className="data-card border-l-4 border-l-slate-400">
+                <div className="data-card-title">Cash Reserve</div>
+                <div className="data-card-value">{formatCurrency(summary?.cashBalance)}</div>
+                <div className="data-card-subtitle flex items-center justify-between text-slate-500">
+                  <span>Liquid Funds</span>
+                  <span className="font-bold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded text-[10px]">
+                    {summary?.totalValue && parseFloat(summary.totalValue) > 0
+                      ? ((parseFloat(summary.cashBalance) / parseFloat(summary.totalValue)) * 100).toFixed(1)
+                      : "0"}%
+                  </span>
+                </div>
+              </div>
+
+              <div className="data-card border-l-4 border-l-orange-500">
+                <div className="data-card-title">Asset Count</div>
+                <div className="data-card-value">{holdings?.length || 0}</div>
+                <div className="data-card-subtitle text-slate-500">Diversified Holdings</div>
+              </div>
+            </div>
+
+            {/* Accounts Table */}
+            <Card className="bg-white shadow-sm border border-border overflow-hidden">
+              <div className="px-6 py-4 border-b border-border bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                    <Wallet className="w-5 h-5 text-primary" />
+                    Accounts
+                  </h2>
+                  <span className="text-[10px] font-bold text-slate-400 bg-slate-200/50 px-2 py-0.5 rounded-full uppercase tracking-widest">
+                    {selectedAccountId ? "1 Account Selected" : `${accounts?.length || 0} Accounts`}
+                  </span>
+                </div>
+
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto">
+                  <Dialog open={isAccountsDialogOpen} onOpenChange={setIsAccountsDialogOpen}>
+                    <DialogTrigger asChild>
+                      <Button variant="outline" size="sm" className="h-9 text-xs font-bold uppercase tracking-wider border-slate-200 text-slate-600 hover:bg-white hover:text-primary hover:border-primary/30 transition-all flex-1 sm:flex-none">
+                        <Plus className="w-3.5 h-3.5 mr-1.5" />
+                        New Account
                       </Button>
-                    </div>
-                  </DialogContent>
-                </Dialog>
+                    </DialogTrigger>
+                    <DialogContent className="sm:max-w-[425px]">
+                      <DialogHeader>
+                        <DialogTitle>Add New Account</DialogTitle>
+                      </DialogHeader>
+                      <div className="space-y-4 pt-4">
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="grid gap-2">
+                            <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Account Name</label>
+                            <Input
+                              placeholder="e.g. Robinhood"
+                              value={accountFormData.name}
+                              onChange={(e) => setAccountFormData(prev => ({ ...prev, name: e.target.value }))}
+                            />
+                          </div>
+                          <div className="grid gap-2">
+                            <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Number (optional)</label>
+                            <Input
+                              placeholder="e.g. 1234"
+                              value={accountFormData.number}
+                              onChange={(e) => setAccountFormData(prev => ({ ...prev, number: e.target.value }))}
+                            />
+                          </div>
+                        </div>
+                        <Button
+                          className="w-full h-10 font-bold uppercase tracking-wider"
+                          disabled={addAccountMutation.isPending || !accountFormData.name}
+                          onClick={() => addAccountMutation.mutate({
+                            portfolioId: selectedPortfolioId,
+                            name: accountFormData.name,
+                            number: accountFormData.number
+                          })}
+                        >
+                          {addAccountMutation.isPending ? "Adding..." : "Create Account"}
+                        </Button>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+                </div>
               </div>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-slate-50/50 border-b border-border">
-                    <th className="text-left py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Account</th>
-                    <th className="text-right py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Total</th>
-                    <th className="text-right py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Investments</th>
-                    <th className="text-right py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Cash</th>
-                    <th className="text-center py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(selectedAccountId ? accounts?.filter((a: any) => a.id === selectedAccountId) : accounts)?.map((account: any) => {
-                    const accDetails = (summary as any)?.accountSummaries?.[account.id] || { investmentValue: "0.00", cashValue: "0.00", totalValue: "0.00" };
-                    const totalVal = parseFloat(accDetails.totalValue);
-                    const invPercent = totalVal > 0 ? ((parseFloat(accDetails.investmentValue) / totalVal) * 100).toFixed(1) : "0";
-                    const cashPercent = totalVal > 0 ? ((parseFloat(accDetails.cashValue) / totalVal) * 100).toFixed(1) : "0";
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-slate-50/50 border-b border-border">
+                      <th className="text-left py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Account</th>
+                      <th className="text-right py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Total</th>
+                      <th className="text-right py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Investments</th>
+                      <th className="text-right py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Cash</th>
+                      <th className="text-center py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(selectedAccountId ? accounts?.filter((a: any) => a.id === selectedAccountId) : accounts)?.map((account: any) => {
+                      const accDetails = (summary as any)?.accountSummaries?.[account.id] || { investmentValue: "0.00", cashValue: "0.00", totalValue: "0.00" };
+                      const totalVal = parseFloat(accDetails.totalValue);
+                      const invPercent = totalVal > 0 ? ((parseFloat(accDetails.investmentValue) / totalVal) * 100).toFixed(1) : "0";
+                      const cashPercent = totalVal > 0 ? ((parseFloat(accDetails.cashValue) / totalVal) * 100).toFixed(1) : "0";
 
-                    return (
-                      <tr key={account.id} className="border-b border-border hover:bg-slate-50 transition-colors">
-                        <td className="py-4 px-6">
-                          <div className="font-bold text-slate-800">{account.name}</div>
-                          {account.number && <div className="text-[10px] text-slate-500 font-mono mt-0.5">{account.number}</div>}
+                      return (
+                        <tr key={account.id} className="border-b border-border hover:bg-slate-50 transition-colors">
+                          <td className="py-4 px-6">
+                            <div className="font-bold text-slate-800">{account.name}</div>
+                            {account.number && <div className="text-[10px] text-slate-500 font-mono mt-0.5">{account.number}</div>}
+                          </td>
+                          <td className="py-4 px-6 text-right font-mono font-bold text-primary">
+                            {formatCurrency(accDetails.totalValue)}
+                          </td>
+                          <td className="py-4 px-6 text-right">
+                            <div className="font-mono font-medium text-green-600">{formatCurrency(accDetails.investmentValue)}</div>
+                            <div className="text-[9px] font-bold text-slate-400 uppercase">{invPercent}%</div>
+                          </td>
+                          <td className="py-4 px-6 text-right">
+                            <div className="font-mono font-medium text-slate-600">{formatCurrency(accDetails.cashValue)}</div>
+                            <div className="text-[9px] font-bold text-slate-400 uppercase">{cashPercent}%</div>
+                          </td>
+                          <td className="py-4 px-6">
+                            <div className="flex items-center justify-center">
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-primary">
+                                    <MoreVertical className="h-4 w-4" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" className="w-56">
+                                  <DropdownMenuLabel>Manage Account</DropdownMenuLabel>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem onClick={() => setEditingAccount({ id: account.id, name: account.name, number: account.number || "" })}>
+                                    <Edit2 className="mr-2 h-4 w-4 text-slate-500" />
+                                    <span>Rename Account</span>
+                                  </DropdownMenuItem>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem onClick={() => {
+                                    setAdjustCashData({
+                                      accountId: account.id.toString(),
+                                      amount: "",
+                                      type: "deposit",
+                                      description: "",
+                                      date: formatDate(new Date())
+                                    });
+                                    setIsAdjustCashDialogOpen(true);
+                                  }}>
+                                    <ArrowUpCircle className="mr-2 h-4 w-4 text-green-600" />
+                                    <span>Deposit Cash</span>
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem onClick={() => {
+                                    setAdjustCashData({
+                                      accountId: account.id.toString(),
+                                      amount: "",
+                                      type: "withdrawal",
+                                      description: "",
+                                      date: formatDate(new Date())
+                                    });
+                                    setIsAdjustCashDialogOpen(true);
+                                  }}>
+                                    <ArrowDownCircle className="mr-2 h-4 w-4 text-red-600" />
+                                    <span>Withdraw Cash</span>
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem onClick={() => {
+                                    setHistoricalCashData(prev => ({ ...prev, accountId: account.id.toString(), amount: "" }));
+                                    setIsHistoricalCashDialogOpen(true);
+                                  }}>
+                                    <CalendarPlus className="mr-2 h-4 w-4 text-slate-500" />
+                                    <span>Historical Balance</span>
+                                  </DropdownMenuItem>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem onClick={() => setCashHistoryOpen({ id: account.id, name: account.name })}>
+                                    <History className="mr-2 h-4 w-4 text-slate-500" />
+                                    <span>View Cash History</span>
+                                  </DropdownMenuItem>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem
+                                    onClick={() => {
+                                      if (confirm("Delete this account? Associated holdings will remain but lose their account link.")) {
+                                        deleteAccountMutation.mutate({ id: account.id });
+                                      }
+                                    }}
+                                    className="text-red-600 focus:text-red-600 focus:bg-red-50"
+                                  >
+                                    <Trash2 className="mr-2 h-4 w-4" />
+                                    <span>Delete Account</span>
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {(!accounts || accounts.length === 0) && (
+                      <tr>
+                        <td colSpan={5} className="py-10 text-center text-slate-400 italic">
+                          No accounts found for this portfolio.
                         </td>
-                        <td className="py-4 px-6 text-right font-mono font-bold text-primary">
-                          {formatCurrency(accDetails.totalValue)}
+                      </tr>
+                    )}
+                  </tbody>
+                  {accounts && accounts.length > 0 && !selectedAccountId && (
+                    <tfoot className="bg-slate-50 border-t-2 border-slate-200">
+                      <tr className="font-bold text-slate-800">
+                        <td className="py-4 px-6 uppercase text-[10px] tracking-widest text-slate-500">Portfolio Totals</td>
+                        <td className="text-right py-4 px-6 font-mono text-sm text-primary">
+                          {formatCurrency(summary?.totalValue)}
                         </td>
-                        <td className="py-4 px-6 text-right">
-                          <div className="font-mono font-medium text-green-600">{formatCurrency(accDetails.investmentValue)}</div>
-                          <div className="text-[9px] font-bold text-slate-400 uppercase">{invPercent}%</div>
+                        <td className="text-right py-4 px-6">
+                          <div className="font-mono text-sm text-green-700">{formatCurrency(summary?.investmentValue)}</div>
+                          <div className="text-[9px] font-bold text-slate-400 uppercase">
+                            {summary?.totalValue && parseFloat(summary.totalValue) > 0 ? ((parseFloat(summary.investmentValue) / parseFloat(summary.totalValue)) * 100).toFixed(1) : "0"}%
+                          </div>
                         </td>
-                        <td className="py-4 px-6 text-right">
-                          <div className="font-mono font-medium text-slate-600">{formatCurrency(accDetails.cashValue)}</div>
-                          <div className="text-[9px] font-bold text-slate-400 uppercase">{cashPercent}%</div>
+                        <td className="text-right py-4 px-6">
+                          <div className="font-mono text-sm text-slate-700">{formatCurrency(summary?.cashBalance)}</div>
+                          <div className="text-[9px] font-bold text-slate-400 uppercase">
+                            {summary?.totalValue && parseFloat(summary.totalValue) > 0 ? ((parseFloat(summary.cashBalance) / parseFloat(summary.totalValue)) * 100).toFixed(1) : "0"}%
+                          </div>
                         </td>
-                        <td className="py-4 px-6">
-                          <div className="flex items-center justify-center">
+                        <td></td>
+                      </tr>
+                    </tfoot>
+                  )}
+                </table>
+              </div>
+            </Card>
+
+            {/* Rename Account Dialog */}
+            <Dialog open={!!editingAccount} onOpenChange={(open) => !open && setEditingAccount(null)}>
+              <DialogContent className="sm:max-w-[425px]">
+                <DialogHeader>
+                  <DialogTitle>Rename Account</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4 pt-4">
+                  <div className="grid gap-2">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Account Name</label>
+                    <Input
+                      value={editingAccount?.name || ""}
+                      onChange={(e) => setEditingAccount(prev => prev ? { ...prev, name: e.target.value } : null)}
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Account Number</label>
+                    <Input
+                      value={editingAccount?.number || ""}
+                      onChange={(e) => setEditingAccount(prev => prev ? { ...prev, number: e.target.value } : null)}
+                    />
+                  </div>
+                  <Button
+                    className="w-full h-10 font-bold uppercase tracking-wider"
+                    disabled={updateAccountMutation.isPending || !editingAccount?.name}
+                    onClick={() => editingAccount && updateAccountMutation.mutate({
+                      id: editingAccount.id,
+                      name: editingAccount.name,
+                      number: editingAccount.number
+                    })}
+                  >
+                    Save Changes
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+
+            {/* Main Holdings Table */}
+            <Card className="bg-white shadow-sm border border-border overflow-hidden">
+              <div className="px-6 py-4 border-b border-border bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                    <TrendingUp className="w-5 h-5 text-primary" />
+                    Active Holdings
+                  </h2>
+                  <span className="text-[10px] font-bold text-slate-400 bg-slate-200/50 px-2 py-0.5 rounded-full uppercase tracking-widest">{summary?.holdings?.length || 0} Assets</span>
+                </div>
+
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => selectedPortfolioId && updatePricesMutation.mutate({ portfolioId: selectedPortfolioId })}
+                    disabled={updatePricesMutation.isPending}
+                    className="border-slate-200 hover:bg-slate-50 text-xs font-bold uppercase tracking-wider h-9 flex-1 sm:flex-none"
+                  >
+                    <RefreshCw className={`mr-2 h-3.5 w-3.5 ${updatePricesMutation.isPending ? "animate-spin" : ""}`} />
+                    Update Prices
+                  </Button>
+
+                  <Dialog open={isAddDialogOpen} onOpenChange={(open) => {
+                    setIsAddDialogOpen(open);
+                    if (!open) {
+                      setFormData({
+                        symbol: "",
+                        name: "",
+                        quantity: "",
+                        purchasePrice: "",
+                        purchaseDate: defaultDate,
+                        accountId: accounts?.[0]?.id.toString() || "",
+                        fees: "",
+                        type: "buy",
+                      });
+
+                    } else if (accounts && accounts.length > 0 && !formData.accountId) {
+                      setFormData(prev => ({ ...prev, accountId: accounts[0].id.toString() }));
+                    }
+                  }}>
+                    <DialogTrigger asChild>
+                      <Button size="sm" className="bg-primary hover:bg-primary/90 text-white shadow-md shadow-primary/10 text-xs font-bold uppercase tracking-wider h-9 flex-1 sm:flex-none">
+                        <TrendingUp className="mr-2 h-3.5 w-3.5" />
+                        Add Trade
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="sm:max-w-[425px]">
+                      <DialogHeader>
+                        <DialogTitle>Add Trade</DialogTitle>
+                      </DialogHeader>
+                      <div className="space-y-4 pt-4">
+                        <div className="grid gap-2">
+                          <label className="text-xs font-bold text-slate-500 uppercase">Trade Type</label>
+                          <div className="flex bg-slate-100 p-1 rounded-md">
+                            <button
+                              onClick={() => setFormData(prev => ({ ...prev, type: "buy" }))}
+                              className={`flex-1 py-1.5 text-xs font-bold rounded shadow-sm transition-all ${formData.type === "buy" ? "bg-white text-primary" : "text-slate-500 hover:text-slate-700"}`}
+                            >
+                              BUY
+                            </button>
+                            <button
+                              onClick={() => setFormData(prev => ({ ...prev, type: "sell" }))}
+                              className={`flex-1 py-1.5 text-xs font-bold rounded shadow-sm transition-all ${formData.type === "sell" ? "bg-white text-destructive" : "text-slate-500 hover:text-slate-700"}`}
+                            >
+                              SELL
+                            </button>
+                          </div>
+                        </div>
+                        <div className="grid gap-2">
+                          <label className="text-xs font-bold text-slate-500 uppercase">Account</label>
+                          <select
+                            className="bg-white border border-input rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary h-10"
+                            value={formData.accountId}
+                            onChange={(e) => setFormData(prev => ({ ...prev, accountId: e.target.value }))}
+                          >
+                            {accounts?.map((acc: any) => (
+                              <option key={acc.id} value={acc.id}>{acc.name} {acc.number ? `(${acc.number})` : ""}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="grid gap-2">
+                          <label className="text-xs font-bold text-slate-500 uppercase">Symbol</label>
+                          <Input
+                            placeholder="e.g., VOO, AAPL"
+                            value={formData.symbol}
+                            onChange={handleSymbolChange}
+                            onBlur={() => fetchAndSetPrice(formData.symbol, formData.purchaseDate)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Tab" && !e.shiftKey) {
+                                e.preventDefault();
+                                quantityInputRef.current?.focus();
+                              }
+                            }}
+                          />
+                        </div>
+                        {formData.type === "buy" && !doesHoldingExistInAccount && (
+                          <div className="grid gap-2">
+                            <label className="text-xs font-bold text-slate-500 uppercase">Investment Name</label>
+                            <Input placeholder="Vanguard S&P 500 ETF" value={formData.name} onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))} />
+                          </div>
+                        )}
+                        <div className="grid gap-2">
+                          <label className="text-xs font-bold text-slate-500 uppercase">Trade Date</label>
+                          <Input type="date" value={formData.purchaseDate} onChange={handleDateChange} />
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="grid gap-2">
+                            <label className="text-xs font-bold text-slate-500 uppercase">Quantity</label>
+                            <Input ref={quantityInputRef} type="number" step="0.001" value={formData.quantity} onChange={(e) => setFormData(prev => ({ ...prev, quantity: e.target.value }))} />
+                          </div>
+                          <div className="grid gap-2">
+                            <label className="text-xs font-bold text-slate-500 uppercase">Price per Share</label>
+                            <Input
+                              type="text"
+                              inputMode="decimal"
+                              value={formData.purchasePrice}
+                              onFocus={handleFocus}
+                              onChange={(e) => handlePriceInputChange(e.target.value, (val) => setFormData(prev => ({ ...prev, purchasePrice: val })))}
+                            />
+                          </div>
+                        </div>
+                        <div className="grid gap-2">
+                          <label className="text-xs font-bold text-slate-500 uppercase">Fees</label>
+                          <Input
+                            type="text"
+                            inputMode="decimal"
+                            placeholder="0.00"
+                            value={formData.fees}
+                            onFocus={handleFocus}
+                            onChange={(e) => handlePriceInputChange(e.target.value, (val) => setFormData(prev => ({ ...prev, fees: val })))}
+                          />
+                        </div>
+                        <div className="grid gap-2 p-3 bg-slate-50 rounded-md border border-slate-100">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                            Estimated Transaction Total
+                          </label>
+                          <div className="text-lg font-mono font-bold text-slate-700">
+                            {formatCurrency(
+                              (parseFloat(formData.quantity || "0") * parseFloat(formData.purchasePrice || "0")) +
+                              (formData.type === "buy" ? parseFloat(formData.fees || "0") : -parseFloat(formData.fees || "0"))
+                            )}
+                          </div>
+                        </div>
+                        <Button
+                          onClick={handleAddHolding}
+                          className={`w-full mt-2 ${formData.type === "sell" ? "bg-destructive hover:bg-destructive/90" : ""}`}
+                          disabled={addHoldingMutation.isPending}
+                        >
+                          Confirm {formData.type === "buy" ? "Purchase" : "Sale"}
+                        </Button>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+                </div>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-border">
+                      <th className="text-left py-3 px-3 text-slate-600">Asset</th>
+                      <th className="text-right py-3 px-3 text-slate-600">Qty</th>
+                      <th className="text-right py-3 px-3 text-slate-600">Avg Cost</th>
+                      <th className="text-right py-3 px-3 text-slate-600">Total Cost</th>
+                      <th className="text-right py-3 px-3 text-slate-600">Mkt Price</th>
+                      <th className="text-right py-3 px-3 text-slate-600">Mkt Value</th>
+                      <th className="text-right py-3 px-3 text-slate-600">Gain/Loss</th>
+                      <th className="text-right py-3 px-3 text-slate-600">Return</th>
+                      <th className="text-right py-3 px-3 text-slate-600">Allocation</th>
+                      <th className="text-center py-3 px-3 text-slate-600">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {summary?.holdings?.map((holding: any) => {
+                      const allocation = summary?.investmentAllocationBreakdown?.find((a: any) => a.symbol === holding.symbol);
+                      const isGain = parseFloat(holding.gain) >= 0;
+                      const isUnderWeight = parseFloat(allocation?.percentage || "0") < (parseFloat(holding.desiredAllocation) || 0);
+                      const isConsolidated = holding.isConsolidated || holding.id === -1;
+
+                      return (
+                        <tr key={isConsolidated ? `consolidated-${holding.symbol}` : holding.id} className="border-b border-border hover:bg-slate-50 transition-colors">
+                          <td className="py-3 px-3">
+                            <div className="font-bold text-primary text-sm leading-tight">{holding.symbol}</div>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <div className="text-slate-500 text-[10px] leading-tight cursor-help whitespace-nowrap">
+                                  {holding.name.length > 20 ? `${holding.name.substring(0, 20)}...` : holding.name}
+                                </div>
+                              </TooltipTrigger>
+                              <TooltipContent side="right">
+                                <p className="max-w-[300px]">{holding.name}</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </td>
+                          <td className="text-right py-3 px-3 font-mono text-xs font-medium">{formatNumber(holding.quantity, 3)}</td>
+                          <td className="text-right py-3 px-3 font-mono text-xs text-slate-600">{formatCurrency(holding.averageCost)}</td>
+                          <td className="text-right py-3 px-3 font-mono text-xs text-slate-600">{formatCurrency(holding.totalCost)}</td>
+                          <td className="text-right py-3 px-3 font-mono text-xs text-slate-600">{formatCurrency(holding.currentPrice)}</td>
+                          <td className="text-right py-3 px-3 font-mono text-xs font-bold">{formatCurrency(holding.currentValue)}</td>
+                          <td className={`text-right py-3 px-3 font-mono text-xs font-bold ${isGain ? "text-green-600" : "text-red-600"}`}>
+                            {isGain ? "+" : ""}{formatCurrency(holding.gain)}
+                          </td>
+                          <td className={`text-right py-3 px-3 font-mono text-xs font-bold ${isGain ? "text-green-600" : "text-red-600"}`}>
+                            {isGain ? "+" : ""}{holding.gainPercent}%
+                          </td>
+                          <td className="text-right py-3 px-3 font-mono">
+                            <div className="flex flex-col items-end gap-1">
+                              <div className="text-xs font-bold text-slate-700 leading-none">{allocation?.percentage || "0.00"}%</div>
+                              <div className="flex items-center gap-1.5 mt-0.5">
+                                {isUnderWeight && (
+                                  <div className="flex items-center text-[8px] font-bold text-green-600 animate-pulse">
+                                    <ArrowUpCircle className="w-2.5 h-2.5 mr-0.5" /> BUY
+                                  </div>
+                                )}
+                                <div className="flex items-center text-[10px] text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                                  <span className="mr-1">Target</span>
+                                  <input
+                                    type="number"
+                                    step="0.1"
+                                    defaultValue={holding.desiredAllocation || "0"}
+                                    onBlur={(e) => {
+                                      if (e.target.value !== holding.desiredAllocation) {
+                                        updateHoldingMutation.mutate({
+                                          id: holding.id,
+                                          symbol: holding.symbol,
+                                          portfolioId: selectedPortfolioId,
+                                          desiredAllocation: e.target.value,
+                                        });
+                                      }
+                                    }}
+                                    className="w-10 bg-transparent border-none p-0 text-right focus:outline-none focus:ring-0 font-bold text-slate-600"
+                                  />
+                                  <span>%</span>
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="text-center py-3 px-3">
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
                                 <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-primary">
@@ -743,775 +1121,392 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end" className="w-56">
-                                <DropdownMenuLabel>Manage Account</DropdownMenuLabel>
+                                <DropdownMenuLabel>Manage Asset</DropdownMenuLabel>
                                 <DropdownMenuSeparator />
-                                <DropdownMenuItem onClick={() => setEditingAccount({ id: account.id, name: account.name, number: account.number || "" })}>
-                                  <Edit2 className="mr-2 h-4 w-4 text-slate-500" />
-                                  <span>Rename Account</span>
+                                <DropdownMenuItem onClick={() => setIsTradeDialogOpen({ id: holding.id, symbol: holding.symbol })}>
+                                  <TrendingUp className="mr-2 h-4 w-4 text-slate-500" />
+                                  <span>Add Trade</span>
                                 </DropdownMenuItem>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem onClick={() => {
-                                  setAdjustCashData({ 
-                                    accountId: account.id.toString(), 
-                                    amount: "", 
-                                    type: "deposit", 
-                                    description: "", 
-                                    date: formatDate(new Date()) 
-                                  });
-                                  setIsAdjustCashDialogOpen(true);
-                                }}>
-                                  <ArrowUpCircle className="mr-2 h-4 w-4 text-green-600" />
-                                  <span>Deposit Cash</span>
+                                <DropdownMenuItem onClick={() => setIsCSVImportOpen({ id: holding.id, symbol: holding.symbol })}>
+                                  <FileUp className="mr-2 h-4 w-4 text-slate-500" />
+                                  <span>Import Purchases</span>
                                 </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => {
-                                  setAdjustCashData({ 
-                                    accountId: account.id.toString(), 
-                                    amount: "", 
-                                    type: "withdrawal", 
-                                    description: "", 
-                                    date: formatDate(new Date()) 
-                                  });
-                                  setIsAdjustCashDialogOpen(true);
-                                }}>
-                                  <ArrowDownCircle className="mr-2 h-4 w-4 text-red-600" />
-                                  <span>Withdraw Cash</span>
+                                <DropdownMenuItem onClick={() => setPurchaseHistoryOpen({ id: holding.id, symbol: holding.symbol })}>
+                                  <Download className="mr-2 h-4 w-4 text-slate-500" />
+                                  <span>Export Purchases</span>
                                 </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => {
-                                  setHistoricalCashData(prev => ({ ...prev, accountId: account.id.toString(), amount: "" }));
-                                  setIsHistoricalCashDialogOpen(true);
-                                }}>
-                                  <CalendarPlus className="mr-2 h-4 w-4 text-slate-500" />
-                                  <span>Historical Balance</span>
-                                </DropdownMenuItem>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem onClick={() => setCashHistoryOpen({ id: account.id, name: account.name })}>
+                                <DropdownMenuItem onClick={() => setPurchaseHistoryOpen({ id: holding.id, symbol: holding.symbol })}>
                                   <History className="mr-2 h-4 w-4 text-slate-500" />
-                                  <span>View Cash History</span>
+                                  <span>View History</span>
                                 </DropdownMenuItem>
                                 <DropdownMenuSeparator />
-                                <DropdownMenuItem 
-                                  onClick={() => {
-                                    if (confirm("Delete this account? Associated holdings will remain but lose their account link.")) {
-                                      deleteAccountMutation.mutate({ id: account.id });
-                                    }
-                                  }}
+                                <DropdownMenuItem
+                                  onClick={() => handleDeleteHolding(holding.id, holding.symbol)}
                                   className="text-red-600 focus:text-red-600 focus:bg-red-50"
                                 >
                                   <Trash2 className="mr-2 h-4 w-4" />
-                                  <span>Delete Account</span>
+                                  <span>Delete Investment</span>
                                 </DropdownMenuItem>
                               </DropdownMenuContent>
                             </DropdownMenu>
-                          </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                  {summary?.holdings && summary.holdings.length > 0 && (
+                    <tfoot className="bg-slate-50 border-t-2 border-slate-200">
+                      <tr className="font-bold text-slate-800">
+                        <td colSpan={5} className="py-4 px-3 uppercase text-[10px] tracking-widest text-slate-500">Total Portfolio Performance</td>
+                        <td className="text-right py-4 px-3 font-mono text-sm">{formatCurrency(summary.investmentValue)}</td>
+                        <td className={`text-right py-4 px-3 font-mono text-sm ${(summary?.holdings?.reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0) || 0) >= 0
+                            ? "text-green-600"
+                            : "text-red-600"
+                          }`}>
+                          {(summary?.holdings?.reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0) || 0) >= 0 ? "+" : ""}
+                          {formatCurrency(summary?.holdings?.reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0) || 0)}
                         </td>
+                        <td className={`text-right py-4 px-3 font-mono text-sm ${((summary?.holdings?.reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0) || 0) /
+                            (summary?.holdings?.reduce((acc: number, h: any) => acc + (parseFloat(h.averageCost || h.purchasePrice) * parseFloat(h.quantity)), 0) || 1) * 100) >= 0
+                            ? "text-green-600"
+                            : "text-red-600"
+                          }`}>
+                          {(
+                            ((summary?.holdings?.reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0) || 0) /
+                              (summary?.holdings?.reduce((acc: number, h: any) => acc + (parseFloat(h.averageCost || h.purchasePrice) * parseFloat(h.quantity)), 0) || 1)) * 100
+                          ).toFixed(2)}%
+                        </td>
+                        <td className="text-right py-4 px-3 font-mono text-slate-500 text-xs">100%</td>
+                        <td></td>
                       </tr>
-                    );
-                  })}
-                  {(!accounts || accounts.length === 0) && (
-                    <tr>
-                      <td colSpan={5} className="py-10 text-center text-slate-400 italic">
-                        No accounts found for this portfolio.
-                      </td>
-                    </tr>
+                    </tfoot>
                   )}
-                </tbody>
-                {accounts && accounts.length > 0 && !selectedAccountId && (
-                  <tfoot className="bg-slate-50 border-t-2 border-slate-200">
-                    <tr className="font-bold text-slate-800">
-                      <td className="py-4 px-6 uppercase text-[10px] tracking-widest text-slate-500">Portfolio Totals</td>
-                      <td className="text-right py-4 px-6 font-mono text-sm text-primary">
-                        {formatCurrency(summary?.totalValue)}
-                      </td>
-                      <td className="text-right py-4 px-6">
-                        <div className="font-mono text-sm text-green-700">{formatCurrency(summary?.investmentValue)}</div>
-                        <div className="text-[9px] font-bold text-slate-400 uppercase">
-                          {summary?.totalValue && parseFloat(summary.totalValue) > 0 ? ((parseFloat(summary.investmentValue) / parseFloat(summary.totalValue)) * 100).toFixed(1) : "0"}%
-                        </div>
-                      </td>
-                      <td className="text-right py-4 px-6">
-                        <div className="font-mono text-sm text-slate-700">{formatCurrency(summary?.cashBalance)}</div>
-                        <div className="text-[9px] font-bold text-slate-400 uppercase">
-                          {summary?.totalValue && parseFloat(summary.totalValue) > 0 ? ((parseFloat(summary.cashBalance) / parseFloat(summary.totalValue)) * 100).toFixed(1) : "0"}%
-                        </div>
-                      </td>
-                      <td></td>
-                    </tr>
-                  </tfoot>
-                )}
-              </table>
-            </div>
-          </Card>
+                </table>
+              </div>
+            </Card>
 
-          {/* Rename Account Dialog */}
-          <Dialog open={!!editingAccount} onOpenChange={(open) => !open && setEditingAccount(null)}>
+            {/* Allocation & Management Grid */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              {/* Portfolio Allocation Pie Chart */}
+              {summary && (
+                <Card className="p-6 bg-white shadow-sm border border-border">
+                  <div className="flex items-center gap-2 mb-6">
+                    <div className="p-1.5 bg-slate-100 rounded text-slate-600">
+                      <FolderPlus className="w-4 h-4" />
+                    </div>
+                    <h2 className="text-lg font-bold text-slate-800">Portfolio Allocation</h2>
+                  </div>
+                  <div className="flex flex-col md:flex-row items-center gap-8">
+                    <PortfolioAllocationChart data={summary.allocationBreakdown} cashPercent={summary.cashAllocationPercent} />
+                    <div className="flex-1 w-full">
+                      <div className="space-y-2">
+                        {summary.allocationBreakdown.map((item: any, index: number) => (
+                          <div key={item.symbol} className="flex justify-between items-center text-sm p-2 hover:bg-slate-50 rounded transition-colors">
+                            <div className="flex items-center gap-3">
+                              <div
+                                className="w-3 h-3 rounded-full shrink-0"
+                                style={{ backgroundColor: CHART_COLORS[index % CHART_COLORS.length] }}
+                              />
+                              <span className="font-bold text-primary w-12">{item.symbol}</span>
+                              <span className="text-slate-500 text-xs truncate max-w-[150px]">{item.name}</span>
+                            </div>
+                            <span className="font-mono font-bold text-slate-700">{item.percentage}%</span>
+                          </div>
+                        ))}
+                        <div className="border-t border-slate-100 pt-2 mt-2 flex justify-between items-center text-sm p-2 bg-slate-50 rounded">
+                          <div className="flex items-center gap-3">
+                            <div className="w-3 h-3 rounded-full shrink-0 bg-slate-200" />
+                            <span className="font-bold text-slate-600">Cash Reserve</span>
+                          </div>
+                          <span className="font-mono font-bold text-slate-700">{summary.cashAllocationPercent}%</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </Card>
+              )}
+            </div>        </>
+
+          {/* Dialogs */}
+          <Dialog open={isHistoricalCashDialogOpen} onOpenChange={setIsHistoricalCashDialogOpen}>
             <DialogContent className="sm:max-w-[425px]">
               <DialogHeader>
-                <DialogTitle>Rename Account</DialogTitle>
+                <DialogTitle>Record Historical Cash Balance</DialogTitle>
               </DialogHeader>
               <div className="space-y-4 pt-4">
+                <div className="grid gap-1">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Account</label>
+                  <div className="bg-slate-50 border border-slate-200 rounded px-3 py-2 text-sm font-bold text-slate-700">
+                    {accounts?.find((a: any) => a.id.toString() === historicalCashData.accountId)?.name || "Selected Account"}
+                  </div>
+                </div>
                 <div className="grid gap-2">
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Account Name</label>
-                  <Input 
-                    value={editingAccount?.name || ""} 
-                    onChange={(e) => setEditingAccount(prev => prev ? { ...prev, name: e.target.value } : null)} 
+                  <label className="text-xs font-bold text-slate-500 uppercase">Date</label>
+                  <Input
+                    type="date"
+                    value={historicalCashData.date}
+                    onChange={(e) => setHistoricalCashData(prev => ({ ...prev, date: e.target.value }))}
                   />
                 </div>
                 <div className="grid gap-2">
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Account Number</label>
-                  <Input 
-                    value={editingAccount?.number || ""} 
-                    onChange={(e) => setEditingAccount(prev => prev ? { ...prev, number: e.target.value } : null)} 
+                  <label className="text-xs font-bold text-slate-500 uppercase">Cash Amount</label>
+                  <Input
+                    type="text"
+                    inputMode="decimal"
+                    value={historicalCashData.amount}
+                    onFocus={handleFocus}
+                    onChange={(e) => handlePriceInputChange(e.target.value, (val) => setHistoricalCashData(prev => ({ ...prev, amount: val })))}
                   />
                 </div>
-                <Button 
-                  className="w-full h-10 font-bold uppercase tracking-wider" 
-                  disabled={updateAccountMutation.isPending || !editingAccount?.name}
-                  onClick={() => editingAccount && updateAccountMutation.mutate({ 
-                    id: editingAccount.id, 
-                    name: editingAccount.name, 
-                    number: editingAccount.number 
-                  })}
+                <Button
+                  onClick={() => {
+                    if (historicalCashData.accountId && historicalCashData.amount && historicalCashData.date) {
+                      updateCashMutation.mutate({
+                        portfolioId: selectedPortfolioId,
+                        accountId: Number(historicalCashData.accountId),
+                        amount: historicalCashData.amount,
+                        date: new Date(historicalCashData.date + "T12:00:00") // Mid-day to avoid TZ issues
+                      });
+                    } else {
+                      toast.error("Please fill in all fields");
+                    }
+                  }}
+                  className="w-full"
+                  disabled={updateCashMutation.isPending || !historicalCashData.accountId}
                 >
-                  Save Changes
+                  Save History
                 </Button>
               </div>
             </DialogContent>
           </Dialog>
 
-          {/* Main Holdings Table */}
-          <Card className="bg-white shadow-sm border border-border overflow-hidden">
-            <div className="px-6 py-4 border-b border-border bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                  <TrendingUp className="w-5 h-5 text-primary" />
-                  Active Holdings
-                </h2>
-                <span className="text-[10px] font-bold text-slate-400 bg-slate-200/50 px-2 py-0.5 rounded-full uppercase tracking-widest">{summary?.holdings?.length || 0} Assets</span>
-              </div>
+          <Dialog open={isAdjustCashDialogOpen} onOpenChange={setIsAdjustCashDialogOpen}>
+            <DialogContent className="sm:max-w-[425px]">
+              <DialogHeader>
+                <DialogTitle>Cash Reserve Transaction</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4 pt-4">
+                <div className="grid gap-1">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Account</label>
+                  <div className="bg-slate-50 border border-slate-200 rounded px-3 py-2 text-sm font-bold text-slate-700">
+                    {accounts?.find((a: any) => a.id.toString() === adjustCashData.accountId)?.name || "Selected Account"}
+                  </div>
+                </div>
 
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => selectedPortfolioId && updatePricesMutation.mutate({ portfolioId: selectedPortfolioId })}
-                  disabled={updatePricesMutation.isPending}
-                  className="border-slate-200 hover:bg-slate-50 text-xs font-bold uppercase tracking-wider h-9 flex-1 sm:flex-none"
-                >
-                  <RefreshCw className={`mr-2 h-3.5 w-3.5 ${updatePricesMutation.isPending ? "animate-spin" : ""}`} />
-                  Update Prices
-                </Button>
-                
-                <Dialog open={isAddDialogOpen} onOpenChange={(open) => {
-                  setIsAddDialogOpen(open);
-                  if (!open) {
-                    setFormData({
-                      symbol: "",
-                      name: "",
-                      quantity: "",
-                      purchasePrice: "",
-                      purchaseDate: defaultDate,
-                      accountId: accounts?.[0]?.id.toString() || "",
-                      fees: "",
-                      type: "buy",
-                      });
-
-                  } else if (accounts && accounts.length > 0 && !formData.accountId) {
-                    setFormData(prev => ({ ...prev, accountId: accounts[0].id.toString() }));
-                  }
-                }}>
-                  <DialogTrigger asChild>
-                    <Button size="sm" className="bg-primary hover:bg-primary/90 text-white shadow-md shadow-primary/10 text-xs font-bold uppercase tracking-wider h-9 flex-1 sm:flex-none">
-                      <TrendingUp className="mr-2 h-3.5 w-3.5" />
-                      Add Trade
+                <div className="grid gap-2">
+                  <label className="text-xs font-bold text-slate-500 uppercase">Action</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      type="button"
+                      variant={adjustCashData.type === "deposit" ? "default" : "outline"}
+                      onClick={() => setAdjustCashData(prev => ({ ...prev, type: "deposit" }))}
+                      className="h-10 text-xs font-bold uppercase"
+                    >
+                      Deposit
                     </Button>
-                  </DialogTrigger>
-                  <DialogContent className="sm:max-w-[425px]">
-                    <DialogHeader>
-                      <DialogTitle>Add Trade</DialogTitle>
-                    </DialogHeader>
-                    <div className="space-y-4 pt-4">
-                      <div className="grid gap-2">
-                        <label className="text-xs font-bold text-slate-500 uppercase">Trade Type</label>
-                        <div className="flex bg-slate-100 p-1 rounded-md">
-                          <button
-                            onClick={() => setFormData(prev => ({ ...prev, type: "buy" }))}
-                            className={`flex-1 py-1.5 text-xs font-bold rounded shadow-sm transition-all ${formData.type === "buy" ? "bg-white text-primary" : "text-slate-500 hover:text-slate-700"}`}
-                          >
-                            BUY
-                          </button>
-                          <button
-                            onClick={() => setFormData(prev => ({ ...prev, type: "sell" }))}
-                            className={`flex-1 py-1.5 text-xs font-bold rounded shadow-sm transition-all ${formData.type === "sell" ? "bg-white text-destructive" : "text-slate-500 hover:text-slate-700"}`}
-                          >
-                            SELL
-                          </button>
-                        </div>
-                      </div>
-                      <div className="grid gap-2">
-                        <label className="text-xs font-bold text-slate-500 uppercase">Account</label>
-                        <select 
-                          className="bg-white border border-input rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary h-10"
-                          value={formData.accountId}
-                          onChange={(e) => setFormData(prev => ({ ...prev, accountId: e.target.value }))}
-                        >
-                          {accounts?.map((acc: any) => (
-                            <option key={acc.id} value={acc.id}>{acc.name} {acc.number ? `(${acc.number})` : ""}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="grid gap-2">
-                        <label className="text-xs font-bold text-slate-500 uppercase">Symbol</label>
-                        <Input 
-                          placeholder="e.g., VOO, AAPL" 
-                          value={formData.symbol} 
-                          onChange={handleSymbolChange}
-                          onBlur={() => fetchAndSetPrice(formData.symbol, formData.purchaseDate)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Tab" && !e.shiftKey) {
-                              e.preventDefault();
-                              quantityInputRef.current?.focus();
-                            }
-                          }}
-                        />
-                      </div>
-                      {formData.type === "buy" && !doesHoldingExistInAccount && (
-                        <div className="grid gap-2">
-                          <label className="text-xs font-bold text-slate-500 uppercase">Investment Name</label>
-                          <Input placeholder="Vanguard S&P 500 ETF" value={formData.name} onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))} />
-                        </div>
-                      )}
-                      <div className="grid gap-2">
-                        <label className="text-xs font-bold text-slate-500 uppercase">Trade Date</label>
-                        <Input type="date" value={formData.purchaseDate} onChange={handleDateChange} />
-                      </div>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="grid gap-2">
-                          <label className="text-xs font-bold text-slate-500 uppercase">Quantity</label>
-                          <Input ref={quantityInputRef} type="number" step="0.001" value={formData.quantity} onChange={(e) => setFormData(prev => ({ ...prev, quantity: e.target.value }))} />
-                        </div>
-                        <div className="grid gap-2">
-                          <label className="text-xs font-bold text-slate-500 uppercase">Price per Share</label>
-                          <Input 
-                            type="text" 
-                            inputMode="decimal"
-                            value={formData.purchasePrice} 
-                            onFocus={handleFocus}
-                            onChange={(e) => handlePriceInputChange(e.target.value, (val) => setFormData(prev => ({ ...prev, purchasePrice: val })))} 
-                          />
-                        </div>
-                      </div>
-                      <div className="grid gap-2">
-                        <label className="text-xs font-bold text-slate-500 uppercase">Fees</label>
-                        <Input 
-                          type="text" 
-                          inputMode="decimal"
-                          placeholder="0.00"
-                          value={formData.fees} 
-                          onFocus={handleFocus}
-                          onChange={(e) => handlePriceInputChange(e.target.value, (val) => setFormData(prev => ({ ...prev, fees: val })))} 
-                        />
-                      </div>
-                      <div className="grid gap-2 p-3 bg-slate-50 rounded-md border border-slate-100">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                          Estimated Transaction Total
-                        </label>
-                        <div className="text-lg font-mono font-bold text-slate-700">
-                          {formatCurrency(
-                            (parseFloat(formData.quantity || "0") * parseFloat(formData.purchasePrice || "0")) + 
-                            (formData.type === "buy" ? parseFloat(formData.fees || "0") : -parseFloat(formData.fees || "0"))
-                          )}
-                        </div>
-                      </div>
-                      <Button 
-                        onClick={handleAddHolding} 
-                        className={`w-full mt-2 ${formData.type === "sell" ? "bg-destructive hover:bg-destructive/90" : ""}`}
-                        disabled={addHoldingMutation.isPending}
-                      >
-                        Confirm {formData.type === "buy" ? "Purchase" : "Sale"}
-                      </Button>
-                    </div>
-                  </DialogContent>
-                </Dialog>
-              </div>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="bg-slate-50 border-b border-border">
-                    <th className="text-left py-3 px-3 text-slate-600">Asset</th>
-                    <th className="text-right py-3 px-3 text-slate-600">Qty</th>
-                    <th className="text-right py-3 px-3 text-slate-600">Avg Cost</th>
-                    <th className="text-right py-3 px-3 text-slate-600">Total Cost</th>
-                    <th className="text-right py-3 px-3 text-slate-600">Mkt Price</th>
-                    <th className="text-right py-3 px-3 text-slate-600">Mkt Value</th>
-                    <th className="text-right py-3 px-3 text-slate-600">Gain/Loss</th>
-                    <th className="text-right py-3 px-3 text-slate-600">Return</th>
-                    <th className="text-right py-3 px-3 text-slate-600">Allocation</th>
-                    <th className="text-center py-3 px-3 text-slate-600">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {summary?.holdings?.map((holding: any) => {
-                    const allocation = summary?.investmentAllocationBreakdown?.find((a: any) => a.symbol === holding.symbol);
-                    const isGain = parseFloat(holding.gain) >= 0;
-                    const isUnderWeight = parseFloat(allocation?.percentage || "0") < (parseFloat(holding.desiredAllocation) || 0);
-                    const isConsolidated = holding.isConsolidated || holding.id === -1;
-                    
-                    return (
-                      <tr key={isConsolidated ? `consolidated-${holding.symbol}` : holding.id} className="border-b border-border hover:bg-slate-50 transition-colors">
-                        <td className="py-3 px-3">
-                          <div className="font-bold text-primary text-sm leading-tight">{holding.symbol}</div>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <div className="text-slate-500 text-[10px] leading-tight cursor-help whitespace-nowrap">
-                                {holding.name.length > 20 ? `${holding.name.substring(0, 20)}...` : holding.name}
-                              </div>
-                            </TooltipTrigger>
-                            <TooltipContent side="right">
-                              <p className="max-w-[300px]">{holding.name}</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </td>
-                        <td className="text-right py-3 px-3 font-mono text-xs font-medium">{formatNumber(holding.quantity, 3)}</td>
-                        <td className="text-right py-3 px-3 font-mono text-xs text-slate-600">{formatCurrency(holding.averageCost)}</td>
-                        <td className="text-right py-3 px-3 font-mono text-xs text-slate-600">{formatCurrency(holding.totalCost)}</td>
-                        <td className="text-right py-3 px-3 font-mono text-xs text-slate-600">{formatCurrency(holding.currentPrice)}</td>
-                        <td className="text-right py-3 px-3 font-mono text-xs font-bold">{formatCurrency(holding.currentValue)}</td>
-                        <td className={`text-right py-3 px-3 font-mono text-xs font-bold ${isGain ? "text-green-600" : "text-red-600"}`}>
-                          {isGain ? "+" : ""}{formatCurrency(holding.gain)}
-                        </td>
-                        <td className={`text-right py-3 px-3 font-mono text-xs font-bold ${isGain ? "text-green-600" : "text-red-600"}`}>
-                          {isGain ? "+" : ""}{holding.gainPercent}%
-                        </td>
-                        <td className="text-right py-3 px-3 font-mono">
-                          <div className="flex flex-col items-end gap-1">
-                            <div className="text-xs font-bold text-slate-700 leading-none">{allocation?.percentage || "0.00"}%</div>
-                            <div className="flex items-center gap-1.5 mt-0.5">
-                              {isUnderWeight && (
-                                <div className="flex items-center text-[8px] font-bold text-green-600 animate-pulse">
-                                  <ArrowUpCircle className="w-2.5 h-2.5 mr-0.5" /> BUY
-                                </div>
-                              )}
-                              <div className="flex items-center text-[10px] text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
-                                <span className="mr-1">Target</span>
-                                <input
-                                  type="number"
-                                  step="0.1"
-                                  defaultValue={holding.desiredAllocation || "0"}
-                                  onBlur={(e) => {
-                                    if (e.target.value !== holding.desiredAllocation) {
-                                      updateHoldingMutation.mutate({
-                                        id: holding.id,
-                                        symbol: holding.symbol,
-                                        portfolioId: selectedPortfolioId,
-                                        desiredAllocation: e.target.value,
-                                      });
-                                    }
-                                  }}
-                                  className="w-10 bg-transparent border-none p-0 text-right focus:outline-none focus:ring-0 font-bold text-slate-600"
-                                />
-                                <span>%</span>
-                              </div>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="text-center py-3 px-3">
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-primary">
-                                <MoreVertical className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="w-56">
-                              <DropdownMenuLabel>Manage Asset</DropdownMenuLabel>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem onClick={() => setIsTradeDialogOpen({ id: holding.id, symbol: holding.symbol })}>
-                                <TrendingUp className="mr-2 h-4 w-4 text-slate-500" />
-                                <span>Add Trade</span>
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => setIsCSVImportOpen({ id: holding.id, symbol: holding.symbol })}>
-                                <FileUp className="mr-2 h-4 w-4 text-slate-500" />
-                                <span>Import Purchases</span>
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => setPurchaseHistoryOpen({ id: holding.id, symbol: holding.symbol })}>
-                                <Download className="mr-2 h-4 w-4 text-slate-500" />
-                                <span>Export Purchases</span>
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => setPurchaseHistoryOpen({ id: holding.id, symbol: holding.symbol })}>
-                                <History className="mr-2 h-4 w-4 text-slate-500" />
-                                <span>View History</span>
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem 
-                                onClick={() => handleDeleteHolding(holding.id, holding.symbol)}
-                                className="text-red-600 focus:text-red-600 focus:bg-red-50"
-                              >
-                                <Trash2 className="mr-2 h-4 w-4" />
-                                <span>Delete Investment</span>
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-                {summary?.holdings && summary.holdings.length > 0 && (
-                  <tfoot className="bg-slate-50 border-t-2 border-slate-200">
-                    <tr className="font-bold text-slate-800">
-                      <td colSpan={5} className="py-4 px-3 uppercase text-[10px] tracking-widest text-slate-500">Total Portfolio Performance</td>
-                      <td className="text-right py-4 px-3 font-mono text-sm">{formatCurrency(summary.investmentValue)}</td>
-                      <td className={`text-right py-4 px-3 font-mono text-sm ${
-                        (summary?.holdings?.reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0) || 0) >= 0 
-                          ? "text-green-600" 
-                          : "text-red-600"
-                      }`}>
-                        {(summary?.holdings?.reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0) || 0) >= 0 ? "+" : ""}
-                        {formatCurrency(summary?.holdings?.reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0) || 0)}
-                      </td>
-                      <td className={`text-right py-4 px-3 font-mono text-sm ${
-                        ((summary?.holdings?.reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0) || 0) / 
-                        (summary?.holdings?.reduce((acc: number, h: any) => acc + (parseFloat(h.averageCost || h.purchasePrice) * parseFloat(h.quantity)), 0) || 1) * 100) >= 0
-                          ? "text-green-600"
-                          : "text-red-600"
-                      }`}>
-                        {(
-                          ((summary?.holdings?.reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0) || 0) / 
-                          (summary?.holdings?.reduce((acc: number, h: any) => acc + (parseFloat(h.averageCost || h.purchasePrice) * parseFloat(h.quantity)), 0) || 1)) * 100
-                        ).toFixed(2)}%
-                      </td>
-                      <td className="text-right py-4 px-3 font-mono text-slate-500 text-xs">100%</td>
-                      <td></td>
-                    </tr>
-                  </tfoot>
-                )}
-              </table>
-            </div>
-          </Card>
-
-          {/* Allocation & Management Grid */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {/* Portfolio Allocation Pie Chart */}
-            {summary && (
-              <Card className="p-6 bg-white shadow-sm border border-border">
-                <div className="flex items-center gap-2 mb-6">
-                  <div className="p-1.5 bg-slate-100 rounded text-slate-600">
-                    <FolderPlus className="w-4 h-4" />
-                  </div>
-                  <h2 className="text-lg font-bold text-slate-800">Portfolio Allocation</h2>
-                </div>
-                <div className="flex flex-col md:flex-row items-center gap-8">
-                  <PortfolioAllocationChart data={summary.allocationBreakdown} cashPercent={summary.cashAllocationPercent} />
-                  <div className="flex-1 w-full">
-                    <div className="space-y-2">
-                      {summary.allocationBreakdown.map((item: any, index: number) => (
-                        <div key={item.symbol} className="flex justify-between items-center text-sm p-2 hover:bg-slate-50 rounded transition-colors">
-                          <div className="flex items-center gap-3">
-                            <div 
-                              className="w-3 h-3 rounded-full shrink-0" 
-                              style={{ backgroundColor: CHART_COLORS[index % CHART_COLORS.length] }}
-                            />
-                            <span className="font-bold text-primary w-12">{item.symbol}</span>
-                            <span className="text-slate-500 text-xs truncate max-w-[150px]">{item.name}</span>
-                          </div>
-                          <span className="font-mono font-bold text-slate-700">{item.percentage}%</span>
-                        </div>
-                      ))}
-                      <div className="border-t border-slate-100 pt-2 mt-2 flex justify-between items-center text-sm p-2 bg-slate-50 rounded">
-                        <div className="flex items-center gap-3">
-                          <div className="w-3 h-3 rounded-full shrink-0 bg-slate-200" />
-                          <span className="font-bold text-slate-600">Cash Reserve</span>
-                        </div>
-                        <span className="font-mono font-bold text-slate-700">{summary.cashAllocationPercent}%</span>
-                      </div>
-                    </div>
+                    <Button
+                      type="button"
+                      variant={adjustCashData.type === "withdrawal" ? "default" : "outline"}
+                      onClick={() => setAdjustCashData(prev => ({ ...prev, type: "withdrawal" }))}
+                      className="h-10 text-xs font-bold uppercase"
+                    >
+                      Withdrawal
+                    </Button>
                   </div>
                 </div>
-              </Card>
-            )}
-          </div>        </>
-      )}
 
-      {/* Dialogs */}
-      <Dialog open={isHistoricalCashDialogOpen} onOpenChange={setIsHistoricalCashDialogOpen}>
-        <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle>Record Historical Cash Balance</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 pt-4">
-            <div className="grid gap-1">
-              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Account</label>
-              <div className="bg-slate-50 border border-slate-200 rounded px-3 py-2 text-sm font-bold text-slate-700">
-                {accounts?.find((a: any) => a.id.toString() === historicalCashData.accountId)?.name || "Selected Account"}
-              </div>
-            </div>
-            <div className="grid gap-2">
-              <label className="text-xs font-bold text-slate-500 uppercase">Date</label>
-              <Input 
-                type="date" 
-                value={historicalCashData.date} 
-                onChange={(e) => setHistoricalCashData(prev => ({ ...prev, date: e.target.value }))} 
-              />
-            </div>
-            <div className="grid gap-2">
-              <label className="text-xs font-bold text-slate-500 uppercase">Cash Amount</label>
-              <Input 
-                type="text" 
-                inputMode="decimal"
-                value={historicalCashData.amount} 
-                onFocus={handleFocus}
-                onChange={(e) => handlePriceInputChange(e.target.value, (val) => setHistoricalCashData(prev => ({ ...prev, amount: val })))} 
-              />
-            </div>
-            <Button 
-              onClick={() => {
-                if (historicalCashData.accountId && historicalCashData.amount && historicalCashData.date) {
-                  updateCashMutation.mutate({
-                    portfolioId: selectedPortfolioId,
-                    accountId: Number(historicalCashData.accountId),
-                    amount: historicalCashData.amount,
-                    date: new Date(historicalCashData.date + "T12:00:00") // Mid-day to avoid TZ issues
-                  });
-                } else {
-                  toast.error("Please fill in all fields");
-                }
-              }} 
-              className="w-full" 
-              disabled={updateCashMutation.isPending || !historicalCashData.accountId}
-            >
-              Save History
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={isAdjustCashDialogOpen} onOpenChange={setIsAdjustCashDialogOpen}>
-        <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle>Cash Reserve Transaction</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 pt-4">
-            <div className="grid gap-1">
-              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Account</label>
-              <div className="bg-slate-50 border border-slate-200 rounded px-3 py-2 text-sm font-bold text-slate-700">
-                {accounts?.find((a: any) => a.id.toString() === adjustCashData.accountId)?.name || "Selected Account"}
-              </div>
-            </div>
-            
-            <div className="grid gap-2">
-              <label className="text-xs font-bold text-slate-500 uppercase">Action</label>
-              <div className="grid grid-cols-2 gap-2">
-                <Button 
-                  type="button" 
-                  variant={adjustCashData.type === "deposit" ? "default" : "outline"}
-                  onClick={() => setAdjustCashData(prev => ({ ...prev, type: "deposit" }))}
-                  className="h-10 text-xs font-bold uppercase"
-                >
-                  Deposit
-                </Button>
-                <Button 
-                  type="button" 
-                  variant={adjustCashData.type === "withdrawal" ? "default" : "outline"}
-                  onClick={() => setAdjustCashData(prev => ({ ...prev, type: "withdrawal" }))}
-                  className="h-10 text-xs font-bold uppercase"
-                >
-                  Withdrawal
-                </Button>
-              </div>
-            </div>
-
-            <div className="grid gap-2">
-              <label className="text-xs font-bold text-slate-500 uppercase">Amount</label>
-              <Input 
-                type="text" 
-                inputMode="decimal"
-                placeholder="0.00"
-                value={adjustCashData.amount} 
-                onFocus={(e) => e.target.select()}
-                onChange={(e) => handlePriceInputChange(e.target.value, (val) => setAdjustCashData(prev => ({ ...prev, amount: val })))} 
-              />
-            </div>
-
-            <div className="grid gap-2">
-              <label className="text-xs font-bold text-slate-500 uppercase">Date</label>
-              <Input 
-                type="date" 
-                value={adjustCashData.date} 
-                onChange={(e) => setAdjustCashData(prev => ({ ...prev, date: e.target.value }))} 
-              />
-            </div>
-
-            <div className="grid gap-2">
-              <label className="text-xs font-bold text-slate-500 uppercase">Description (Optional)</label>
-              <Input 
-                type="text" 
-                placeholder="e.g. Monthly Savings, Dividends Transfer"
-                value={adjustCashData.description} 
-                onChange={(e) => setAdjustCashData(prev => ({ ...prev, description: e.target.value }))} 
-              />
-            </div>
-
-            <Button 
-              onClick={() => {
-                if (adjustCashData.accountId && adjustCashData.amount) {
-                  recordCashTransactionMutation.mutate({
-                    portfolioId: selectedPortfolioId,
-                    accountId: Number(adjustCashData.accountId),
-                    amount: adjustCashData.amount,
-                    type: adjustCashData.type as "deposit" | "withdrawal",
-                    description: adjustCashData.description,
-                    date: new Date(adjustCashData.date + "T12:00:00")
-                  });
-                }
-              }} 
-              className="w-full" 
-              disabled={recordCashTransactionMutation.isPending || !adjustCashData.accountId}
-            >
-              {adjustCashData.type === "deposit" ? "Confirm Deposit" : "Confirm Withdrawal"}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {isTradeDialogOpen && (
-        <Dialog open={!!isTradeDialogOpen} onOpenChange={() => setIsTradeDialogOpen(null)}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Add Trade for {isTradeDialogOpen.symbol}</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4 pt-4">
-              <div className="grid gap-2">
-                <label className="text-xs font-bold text-slate-500 uppercase">Trade Type</label>
-                <div className="flex bg-slate-100 p-1 rounded-md">
-                  <button
-                    onClick={() => setTradeData(prev => ({ ...prev, type: "buy" }))}
-                    className={`flex-1 py-1.5 text-xs font-bold rounded shadow-sm transition-all ${tradeData.type === "buy" ? "bg-white text-primary" : "text-slate-500 hover:text-slate-700"}`}
-                  >
-                    BUY
-                  </button>
-                  <button
-                    onClick={() => setTradeData(prev => ({ ...prev, type: "sell" }))}
-                    className={`flex-1 py-1.5 text-xs font-bold rounded shadow-sm transition-all ${tradeData.type === "sell" ? "bg-white text-destructive" : "text-slate-500 hover:text-slate-700"}`}
-                  >
-                    SELL
-                  </button>
-                </div>
-              </div>
-              <div className="grid gap-2">
-                <label className="text-xs font-bold text-slate-500 uppercase">Account</label>
-                <select 
-                  className="bg-white border border-input rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary h-10 w-full"
-                  value={tradeData.accountId}
-                  onChange={(e) => setTradeData(prev => ({ ...prev, accountId: e.target.value }))}
-                >
-                  {accounts?.map((acc: any) => (
-                    <option key={acc.id} value={acc.id}>{acc.name} {acc.number ? `(${acc.number})` : ""}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="grid gap-2">
-                <label className="text-xs font-bold text-slate-500 uppercase">Quantity</label>
-                <Input type="number" step="0.001" value={tradeData.quantity} onChange={(e) => setTradeData(prev => ({ ...prev, quantity: e.target.value }))} />
-              </div>
-              <div className="grid gap-2">
-                <label className="text-xs font-bold text-slate-500 uppercase">Trade Date</label>
-                <Input type="date" value={tradeData.purchaseDate} onChange={(e) => setTradeData(prev => ({ ...prev, purchaseDate: e.target.value }))} />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
                 <div className="grid gap-2">
-                  <label className="text-xs font-bold text-slate-500 uppercase">Price per Share</label>
-                  <Input 
-                    type="text" 
-                    inputMode="decimal"
-                    value={tradeData.price} 
-                    onFocus={handleFocus}
-                    onChange={(e) => handlePriceInputChange(e.target.value, (val) => setTradeData(prev => ({ ...prev, price: val })))} 
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <label className="text-xs font-bold text-slate-500 uppercase">Fees</label>
-                  <Input 
-                    type="text" 
+                  <label className="text-xs font-bold text-slate-500 uppercase">Amount</label>
+                  <Input
+                    type="text"
                     inputMode="decimal"
                     placeholder="0.00"
-                    value={tradeData.fees} 
-                    onFocus={handleFocus}
-                    onChange={(e) => handlePriceInputChange(e.target.value, (val) => setTradeData(prev => ({ ...prev, fees: val })))} 
+                    value={adjustCashData.amount}
+                    onFocus={(e) => e.target.select()}
+                    onChange={(e) => handlePriceInputChange(e.target.value, (val) => setAdjustCashData(prev => ({ ...prev, amount: val })))}
                   />
                 </div>
-              </div>
-              <div className="grid gap-2 p-3 bg-slate-50 rounded-md border border-slate-100">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                  Estimated Transaction Total
-                </label>
-                <div className="text-lg font-mono font-bold text-slate-700">
-                  {formatCurrency(
-                    (parseFloat(tradeData.quantity || "0") * parseFloat(tradeData.price || "0")) + 
-                    (tradeData.type === "buy" ? parseFloat(tradeData.fees || "0") : -parseFloat(tradeData.fees || "0"))
-                  )}
+
+                <div className="grid gap-2">
+                  <label className="text-xs font-bold text-slate-500 uppercase">Date</label>
+                  <Input
+                    type="date"
+                    value={adjustCashData.date}
+                    onChange={(e) => setAdjustCashData(prev => ({ ...prev, date: e.target.value }))}
+                  />
                 </div>
+
+                <div className="grid gap-2">
+                  <label className="text-xs font-bold text-slate-500 uppercase">Description (Optional)</label>
+                  <Input
+                    type="text"
+                    placeholder="e.g. Monthly Savings, Dividends Transfer"
+                    value={adjustCashData.description}
+                    onChange={(e) => setAdjustCashData(prev => ({ ...prev, description: e.target.value }))}
+                  />
+                </div>
+
+                <Button
+                  onClick={() => {
+                    if (adjustCashData.accountId && adjustCashData.amount) {
+                      recordCashTransactionMutation.mutate({
+                        portfolioId: selectedPortfolioId,
+                        accountId: Number(adjustCashData.accountId),
+                        amount: adjustCashData.amount,
+                        type: adjustCashData.type as "deposit" | "withdrawal",
+                        description: adjustCashData.description,
+                        date: new Date(adjustCashData.date + "T12:00:00")
+                      });
+                    }
+                  }}
+                  className="w-full"
+                  disabled={recordCashTransactionMutation.isPending || !adjustCashData.accountId}
+                >
+                  {adjustCashData.type === "deposit" ? "Confirm Deposit" : "Confirm Withdrawal"}
+                </Button>
               </div>
-              <Button 
-                onClick={() => handleExecuteTrade(isTradeDialogOpen.id, isTradeDialogOpen.symbol, Number(tradeData.accountId))} 
-                className={`w-full ${tradeData.type === "sell" ? "bg-destructive hover:bg-destructive/90" : ""}`}
-                disabled={executeTradeMutation.isPending}
-              >
-                Confirm {tradeData.type === "buy" ? "Purchase" : "Sale"}
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
-      )}
+            </DialogContent>
+          </Dialog>
 
-      {cashHistoryOpen && (
-        <Dialog open={!!cashHistoryOpen} onOpenChange={() => setCashHistoryOpen(null)}>
-          <DialogContent className="sm:max-w-[800px]">
-            <DialogHeader>
-              <DialogTitle>Cash Transaction History: {cashHistoryOpen.name}</DialogTitle>
-            </DialogHeader>
-            <CashHistoryTable
-              accountId={cashHistoryOpen.id}
-              portfolioId={selectedPortfolioId}
-            />
-          </DialogContent>
-        </Dialog>
-      )}
+          {isTradeDialogOpen && (
+            <Dialog open={!!isTradeDialogOpen} onOpenChange={() => setIsTradeDialogOpen(null)}>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Add Trade for {isTradeDialogOpen.symbol}</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4 pt-4">
+                  <div className="grid gap-2">
+                    <label className="text-xs font-bold text-slate-500 uppercase">Trade Type</label>
+                    <div className="flex bg-slate-100 p-1 rounded-md">
+                      <button
+                        onClick={() => setTradeData(prev => ({ ...prev, type: "buy" }))}
+                        className={`flex-1 py-1.5 text-xs font-bold rounded shadow-sm transition-all ${tradeData.type === "buy" ? "bg-white text-primary" : "text-slate-500 hover:text-slate-700"}`}
+                      >
+                        BUY
+                      </button>
+                      <button
+                        onClick={() => setTradeData(prev => ({ ...prev, type: "sell" }))}
+                        className={`flex-1 py-1.5 text-xs font-bold rounded shadow-sm transition-all ${tradeData.type === "sell" ? "bg-white text-destructive" : "text-slate-500 hover:text-slate-700"}`}
+                      >
+                        SELL
+                      </button>
+                    </div>
+                  </div>
+                  <div className="grid gap-2">
+                    <label className="text-xs font-bold text-slate-500 uppercase">Account</label>
+                    <select
+                      className="bg-white border border-input rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary h-10 w-full"
+                      value={tradeData.accountId}
+                      onChange={(e) => setTradeData(prev => ({ ...prev, accountId: e.target.value }))}
+                    >
+                      {accounts?.map((acc: any) => (
+                        <option key={acc.id} value={acc.id}>{acc.name} {acc.number ? `(${acc.number})` : ""}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="grid gap-2">
+                    <label className="text-xs font-bold text-slate-500 uppercase">Quantity</label>
+                    <Input type="number" step="0.001" value={tradeData.quantity} onChange={(e) => setTradeData(prev => ({ ...prev, quantity: e.target.value }))} />
+                  </div>
+                  <div className="grid gap-2">
+                    <label className="text-xs font-bold text-slate-500 uppercase">Trade Date</label>
+                    <Input type="date" value={tradeData.purchaseDate} onChange={(e) => setTradeData(prev => ({ ...prev, purchaseDate: e.target.value }))} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="grid gap-2">
+                      <label className="text-xs font-bold text-slate-500 uppercase">Price per Share</label>
+                      <Input
+                        type="text"
+                        inputMode="decimal"
+                        value={tradeData.price}
+                        onFocus={handleFocus}
+                        onChange={(e) => handlePriceInputChange(e.target.value, (val) => setTradeData(prev => ({ ...prev, price: val })))}
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <label className="text-xs font-bold text-slate-500 uppercase">Fees</label>
+                      <Input
+                        type="text"
+                        inputMode="decimal"
+                        placeholder="0.00"
+                        value={tradeData.fees}
+                        onFocus={handleFocus}
+                        onChange={(e) => handlePriceInputChange(e.target.value, (val) => setTradeData(prev => ({ ...prev, fees: val })))}
+                      />
+                    </div>
+                  </div>
+                  <div className="grid gap-2 p-3 bg-slate-50 rounded-md border border-slate-100">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                      Estimated Transaction Total
+                    </label>
+                    <div className="text-lg font-mono font-bold text-slate-700">
+                      {formatCurrency(
+                        (parseFloat(tradeData.quantity || "0") * parseFloat(tradeData.price || "0")) +
+                        (tradeData.type === "buy" ? parseFloat(tradeData.fees || "0") : -parseFloat(tradeData.fees || "0"))
+                      )}
+                    </div>
+                  </div>
+                  <Button
+                    onClick={() => handleExecuteTrade(isTradeDialogOpen.id, isTradeDialogOpen.symbol, Number(tradeData.accountId))}
+                    className={`w-full ${tradeData.type === "sell" ? "bg-destructive hover:bg-destructive/90" : ""}`}
+                    disabled={executeTradeMutation.isPending}
+                  >
+                    Confirm {tradeData.type === "buy" ? "Purchase" : "Sale"}
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+          )}
 
-      {purchaseHistoryOpen && (
-        <Dialog open={!!purchaseHistoryOpen} onOpenChange={() => setPurchaseHistoryOpen(null)}>
-          <DialogContent className="sm:max-w-[900px]">
-            <DialogHeader>
-              <DialogTitle>Purchase History for {purchaseHistoryOpen.symbol}</DialogTitle>
-            </DialogHeader>
-            <PurchaseHistoryTable 
-              holdingId={purchaseHistoryOpen.id} 
-              symbol={purchaseHistoryOpen.symbol}
-              portfolioId={selectedPortfolioId}
-              onDelete={handleDeletePurchase} 
-              accounts={accounts || []}
-            />
-          </DialogContent>
-        </Dialog>
-      )}
+          {cashHistoryOpen && (
+            <Dialog open={!!cashHistoryOpen} onOpenChange={() => setCashHistoryOpen(null)}>
+              <DialogContent className="sm:max-w-[800px]">
+                <DialogHeader>
+                  <DialogTitle>Cash Transaction History: {cashHistoryOpen.name}</DialogTitle>
+                </DialogHeader>
+                <CashHistoryTable
+                  accountId={cashHistoryOpen.id}
+                  portfolioId={selectedPortfolioId}
+                />
+              </DialogContent>
+            </Dialog>
+          )}
 
-      {isCSVImportOpen && (
-        <Dialog open={!!isCSVImportOpen} onOpenChange={() => setIsCSVImportOpen(null)}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Import Purchase History for {isCSVImportOpen.symbol}</DialogTitle>
-            </DialogHeader>
-            <CSVImportForm 
-              holdingId={isCSVImportOpen.id} 
-              symbol={isCSVImportOpen.symbol}
-              onImport={handleImportCSV} 
-              isLoading={importCSVMutation.isPending}
-              accounts={accounts || []}
-              currentAccountId={(holdings?.find((h: any) => h.id === isCSVImportOpen.id) as any)?.accountId}
-            />
-          </DialogContent>
-        </Dialog>
-      )}
-    </div>
+          {purchaseHistoryOpen && (
+            <Dialog open={!!purchaseHistoryOpen} onOpenChange={() => setPurchaseHistoryOpen(null)}>
+              <DialogContent className="sm:max-w-[900px]">
+                <DialogHeader>
+                  <DialogTitle>Purchase History for {purchaseHistoryOpen.symbol}</DialogTitle>
+                </DialogHeader>
+                <PurchaseHistoryTable
+                  holdingId={purchaseHistoryOpen.id}
+                  symbol={purchaseHistoryOpen.symbol}
+                  portfolioId={selectedPortfolioId}
+                  onDelete={handleDeletePurchase}
+                  accounts={accounts || []}
+                />
+              </DialogContent>
+            </Dialog>
+          )}
+
+          {isCSVImportOpen && (
+            <Dialog open={!!isCSVImportOpen} onOpenChange={() => setIsCSVImportOpen(null)}>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Import Purchase History for {isCSVImportOpen.symbol}</DialogTitle>
+                </DialogHeader>
+                <CSVImportForm
+                  holdingId={isCSVImportOpen.id}
+                  symbol={isCSVImportOpen.symbol}
+                  onImport={handleImportCSV}
+                  isLoading={importCSVMutation.isPending}
+                  accounts={accounts || []}
+                  currentAccountId={(holdings?.find((h: any) => h.id === isCSVImportOpen.id) as any)?.accountId}
+                />
+              </DialogContent>
+            </Dialog>
+          )}
+        </div>
       ) : activeSubTab === "activities" ? (
         <Activities selectedPortfolioId={selectedPortfolioId} />
       ) : activeSubTab === "performance" ? (
@@ -1526,7 +1521,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
 function PortfolioAllocationChart({ data, cashPercent }: { data: any[], cashPercent: string }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const totalWithCash = parseFloat(cashPercent) + data.reduce((acc: number, item: any) => acc + parseFloat(item.percentage), 0);
-  
+
   useEffect(() => {
     if (canvasRef.current && data.length > 0) {
       const ctx = canvasRef.current.getContext("2d");
@@ -1575,14 +1570,14 @@ function PortfolioAllocationChart({ data, cashPercent }: { data: any[], cashPerc
   );
 }
 
-function PurchaseHistoryTable({ 
-  holdingId, 
+function PurchaseHistoryTable({
+  holdingId,
   symbol,
   portfolioId,
   onDelete,
   accounts
-}: { 
-  holdingId: number, 
+}: {
+  holdingId: number,
   symbol: string,
   portfolioId: number,
   onDelete: (purchaseId: number, holdingId: number, portfolioId: number, accountId: number, symbol?: string) => void,
@@ -1629,7 +1624,7 @@ function PurchaseHistoryTable({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-50 p-3 rounded-lg border border-border">
         <div className="flex items-center gap-2">
           <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Filter by Account:</span>
-          <select 
+          <select
             className="bg-white border border-slate-200 rounded px-2 py-1 text-xs font-bold text-slate-600 focus:outline-none h-8 min-w-[160px]"
             value={filterAccountId}
             onChange={(e) => setFilterAccountId(e.target.value)}
@@ -1641,9 +1636,9 @@ function PurchaseHistoryTable({
           </select>
         </div>
 
-        <Button 
-          variant="outline" 
-          size="sm" 
+        <Button
+          variant="outline"
+          size="sm"
           onClick={handleExportCSV}
           className="text-[10px] font-bold uppercase tracking-wider h-8 border-slate-200"
           disabled={!filteredPurchases || filteredPurchases.length === 0}
@@ -1673,7 +1668,7 @@ function PurchaseHistoryTable({
               const quantity = parseFloat(purchase.quantity);
               const price = parseFloat(purchase.price);
               const totalAmount = quantity * price;
-              
+
               return (
                 <tr key={purchase.id} className="border-b border-border hover:bg-white transition-colors">
                   <td className="py-3 px-4 font-mono whitespace-nowrap">{dateStr}</td>
@@ -1713,14 +1708,14 @@ function PurchaseHistoryTable({
 }
 
 function CSVImportForm({
-  holdingId, 
+  holdingId,
   symbol,
-  onImport, 
+  onImport,
   isLoading,
   accounts,
   currentAccountId
-}: { 
-  holdingId: number, 
+}: {
+  holdingId: number,
   symbol: string,
   onImport: (holdingId: number, symbol: string, csv: string, accountId: number) => void,
   isLoading: boolean,
@@ -1764,7 +1759,7 @@ function CSVImportForm({
     <div className="space-y-6 pt-4">
       <div className="space-y-2">
         <label className="text-xs font-bold text-slate-500 uppercase">Target Account</label>
-        <select 
+        <select
           className="bg-white border border-input rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary h-10 w-full"
           value={selectedAccountId}
           onChange={(e) => setSelectedAccountId(e.target.value)}
@@ -1782,12 +1777,12 @@ function CSVImportForm({
         <div className="text-xs text-slate-600 space-y-2">
           <p>File should include a header: <code>date,quantity,cost</code></p>
           <div className="p-2 bg-white rounded border border-slate-200 font-mono text-[10px]">
-            date,quantity,cost<br/>
+            date,quantity,cost<br />
             Dec-19-2025,10,$27.50
           </div>
         </div>
       </div>
-      
+
       <div className="space-y-2">
         <label className="text-xs font-bold text-slate-500 uppercase">Select Source File</label>
         <div className="flex items-center justify-center w-full">
@@ -1801,10 +1796,10 @@ function CSVImportForm({
           </label>
         </div>
       </div>
-      
-      <Button 
-        onClick={handleUpload} 
-        className="w-full py-6 text-sm font-bold shadow-lg shadow-primary/10" 
+
+      <Button
+        onClick={handleUpload}
+        className="w-full py-6 text-sm font-bold shadow-lg shadow-primary/10"
         disabled={!file || isLoading}
       >
         {isLoading ? (
