@@ -519,8 +519,8 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
   const subTabs = [
     { id: "overview", label: "Overview", icon: <LayoutDashboard className="w-3.5 h-3.5" /> },
     { id: "activities", label: "Activities", icon: <List className="w-3.5 h-3.5" /> },
-    { id: "performance", label: "Performance", icon: <Activity className="w-3.5 h-3.5" /> },
     { id: "dividends", label: "Dividends", icon: <DollarSign className="w-3.5 h-3.5" /> },
+    { id: "performance", label: "Performance", icon: <Activity className="w-3.5 h-3.5" /> }, 
   ];
 
   return (
