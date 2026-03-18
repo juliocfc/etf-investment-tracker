@@ -13,7 +13,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Plus, Trash2, RefreshCw, ShoppingCart, History, FolderPlus, FileUp, Wallet, TrendingUp, Info, ArrowUpCircle, CheckCircle2, MoreVertical, CalendarPlus, Download, List, Activity, DollarSign, LayoutDashboard, Edit2 } from "lucide-react";
+import { Plus, Trash2, RefreshCw, ShoppingCart, History, FolderPlus, FileUp, Wallet, TrendingUp, Info, ArrowUpCircle, ArrowDownCircle, CheckCircle2, MoreVertical, CalendarPlus, Download, List, Activity, DollarSign, LayoutDashboard, Edit2 } from "lucide-react";
 import { toast } from "sonner";
 import { formatCurrency, formatNumber, formatDate } from "@/lib/utils";
 import React, { useEffect, useRef, useState, useMemo } from "react";
@@ -688,83 +688,73 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                           {formatCurrency(accDetails.totalValue)}
                         </td>
                         <td className="py-4 px-6">
-                          <div className="flex items-center justify-center gap-2">
-                            <Button 
-                              size="sm" 
-                              variant="ghost"
-                              onClick={() => setEditingAccount({ id: account.id, name: account.name, number: account.number || "" })}
-                              className="h-8 w-8 p-0 text-slate-400 hover:text-primary"
-                              title="Rename Account"
-                            >
-                              <Edit2 className="h-3.5 w-3.5" />
-                            </Button>
-                            <Button 
-                              size="sm" 
-                              variant="outline"
-                              onClick={() => {
-                                setAdjustCashData({ 
-                                  accountId: account.id.toString(), 
-                                  amount: "", 
-                                  type: "deposit", 
-                                  description: "", 
-                                  date: formatDate(new Date()) 
-                                });
-                                setIsAdjustCashDialogOpen(true);
-                              }}
-                              className="h-8 text-[10px] font-bold uppercase border-green-200 text-green-700 hover:bg-green-50 hover:text-green-800"
-                            >
-                              Deposit
-                            </Button>
-                            <Button 
-                              size="sm" 
-                              variant="outline"
-                              onClick={() => {
-                                setAdjustCashData({ 
-                                  accountId: account.id.toString(), 
-                                  amount: "", 
-                                  type: "withdrawal", 
-                                  description: "", 
-                                  date: formatDate(new Date()) 
-                                });
-                                setIsAdjustCashDialogOpen(true);
-                              }}
-                              className="h-8 text-[10px] font-bold uppercase border-red-200 text-red-700 hover:bg-red-50 hover:text-red-800"
-                            >
-                              Withdraw
-                            </Button>
-                            <Button 
-                              size="sm" 
-                              variant="ghost"
-                              onClick={() => {
-                                setHistoricalCashData(prev => ({ ...prev, accountId: account.id.toString(), amount: "" }));
-                                setIsHistoricalCashDialogOpen(true);
-                              }}
-                              className="h-8 w-8 p-0 text-slate-400 hover:text-primary hover:bg-slate-100"
-                              title="Record Historical Balance"
-                            >
-                              <CalendarPlus className="h-4 w-4" />
-                            </Button>
-                            <Button 
-                              size="sm" 
-                              variant="ghost"
-                              onClick={() => setCashHistoryOpen({ id: account.id, name: account.name })}
-                              className="h-8 w-8 p-0 text-slate-400 hover:text-primary hover:bg-slate-100"
-                              title="View History"
-                            >
-                              <History className="h-4 w-4" />
-                            </Button>
-                            <Button 
-                              size="sm" 
-                              variant="ghost" 
-                              className="h-8 w-8 p-0 text-slate-300 hover:text-red-600"
-                              onClick={() => {
-                                if (confirm("Delete this account? Associated holdings will remain but lose their account link.")) {
-                                  deleteAccountMutation.mutate({ id: account.id });
-                                }
-                              }}
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
+                          <div className="flex items-center justify-center">
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-primary">
+                                  <MoreVertical className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="w-56">
+                                <DropdownMenuLabel>Manage Account</DropdownMenuLabel>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem onClick={() => setEditingAccount({ id: account.id, name: account.name, number: account.number || "" })}>
+                                  <Edit2 className="mr-2 h-4 w-4 text-slate-500" />
+                                  <span>Rename Account</span>
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem onClick={() => {
+                                  setAdjustCashData({ 
+                                    accountId: account.id.toString(), 
+                                    amount: "", 
+                                    type: "deposit", 
+                                    description: "", 
+                                    date: formatDate(new Date()) 
+                                  });
+                                  setIsAdjustCashDialogOpen(true);
+                                }}>
+                                  <ArrowUpCircle className="mr-2 h-4 w-4 text-green-600" />
+                                  <span>Deposit Cash</span>
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => {
+                                  setAdjustCashData({ 
+                                    accountId: account.id.toString(), 
+                                    amount: "", 
+                                    type: "withdrawal", 
+                                    description: "", 
+                                    date: formatDate(new Date()) 
+                                  });
+                                  setIsAdjustCashDialogOpen(true);
+                                }}>
+                                  <ArrowDownCircle className="mr-2 h-4 w-4 text-red-600" />
+                                  <span>Withdraw Cash</span>
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => {
+                                  setHistoricalCashData(prev => ({ ...prev, accountId: account.id.toString(), amount: "" }));
+                                  setIsHistoricalCashDialogOpen(true);
+                                }}>
+                                  <CalendarPlus className="mr-2 h-4 w-4 text-slate-500" />
+                                  <span>Historical Balance</span>
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem onClick={() => setCashHistoryOpen({ id: account.id, name: account.name })}>
+                                  <History className="mr-2 h-4 w-4 text-slate-500" />
+                                  <span>View Cash History</span>
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem 
+                                  onClick={() => {
+                                    if (confirm("Delete this account? Associated holdings will remain but lose their account link.")) {
+                                      deleteAccountMutation.mutate({ id: account.id });
+                                    }
+                                  }}
+                                  className="text-red-600 focus:text-red-600 focus:bg-red-50"
+                                >
+                                  <Trash2 className="mr-2 h-4 w-4" />
+                                  <span>Delete Account</span>
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           </div>
                         </td>
                       </tr>
