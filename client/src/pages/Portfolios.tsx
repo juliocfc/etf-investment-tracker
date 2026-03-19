@@ -126,7 +126,7 @@ const Portfolios: React.FC = () => {
         <Card className="bg-white border-none shadow-sm shadow-slate-200/50">
           <CardContent className="pt-6">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total Cash Reserve</span>
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total Cash</span>
               <Wallet className="w-4 h-4 text-slate-400" />
             </div>
             <div className="flex items-baseline gap-2">
@@ -151,9 +151,9 @@ const Portfolios: React.FC = () => {
                 <th className="text-right py-4 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Total Value</th>
                 <th className="text-right py-4 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Investments</th>
                 <th className="text-right py-4 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Cost Basis</th>
-                <th className="text-right py-4 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Gains / Loss</th>
-                <th className="text-right py-4 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">% Return</th>
-                <th className="text-right py-4 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Cash Reserve</th>
+                <th className="text-right py-4 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Gain/Loss</th>
+                <th className="text-right py-4 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Gain/Loss %</th>
+                <th className="text-right py-4 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Cash</th>
                 <th className="text-center py-4 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Actions</th>
               </tr>
             </thead>

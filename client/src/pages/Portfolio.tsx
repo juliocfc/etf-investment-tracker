@@ -654,7 +654,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
               </div>
 
               <div className="data-card border-l-4 border-l-slate-400">
-                <div className="data-card-title">Cash Reserve</div>
+                <div className="data-card-title">Cash</div>
                 <div className="data-card-value">{formatCurrency(summary?.cashBalance)}</div>
                 <div className="data-card-subtitle flex items-center justify-between text-slate-500">
                   <span>Liquid Funds</span>
@@ -1418,7 +1418,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
           <Dialog open={isAdjustCashDialogOpen} onOpenChange={setIsAdjustCashDialogOpen}>
             <DialogContent className="sm:max-w-[425px]">
               <DialogHeader>
-                <DialogTitle>Cash Reserve Transaction</DialogTitle>
+                <DialogTitle>Cash Transaction</DialogTitle>
               </DialogHeader>
               <div className="space-y-4 pt-4">
                 <div className="grid gap-1">

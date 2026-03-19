@@ -10,7 +10,7 @@ export function getEnv() {
     forgeApiKey: process.env.BUILT_IN_FORGE_API_KEY ?? "",
     googleOAuthClientId: process.env.GOOGLE_OAUTH_CLIENT_ID ?? "",
     googleOAuthClientSecret: process.env.GOOGLE_OAUTH_CLIENT_SECRET ?? "",
-    alphaVantageApiKey: process.env.ALPHA_VANTAGE_API_KEY ?? "UIEXLBCF4I1JG7E5",
+    alphaVantageApiKey: process.env.ALPHA_VANTAGE_API_KEY ?? "",
   };
 }
 
