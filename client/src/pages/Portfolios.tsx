@@ -52,14 +52,21 @@ const Portfolios: React.FC = () => {
   });
 
   const totals = useMemo(() => {
-    if (!portfolios) return { investment: 0, cash: 0, overall: 0, investmentPercent: "0", cashPercent: "0" };
+    if (!portfolios) return { investment: 0, cash: 0, overall: 0, totalCost: 0, gain: 0, gainPercent: "0", investmentPercent: "0", cashPercent: "0" };
     const investment = portfolios.reduce((acc, p) => acc + parseFloat(p.investmentValue), 0);
     const cash = portfolios.reduce((acc, p) => acc + parseFloat(p.cashValue), 0);
+    const totalCost = portfolios.reduce((acc, p) => acc + parseFloat(p.totalCost || "0"), 0);
     const overall = investment + cash;
+    const gain = investment - totalCost;
+    const gainPercent = totalCost > 0 ? ((gain / totalCost) * 100).toFixed(2) : "0.00";
+    
     return {
       investment,
       cash,
       overall,
+      totalCost,
+      gain,
+      gainPercent,
       investmentPercent: overall > 0 ? ((investment / overall) * 100).toFixed(1) : "0",
       cashPercent: overall > 0 ? ((cash / overall) * 100).toFixed(1) : "0",
     };
@@ -143,6 +150,9 @@ const Portfolios: React.FC = () => {
                 <th className="text-left py-4 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Portfolio Name</th>
                 <th className="text-right py-4 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Total Value</th>
                 <th className="text-right py-4 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Investments</th>
+                <th className="text-right py-4 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Cost Basis</th>
+                <th className="text-right py-4 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Gains / Loss</th>
+                <th className="text-right py-4 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">% Return</th>
                 <th className="text-right py-4 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Cash Reserve</th>
                 <th className="text-center py-4 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Actions</th>
               </tr>
@@ -152,6 +162,7 @@ const Portfolios: React.FC = () => {
                 const pTotal = parseFloat(portfolio.totalValue);
                 const pInvPercent = pTotal > 0 ? ((parseFloat(portfolio.investmentValue) / pTotal) * 100).toFixed(1) : "0";
                 const pCashPercent = pTotal > 0 ? ((parseFloat(portfolio.cashValue) / pTotal) * 100).toFixed(1) : "0";
+                const isGain = parseFloat(portfolio.gain || "0") >= 0;
 
                 return (
                   <React.Fragment key={portfolio.id}>
@@ -167,8 +178,15 @@ const Portfolios: React.FC = () => {
                       <td className="py-4 px-4 font-bold text-slate-800">{portfolio.name}</td>
                       <td className="py-4 px-4 text-right font-mono font-bold text-primary">{formatCurrency(portfolio.totalValue)}</td>
                       <td className="py-4 px-4 text-right">
-                        <div className="font-mono font-medium text-green-600">{formatCurrency(portfolio.investmentValue)}</div>
+                        <div className="font-mono font-medium text-slate-700">{formatCurrency(portfolio.investmentValue)}</div>
                         <div className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter">{pInvPercent}%</div>
+                      </td>
+                      <td className="py-4 px-4 text-right font-mono text-slate-500 text-xs">{formatCurrency(portfolio.totalCost || "0")}</td>
+                      <td className={`py-4 px-4 text-right font-mono text-xs font-bold ${isGain ? "text-green-600" : "text-red-600"}`}>
+                        {isGain ? "+" : ""}{formatCurrency(portfolio.gain || "0")}
+                      </td>
+                      <td className={`py-4 px-4 text-right font-mono text-xs font-bold ${isGain ? "text-green-600" : "text-red-600"}`}>
+                        {isGain ? "+" : ""}{portfolio.gainPercent || "0.00"}%
                       </td>
                       <td className="py-4 px-4 text-right">
                         <div className="font-mono font-medium text-slate-600">{formatCurrency(portfolio.cashValue)}</div>
@@ -198,7 +216,7 @@ const Portfolios: React.FC = () => {
                     <AnimatePresence>
                       {expandedPortfolios.has(portfolio.id) && (
                         <tr>
-                          <td colSpan={6} className="p-0 border-b border-border bg-slate-50/30">
+                          <td colSpan={9} className="p-0 border-b border-border bg-slate-50/30">
                             <motion.div
                               initial={{ height: 0, opacity: 0 }}
                               animate={{ height: "auto", opacity: 1 }}
@@ -212,12 +230,15 @@ const Portfolios: React.FC = () => {
                                   <div className="h-[1px] flex-1 bg-slate-200"></div>
                                 </div>
                                 
-                                <table className="w-full text-sm">
+                            <table className="w-full text-sm">
                                   <thead>
                                     <tr className="border-b border-slate-200">
                                       <th className="text-left py-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Account</th>
                                       <th className="text-right py-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total Value</th>
                                       <th className="text-right py-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Investments</th>
+                                      <th className="text-right py-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Cost Basis</th>
+                                      <th className="text-right py-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Gains / Loss</th>
+                                      <th className="text-right py-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">% Return</th>
                                       <th className="text-right py-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Cash</th>
                                     </tr>
                                   </thead>
@@ -226,6 +247,7 @@ const Portfolios: React.FC = () => {
                                       const accTotal = parseFloat(acc.totalValue);
                                       const accInvPercent = accTotal > 0 ? ((parseFloat(acc.investmentValue) / accTotal) * 100).toFixed(1) : "0";
                                       const accCashPercent = accTotal > 0 ? ((parseFloat(acc.cashValue) / accTotal) * 100).toFixed(1) : "0";
+                                      const accIsGain = parseFloat(acc.gain || "0") >= 0;
 
                                       return (
                                         <tr key={acc.id} className="border-b border-slate-100 last:border-0">
@@ -237,6 +259,13 @@ const Portfolios: React.FC = () => {
                                           <td className="py-2.5 text-right">
                                             <div className="font-mono text-slate-600">{formatCurrency(acc.investmentValue)}</div>
                                             <div className="text-[8px] font-bold text-slate-400 uppercase">{accInvPercent}%</div>
+                                          </td>
+                                          <td className="py-2.5 text-right font-mono text-slate-500 text-[10px]">{formatCurrency(acc.totalCost || "0")}</td>
+                                          <td className={`py-2.5 text-right font-mono text-[10px] font-bold ${accIsGain ? "text-green-600" : "text-red-600"}`}>
+                                            {accIsGain ? "+" : ""}{formatCurrency(acc.gain || "0")}
+                                          </td>
+                                          <td className={`py-2.5 text-right font-mono text-[10px] font-bold ${accIsGain ? "text-green-600" : "text-red-600"}`}>
+                                            {accIsGain ? "+" : ""}{acc.gainPercent || "0.00"}%
                                           </td>
                                           <td className="py-2.5 text-right">
                                             <div className="font-mono text-slate-600">{formatCurrency(acc.cashValue)}</div>
@@ -251,6 +280,13 @@ const Portfolios: React.FC = () => {
                                       <td className="py-2.5 text-right">
                                         <div className="font-mono text-slate-700">{formatCurrency(portfolio.investmentValue)}</div>
                                         <div className="text-[8px] font-bold text-slate-400 uppercase">{pInvPercent}%</div>
+                                      </td>
+                                      <td className="py-2.5 text-right font-mono text-slate-500 text-[10px]">{formatCurrency(portfolio.totalCost || "0")}</td>
+                                      <td className={`py-2.5 text-right font-mono text-[10px] font-bold ${isGain ? "text-green-600" : "text-red-600"}`}>
+                                        {isGain ? "+" : ""}{formatCurrency(portfolio.gain || "0")}
+                                      </td>
+                                      <td className={`py-2.5 text-right font-mono text-[10px] font-bold ${isGain ? "text-green-600" : "text-red-600"}`}>
+                                        {isGain ? "+" : ""}{portfolio.gainPercent || "0.00"}%
                                       </td>
                                       <td className="py-2.5 text-right">
                                         <div className="font-mono text-slate-700">{formatCurrency(portfolio.cashValue)}</div>
@@ -274,8 +310,15 @@ const Portfolios: React.FC = () => {
                 <td colSpan={2} className="py-5 px-4 uppercase text-xs tracking-widest text-slate-600">Consolidated Totals</td>
                 <td className="py-5 px-4 text-right font-mono text-xl text-primary">{formatCurrency(totals.overall)}</td>
                 <td className="py-5 px-4 text-right">
-                  <div className="font-mono text-lg text-green-700">{formatCurrency(totals.investment)}</div>
+                  <div className="font-mono text-lg text-slate-800">{formatCurrency(totals.investment)}</div>
                   <div className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">{totals.investmentPercent}%</div>
+                </td>
+                <td className="py-5 px-4 text-right font-mono text-slate-500 text-sm">{formatCurrency(totals.totalCost)}</td>
+                <td className={`py-5 px-4 text-right font-mono text-sm ${parseFloat(totals.gain.toString()) >= 0 ? "text-green-700" : "text-red-700"}`}>
+                  {parseFloat(totals.gain.toString()) >= 0 ? "+" : ""}{formatCurrency(totals.gain)}
+                </td>
+                <td className={`py-5 px-4 text-right font-mono text-sm ${parseFloat(totals.gain.toString()) >= 0 ? "text-green-700" : "text-red-700"}`}>
+                  {parseFloat(totals.gain.toString()) >= 0 ? "+" : ""}{totals.gainPercent}%
                 </td>
                 <td className="py-5 px-4 text-right">
                   <div className="font-mono text-lg text-slate-700">{formatCurrency(totals.cash)}</div>

@@ -50,10 +50,15 @@ export const portfolioRouter = router({
         // Calculate investment value for this account
         const holdings = await getUserEtfHoldings(ctx.user.id, portfolio.id, account.id);
         let accountInvestmentValue = 0;
+        let accountTotalCost = 0;
+
         for (const holding of holdings) {
           const currentPrice = holding.currentPrice ? parseFloat(holding.currentPrice.toString()) : 0;
+          const purchasePrice = holding.purchasePrice ? parseFloat(holding.purchasePrice.toString()) : 0;
           const quantity = parseFloat(holding.quantity.toString());
+          
           accountInvestmentValue += currentPrice * quantity;
+          accountTotalCost += purchasePrice * quantity;
         }
 
         // Calculate cash value for this account
@@ -68,12 +73,17 @@ export const portfolioRouter = router({
           .then((rows: any[]) => rows[0]);
         
         const accountCashValue = cashRow ? parseFloat(cashRow.amount.toString()) : 0;
+        const accountGain = accountInvestmentValue - accountTotalCost;
+        const accountGainPercent = accountTotalCost > 0 ? (accountGain / accountTotalCost) * 100 : 0;
 
         accountDetails.push({
           id: account.id,
           name: account.name,
           number: account.number,
           investmentValue: accountInvestmentValue.toFixed(2),
+          totalCost: accountTotalCost.toFixed(2),
+          gain: accountGain.toFixed(2),
+          gainPercent: accountGainPercent.toFixed(2),
           cashValue: accountCashValue.toFixed(2),
           totalValue: (accountInvestmentValue + accountCashValue).toFixed(2),
         });
@@ -82,11 +92,18 @@ export const portfolioRouter = router({
         portfolioCashValue += accountCashValue;
       }
 
+      const portfolioTotalCost = accountDetails.reduce((acc, a) => acc + parseFloat(a.totalCost), 0);
+      const portfolioGain = portfolioInvestmentValue - portfolioTotalCost;
+      const portfolioGainPercent = portfolioTotalCost > 0 ? (portfolioGain / portfolioTotalCost) * 100 : 0;
+
       result.push({
         id: portfolio.id,
         name: portfolio.name,
         description: portfolio.description,
         investmentValue: portfolioInvestmentValue.toFixed(2),
+        totalCost: portfolioTotalCost.toFixed(2),
+        gain: portfolioGain.toFixed(2),
+        gainPercent: portfolioGainPercent.toFixed(2),
         cashValue: portfolioCashValue.toFixed(2),
         totalValue: (portfolioInvestmentValue + portfolioCashValue).toFixed(2),
         accounts: accountDetails,

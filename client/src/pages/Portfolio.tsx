@@ -13,7 +13,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Plus, Trash2, RefreshCw, ShoppingCart, History, FolderPlus, FileUp, Wallet, TrendingUp, Info, ArrowUpCircle, ArrowDownCircle, CheckCircle2, MoreVertical, CalendarPlus, Download, List, Activity, DollarSign, LayoutDashboard, Edit2 } from "lucide-react";
+import { Plus, Trash2, RefreshCw, ShoppingCart, History, FolderPlus, FileUp, Wallet, TrendingUp, Info, ArrowUpCircle, ArrowDownCircle, CheckCircle2, MoreVertical, CalendarPlus, Download, List, Activity, DollarSign, LayoutDashboard, Edit2, ArrowUpDown, ChevronUp, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 import { formatCurrency, formatNumber, formatDate } from "@/lib/utils";
 import React, { useEffect, useRef, useState, useMemo } from "react";
@@ -37,6 +37,10 @@ const getLastTradingDay = () => {
 
 export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId: number }) {
   const [activeSubTab, setActiveSubTab] = useState("overview");
+  const [sortConfig, setSortConfig] = useState<{ key: string; direction: "asc" | "desc" } | null>({
+    key: "symbol",
+    direction: "asc"
+  });
   const [selectedAccountId, setSelectedAccountId] = useState<number | undefined>(undefined);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isTradeDialogOpen, setIsTradeDialogOpen] = useState<{ id: number, symbol: string } | null>(null);
@@ -148,6 +152,38 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
     { portfolioId: selectedPortfolioId, accountId: selectedAccountId },
     { enabled: !!selectedPortfolioId }
   );
+
+  const requestSort = (key: string) => {
+    let direction: "asc" | "desc" = "asc";
+    if (sortConfig && sortConfig.key === key && sortConfig.direction === "asc") {
+      direction = "desc";
+    }
+    setSortConfig({ key, direction });
+  };
+
+  const sortedHoldings = useMemo(() => {
+    if (!summary?.holdings) return [];
+    const sortableItems = [...summary.holdings];
+    if (sortConfig !== null) {
+      sortableItems.sort((a, b) => {
+        let aValue = a[sortConfig.key];
+        let bValue = b[sortConfig.key];
+
+        // Handle numeric strings
+        if (typeof aValue === 'string' && !isNaN(Number(aValue))) aValue = Number(aValue);
+        if (typeof bValue === 'string' && !isNaN(Number(bValue))) bValue = Number(bValue);
+
+        if (aValue < bValue) {
+          return sortConfig.direction === "asc" ? -1 : 1;
+        }
+        if (aValue > bValue) {
+          return sortConfig.direction === "asc" ? 1 : -1;
+        }
+        return 0;
+      });
+    }
+    return sortableItems;
+  }, [summary?.holdings, sortConfig]);
 
   const { data: holdings, refetch: refetchHoldings } = trpc.etf.getHoldings.useQuery(
     { portfolioId: selectedPortfolioId, accountId: selectedAccountId },
@@ -1036,20 +1072,116 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                 <table className="w-full">
                   <thead>
                     <tr className="bg-slate-50 border-b border-border">
-                      <th className="text-left py-3 px-3 text-slate-600">Asset</th>
-                      <th className="text-right py-3 px-3 text-slate-600">Qty</th>
-                      <th className="text-right py-3 px-3 text-slate-600">Avg Cost</th>
-                      <th className="text-right py-3 px-3 text-slate-600">Total Cost</th>
-                      <th className="text-right py-3 px-3 text-slate-600">Mkt Price</th>
-                      <th className="text-right py-3 px-3 text-slate-600">Mkt Value</th>
-                      <th className="text-right py-3 px-3 text-slate-600">Gain/Loss</th>
-                      <th className="text-right py-3 px-3 text-slate-600">Return</th>
+                      <th
+                        className="text-left py-3 px-3 text-slate-600 cursor-pointer hover:bg-slate-100 transition-colors group"
+                        onClick={() => requestSort("symbol")}
+                      >
+                        <div className="flex items-center gap-1">
+                          Asset
+                          {sortConfig?.key === "symbol" ? (
+                            sortConfig.direction === "asc" ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />
+                          ) : (
+                            <ArrowUpDown className="w-3 h-3 opacity-0 group-hover:opacity-100" />
+                          )}
+                        </div>
+                      </th>
+                      <th
+                        className="text-right py-3 px-3 text-slate-600 cursor-pointer hover:bg-slate-100 transition-colors group"
+                        onClick={() => requestSort("quantity")}
+                      >
+                        <div className="flex items-center justify-end gap-1">
+                          Qty
+                          {sortConfig?.key === "quantity" ? (
+                            sortConfig.direction === "asc" ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />
+                          ) : (
+                            <ArrowUpDown className="w-3 h-3 opacity-0 group-hover:opacity-100" />
+                          )}
+                        </div>
+                      </th>
+                      <th
+                        className="text-right py-3 px-3 text-slate-600 cursor-pointer hover:bg-slate-100 transition-colors group"
+                        onClick={() => requestSort("averageCost")}
+                      >
+                        <div className="flex items-center justify-end gap-1">
+                          Avg Cost
+                          {sortConfig?.key === "averageCost" ? (
+                            sortConfig.direction === "asc" ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />
+                          ) : (
+                            <ArrowUpDown className="w-3 h-3 opacity-0 group-hover:opacity-100" />
+                          )}
+                        </div>
+                      </th>
+                      <th
+                        className="text-right py-3 px-3 text-slate-600 cursor-pointer hover:bg-slate-100 transition-colors group"
+                        onClick={() => requestSort("totalCost")}
+                      >
+                        <div className="flex items-center justify-end gap-1">
+                          Total Cost
+                          {sortConfig?.key === "totalCost" ? (
+                            sortConfig.direction === "asc" ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />
+                          ) : (
+                            <ArrowUpDown className="w-3 h-3 opacity-0 group-hover:opacity-100" />
+                          )}
+                        </div>
+                      </th>
+                      <th
+                        className="text-right py-3 px-3 text-slate-600 cursor-pointer hover:bg-slate-100 transition-colors group"
+                        onClick={() => requestSort("currentPrice")}
+                      >
+                        <div className="flex items-center justify-end gap-1">
+                          Mkt Price
+                          {sortConfig?.key === "currentPrice" ? (
+                            sortConfig.direction === "asc" ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />
+                          ) : (
+                            <ArrowUpDown className="w-3 h-3 opacity-0 group-hover:opacity-100" />
+                          )}
+                        </div>
+                      </th>
+                      <th
+                        className="text-right py-3 px-3 text-slate-600 cursor-pointer hover:bg-slate-100 transition-colors group"
+                        onClick={() => requestSort("currentValue")}
+                      >
+                        <div className="flex items-center justify-end gap-1">
+                          Mkt Value
+                          {sortConfig?.key === "currentValue" ? (
+                            sortConfig.direction === "asc" ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />
+                          ) : (
+                            <ArrowUpDown className="w-3 h-3 opacity-0 group-hover:opacity-100" />
+                          )}
+                        </div>
+                      </th>
+                      <th
+                        className="text-right py-3 px-3 text-slate-600 cursor-pointer hover:bg-slate-100 transition-colors group"
+                        onClick={() => requestSort("gain")}
+                      >
+                        <div className="flex items-center justify-end gap-1">
+                          Gain/Loss
+                          {sortConfig?.key === "gain" ? (
+                            sortConfig.direction === "asc" ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />
+                          ) : (
+                            <ArrowUpDown className="w-3 h-3 opacity-0 group-hover:opacity-100" />
+                          )}
+                        </div>
+                      </th>
+                      <th
+                        className="text-right py-3 px-3 text-slate-600 cursor-pointer hover:bg-slate-100 transition-colors group"
+                        onClick={() => requestSort("gainPercent")}
+                      >
+                        <div className="flex items-center justify-end gap-1">
+                          Gain/Loss %
+                          {sortConfig?.key === "gainPercent" ? (
+                            sortConfig.direction === "asc" ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />
+                          ) : (
+                            <ArrowUpDown className="w-3 h-3 opacity-0 group-hover:opacity-100" />
+                          )}
+                        </div>
+                      </th>
                       <th className="text-right py-3 px-3 text-slate-600">Allocation</th>
                       <th className="text-center py-3 px-3 text-slate-600">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {summary?.holdings?.map((holding: any) => {
+                    {sortedHoldings.map((holding: any) => {
                       const allocation = summary?.investmentAllocationBreakdown?.find((a: any) => a.symbol === holding.symbol);
                       const isGain = parseFloat(holding.gain) >= 0;
                       const isUnderWeight = parseFloat(allocation?.percentage || "0") < (parseFloat(holding.desiredAllocation) || 0);
@@ -1186,7 +1318,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
             </Card>
 
             {/* Allocation & Management Grid */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <div className="grid grid-cols-1 gap-8">
               {/* Portfolio Allocation Pie Chart */}
               {summary && (
                 <Card className="p-6 bg-white shadow-sm border border-border">
@@ -1196,29 +1328,32 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                     </div>
                     <h2 className="text-lg font-bold text-slate-800">Portfolio Allocation</h2>
                   </div>
-                  <div className="flex flex-col md:flex-row items-center gap-8">
-                    <PortfolioAllocationChart data={summary.allocationBreakdown} cashPercent={summary.cashAllocationPercent} />
-                    <div className="flex-1 w-full">
-                      <div className="space-y-2">
+                  <div className="flex flex-col md:flex-row items-center justify-center gap-16">
+                    <div className="shrink-0 flex items-center justify-center">
+                      <PortfolioAllocationChart data={summary.allocationBreakdown} cashPercent={summary.cashAllocationPercent} />
+                    </div>
+                    <div className="flex-1 w-full max-w-2xl">
+                      <div className="space-y-3">
                         {summary.allocationBreakdown.map((item: any, index: number) => (
-                          <div key={item.symbol} className="flex justify-between items-center text-sm p-2 hover:bg-slate-50 rounded transition-colors">
-                            <div className="flex items-center gap-3">
+                          <div key={item.symbol} className="flex justify-between items-center text-sm p-3 hover:bg-slate-50 rounded transition-colors">
+                            <div className="flex items-center gap-4">
                               <div
-                                className="w-3 h-3 rounded-full shrink-0"
+                                className="w-4 h-4 rounded-full shrink-0"
                                 style={{ backgroundColor: CHART_COLORS[index % CHART_COLORS.length] }}
                               />
-                              <span className="font-bold text-primary w-12">{item.symbol}</span>
-                              <span className="text-slate-500 text-xs truncate max-w-[150px]">{item.name}</span>
+                              <span className="font-bold text-primary w-16">{item.symbol}</span>
+                              <span className="text-slate-500 text-xs truncate max-w-[250px] md:max-w-[400px]">{item.name}</span>
                             </div>
-                            <span className="font-mono font-bold text-slate-700">{item.percentage}%</span>
+                            <span className="font-mono font-bold text-slate-700 text-base">{item.percentage}%</span>
                           </div>
                         ))}
-                        <div className="border-t border-slate-100 pt-2 mt-2 flex justify-between items-center text-sm p-2 bg-slate-50 rounded">
-                          <div className="flex items-center gap-3">
-                            <div className="w-3 h-3 rounded-full shrink-0 bg-slate-200" />
-                            <span className="font-bold text-slate-600">Cash Reserve</span>
+                        <div className="border-t border-slate-100 pt-3 mt-3 flex justify-between items-center text-sm p-3 bg-slate-50 rounded">
+                          <div className="flex items-center gap-4">
+                            <div className="w-4 h-4 rounded-full shrink-0 bg-slate-200" />
+                            <span className="font-bold text-slate-600 w-16">CASH</span>
+                            <span className="text-slate-500 text-xs">Cash Reserve</span>
                           </div>
-                          <span className="font-mono font-bold text-slate-700">{summary.cashAllocationPercent}%</span>
+                          <span className="font-mono font-bold text-slate-700 text-base">{summary.cashAllocationPercent}%</span>
                         </div>
                       </div>
                     </div>
@@ -1527,12 +1662,13 @@ function PortfolioAllocationChart({ data, cashPercent }: { data: any[], cashPerc
       const ctx = canvasRef.current.getContext("2d");
       if (!ctx) return;
 
-      const centerX = 100;
-      const centerY = 100;
-      const radius = 80;
+      const size = 400;
+      const centerX = size / 2;
+      const centerY = size / 2;
+      const radius = size * 0.44;
       let startAngle = 0;
 
-      ctx.clearRect(0, 0, 200, 200);
+      ctx.clearRect(0, 0, size, size);
 
       // Add cash to data for chart
       const chartData = [...data];
@@ -1549,7 +1685,7 @@ function PortfolioAllocationChart({ data, cashPercent }: { data: any[], cashPerc
         ctx.fillStyle = item.symbol === "Cash" ? "#e2e8f0" : CHART_COLORS[index % CHART_COLORS.length];
         ctx.fill();
         ctx.strokeStyle = "white";
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 4;
         ctx.stroke();
         startAngle += sliceAngle;
       });
@@ -1557,7 +1693,7 @@ function PortfolioAllocationChart({ data, cashPercent }: { data: any[], cashPerc
       // Draw center hole for donut look
       ctx.beginPath();
       ctx.moveTo(centerX, centerY);
-      ctx.arc(centerX, centerY, radius * 0.6, 0, 2 * Math.PI);
+      ctx.arc(centerX, centerY, radius * 0.68, 0, 2 * Math.PI);
       ctx.fillStyle = "white";
       ctx.fill();
     }
@@ -1565,7 +1701,7 @@ function PortfolioAllocationChart({ data, cashPercent }: { data: any[], cashPerc
 
   return (
     <div className="flex flex-col items-center">
-      <canvas ref={canvasRef} width="200" height="200" className="drop-shadow-sm" />
+      <canvas ref={canvasRef} width="400" height="400" className="drop-shadow-lg" />
     </div>
   );
 }
