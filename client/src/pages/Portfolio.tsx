@@ -38,8 +38,8 @@ const getLastTradingDay = () => {
 export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId: number }) {
   const [activeSubTab, setActiveSubTab] = useState("overview");
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: "asc" | "desc" } | null>({
-    key: "symbol",
-    direction: "asc"
+    key: "currentValue",
+    direction: "desc"
   });
   const [selectedAccountId, setSelectedAccountId] = useState<number | undefined>(undefined);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
