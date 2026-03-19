@@ -13,7 +13,7 @@ import { trpc } from "@/lib/trpc";
 import { useState, useEffect } from "react";
 import { TrendingUp, ShieldCheck, Globe, Zap, BarChart3, Shield } from "lucide-react";
 import { toast } from "sonner";
-import { Route, Switch, useLocation } from "wouter";
+import { Route, Switch, useLocation, Link } from "wouter";
 
 function DashboardRouter() {
   const [activeTab, setActiveTab] = useState("portfolio");
@@ -149,8 +149,8 @@ function Router() {
 
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-        <div className="max-w-4xl w-full bg-white rounded-3xl shadow-2xl shadow-slate-200 border border-white flex flex-col md:flex-row overflow-hidden">
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
+        <div className="max-w-4xl w-full bg-white rounded-3xl shadow-2xl shadow-slate-200 border border-white flex flex-col md:flex-row overflow-hidden mb-8">
           {/* Left side: Branding/Value Prop */}
           <div className="md:w-1/2 bg-[#004a99] p-12 text-white flex flex-col justify-between">
             <div className="space-y-6">
@@ -202,12 +202,12 @@ function Router() {
             <div className="mt-8 space-y-4 w-full">
               <p className="text-[10px] text-slate-400 font-medium">
                 By signing in, you agree to our{" "}
-                <button 
-                  onClick={() => setShowPrivacyInLogin(true)}
+                <Link 
+                  href="/privacy"
                   className="text-[#004a99] hover:underline font-bold"
                 >
                   Privacy Policy
-                </button>
+                </Link>
               </p>
 
               <div className="pt-8 border-t border-slate-100 w-full">
@@ -224,6 +224,15 @@ function Router() {
               </div>
             </div>
           </div>
+        </div>
+        
+        {/* Simple Login Footer for Google Compliance */}
+        <div className="text-[10px] text-slate-400 font-medium uppercase tracking-widest flex items-center gap-4">
+          <span>&copy; 2026 Investment Insights</span>
+          <span className="text-slate-200">|</span>
+          <Link href="/privacy" className="hover:text-[#004a99] hover:underline">
+            Privacy Policy
+          </Link>
         </div>
       </div>
     );
