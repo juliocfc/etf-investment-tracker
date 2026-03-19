@@ -27,7 +27,7 @@ const Contact: React.FC = () => {
     setIsSubmitting(true);
     try {
       const web3FormData = new FormData();
-      web3FormData.append("access_key", "60a96fa2-ee0e-4be2-b988-7664960eaaaa");
+      web3FormData.append("access_key", import.meta.env.WEB3FORMS_ACCESS_KEY || "");
       web3FormData.append("name", formData.name);
       web3FormData.append("email", formData.email);
       web3FormData.append("subject", `[Investment Tracker] ${formData.subject}`);
