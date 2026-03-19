@@ -259,8 +259,15 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
                 </div>
               </div>
               
-              <div className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">
-                &copy; 2026 Investment Portfolio Insights &bull; Professional Grade Asset Tracking
+              <div className="text-[10px] text-slate-400 font-medium uppercase tracking-wider flex items-center gap-4">
+                <span>&copy; 2026 Investment Portfolio Insights &bull; Professional Grade Asset Tracking</span>
+                <span className="text-slate-200">|</span>
+                <button 
+                  onClick={() => onTabChange?.("privacy")}
+                  className="hover:text-primary transition-colors hover:underline"
+                >
+                  Privacy Policy
+                </button>
               </div>
             </div>
           </footer>

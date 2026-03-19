@@ -8,9 +8,10 @@ import DashboardLayout from "./components/DashboardLayout";
 import Holdings from "./pages/Portfolio";
 import Contact from "./pages/Contact";
 import Portfolios from "./pages/Portfolios";
+import Privacy from "./pages/Privacy";
 import { trpc } from "@/lib/trpc";
 import { useState, useEffect } from "react";
-import { TrendingUp, ShieldCheck, Globe, Zap, BarChart3 } from "lucide-react";
+import { TrendingUp, ShieldCheck, Globe, Zap, BarChart3, Shield } from "lucide-react";
 import { toast } from "sonner";
 
 function DashboardRouter() {
@@ -79,6 +80,8 @@ function DashboardRouter() {
         return <Contact />;
       case "portfolios":
         return <Portfolios />;
+      case "privacy":
+        return <Privacy onBack={() => setActiveTab("portfolio")} />;
       default:
         return <Holdings selectedPortfolioId={selectedPortfolioId!} />;
     }
@@ -101,6 +104,7 @@ function DashboardRouter() {
 
 function Router() {
   const { isAuthenticated, loading } = useAuth();
+  const [showPrivacyInLogin, setShowPrivacyInLogin] = useState(false);
 
   if (loading) {
     return (
@@ -112,6 +116,14 @@ function Router() {
           <div className="text-lg font-bold text-slate-800 tracking-tight">INVESTMENT INSIGHTS</div>
           <div className="text-xs font-bold text-slate-400 uppercase tracking-widest">Establishing Secure Uplink...</div>
         </div>
+      </div>
+    );
+  }
+
+  if (showPrivacyInLogin) {
+    return (
+      <div className="min-h-screen bg-slate-50 p-4 md:p-10 flex flex-col items-center">
+        <Privacy onBack={() => setShowPrivacyInLogin(false)} />
       </div>
     );
   }
@@ -168,15 +180,27 @@ function Router() {
               <span>Continue with Google</span>
             </a>
 
-            <div className="mt-12 pt-8 border-t border-slate-100 w-full">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="p-3 bg-slate-50 rounded-lg">
-                  <Zap className="w-4 h-4 text-orange-500 mx-auto mb-1" />
-                  <div className="text-[10px] font-bold text-slate-400 uppercase">Real-time</div>
-                </div>
-                <div className="p-3 bg-slate-50 rounded-lg">
-                  <BarChart3 className="w-4 h-4 text-blue-500 mx-auto mb-1" />
-                  <div className="text-[10px] font-bold text-slate-400 uppercase">Analytics</div>
+            <div className="mt-8 space-y-4 w-full">
+              <p className="text-[10px] text-slate-400 font-medium">
+                By signing in, you agree to our{" "}
+                <button 
+                  onClick={() => setShowPrivacyInLogin(true)}
+                  className="text-[#004a99] hover:underline font-bold"
+                >
+                  Privacy Policy
+                </button>
+              </p>
+
+              <div className="pt-8 border-t border-slate-100 w-full">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="p-3 bg-slate-50 rounded-lg">
+                    <Zap className="w-4 h-4 text-orange-500 mx-auto mb-1" />
+                    <div className="text-[10px] font-bold text-slate-400 uppercase">Real-time</div>
+                  </div>
+                  <div className="p-3 bg-slate-50 rounded-lg">
+                    <BarChart3 className="w-4 h-4 text-blue-500 mx-auto mb-1" />
+                    <div className="text-[10px] font-bold text-slate-400 uppercase">Analytics</div>
+                  </div>
                 </div>
               </div>
             </div>
