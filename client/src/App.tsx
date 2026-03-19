@@ -13,11 +13,20 @@ import { trpc } from "@/lib/trpc";
 import { useState, useEffect } from "react";
 import { TrendingUp, ShieldCheck, Globe, Zap, BarChart3, Shield } from "lucide-react";
 import { toast } from "sonner";
+import { Route, Switch, useLocation } from "wouter";
 
 function DashboardRouter() {
   const [activeTab, setActiveTab] = useState("portfolio");
+  const [location, setLocation] = useLocation();
   const [selectedPortfolioId, setSelectedPortfolioId] = useState<number | null>(null);
   const utils = trpc.useUtils();
+
+  // Handle URL paths
+  useEffect(() => {
+    if (location === "/privacy") {
+      setActiveTab("privacy");
+    }
+  }, [location]);
 
   // Global portfolios query
   const { data: portfolios } = trpc.portfolio.getAll.useQuery();
@@ -81,7 +90,10 @@ function DashboardRouter() {
       case "portfolios":
         return <Portfolios />;
       case "privacy":
-        return <Privacy onBack={() => setActiveTab("portfolio")} />;
+        return <Privacy onBack={() => {
+          setActiveTab("portfolio");
+          if (location === "/privacy") setLocation("/");
+        }} />;
       default:
         return <Holdings selectedPortfolioId={selectedPortfolioId!} />;
     }
@@ -104,7 +116,11 @@ function DashboardRouter() {
 
 function Router() {
   const { isAuthenticated, loading } = useAuth();
+  const [location, setLocation] = useLocation();
   const [showPrivacyInLogin, setShowPrivacyInLogin] = useState(false);
+
+  // If path is /privacy, we should show it even if unauthenticated
+  const isPrivacyPath = location === "/privacy";
 
   if (loading) {
     return (
@@ -120,10 +136,13 @@ function Router() {
     );
   }
 
-  if (showPrivacyInLogin) {
+  if (showPrivacyInLogin || (isPrivacyPath && !isAuthenticated)) {
     return (
       <div className="min-h-screen bg-slate-50 p-4 md:p-10 flex flex-col items-center">
-        <Privacy onBack={() => setShowPrivacyInLogin(false)} />
+        <Privacy onBack={() => {
+          setShowPrivacyInLogin(false);
+          if (isPrivacyPath) setLocation("/");
+        }} />
       </div>
     );
   }
