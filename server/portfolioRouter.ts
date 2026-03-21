@@ -352,4 +352,55 @@ export const portfolioRouter = router({
         holdings
       };
     }),
+
+  // Get all holdings for the current user
+  getAllHoldings: protectedProcedure.query(async ({ ctx }) => {
+    const db = await getDb();
+    if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database unavailable" });
+
+    const { etfHoldings: holdingsTable } = await import("../drizzle/schema");
+    const { fetchDividendData } = await import("./financialApi");
+
+    const holdings = await db
+      .select()
+      .from(holdingsTable)
+      .where(eq(holdingsTable.userId, ctx.user.id));
+
+    const holdingsWithDividends = [];
+    
+    // Group symbols to fetch dividends only once per symbol
+    const symbols = Array.from(new Set(holdings.map((h: any) => h.symbol.toUpperCase()))) as string[];
+    const symbolDividends: Record<string, number> = {};
+
+    const fourteenMonthsAgo = new Date();
+    fourteenMonthsAgo.setMonth(fourteenMonthsAgo.getMonth() - 14);
+
+    for (const symbol of symbols) {
+      try {
+        const dividendData = await fetchDividendData(symbol);
+        if (dividendData && dividendData.length > 0) {
+          // Calculate annual dividend per share from last 14 months
+          const annualDPS = dividendData
+            .filter((d: any) => new Date(d.exDate) >= fourteenMonthsAgo)
+            .reduce((sum: number, d: any) => sum + d.dividendPerShare, 0);
+          
+          symbolDividends[symbol] = annualDPS;
+        } else {
+          symbolDividends[symbol] = 0;
+        }
+      } catch (error) {
+        console.error(`Error fetching dividends for ${symbol}:`, error);
+        symbolDividends[symbol] = 0;
+      }
+    }
+
+    for (const holding of holdings) {
+      holdingsWithDividends.push({
+        ...holding,
+        annualDividendPerShare: symbolDividends[holding.symbol.toUpperCase()] || 0
+      });
+    }
+
+    return holdingsWithDividends;
+  }),
 });

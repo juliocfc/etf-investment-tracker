@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
-import { Briefcase, ChevronDown, ChevronRight, Edit2, Trash2, PieChart, Wallet, DollarSign, Plus, BarChart3, CalendarPlus } from "lucide-react";
+import { Briefcase, ChevronDown, ChevronRight, Edit2, Trash2, PieChart, Wallet, DollarSign, Plus, BarChart3, CalendarPlus, List } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { motion, AnimatePresence } from "framer-motion";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, Legend } from "recharts";
@@ -21,9 +21,73 @@ const Portfolios: React.FC = () => {
   const utils = trpc.useUtils();
   const { data: portfolios, isLoading, refetch } = trpc.portfolio.getDetailedAll.useQuery();
   const { data: historyData } = trpc.portfolio.getHistory.useQuery({ days: 1825 });
+  const { data: allHoldings } = trpc.portfolio.getAllHoldings.useQuery();
 
   const [expandedPortfolios, setExpandedPortfolios] = useState<Set<number>>(new Set());
   const [portfolioFilter, setPortfolioFilter] = useState<string>("all");
+
+  // Aggregate consolidated holdings by asset
+  const consolidatedHoldings = useMemo(() => {
+    if (!allHoldings) return [];
+
+    const filterId = portfolioFilter === "all" ? null : parseInt(portfolioFilter);
+    const assetMap: Record<string, { 
+      symbol: string, 
+      name: string, 
+      quantity: number, 
+      totalCost: number, 
+      currentPrice: number,
+      annualDividendPerShare: number
+    }> = {};
+
+    allHoldings.forEach((h: any) => {
+      if (filterId !== null && h.portfolioId !== filterId) return;
+
+      if (!assetMap[h.symbol]) {
+        assetMap[h.symbol] = {
+          symbol: h.symbol,
+          name: h.name,
+          quantity: 0,
+          totalCost: 0,
+          currentPrice: parseFloat(h.currentPrice),
+          annualDividendPerShare: h.annualDividendPerShare || 0
+        };
+      }
+
+      const qty = parseFloat(h.quantity);
+      const avgPurchasePrice = parseFloat(h.purchasePrice);
+      
+      assetMap[h.symbol].quantity += qty;
+      assetMap[h.symbol].totalCost += qty * avgPurchasePrice;
+      assetMap[h.symbol].currentPrice = parseFloat(h.currentPrice);
+    });
+
+    return Object.values(assetMap).map(asset => {
+      const mktValue = asset.quantity * asset.currentPrice;
+      const gainLoss = mktValue - asset.totalCost;
+      const gainLossPercent = asset.totalCost > 0 ? (gainLoss / asset.totalCost) * 100 : 0;
+      const avgCost = asset.quantity > 0 ? asset.totalCost / asset.quantity : 0;
+      const projectedDividend = asset.quantity * asset.annualDividendPerShare;
+
+      return {
+        ...asset,
+        avgCost,
+        mktValue,
+        gainLoss,
+        gainLossPercent,
+        projectedDividend
+      };
+    }).sort((a, b) => b.mktValue - a.mktValue);
+  }, [allHoldings, portfolioFilter]);
+
+  const tableTotals = useMemo(() => {
+    return consolidatedHoldings.reduce((acc, curr) => ({
+      totalCost: acc.totalCost + curr.totalCost,
+      mktValue: acc.mktValue + curr.mktValue,
+      gainLoss: acc.gainLoss + curr.gainLoss,
+      projectedDividend: acc.projectedDividend + curr.projectedDividend
+    }), { totalCost: 0, mktValue: 0, gainLoss: 0, projectedDividend: 0 });
+  }, [consolidatedHoldings]);
 
   // Aggregate yearly performance for the last 5 years
   const yearlyData = useMemo(() => {
@@ -500,6 +564,103 @@ const Portfolios: React.FC = () => {
           </table>
         </div>
       </div>
+
+      <Card className="bg-white border-none shadow-sm shadow-slate-200/50">
+        <CardHeader className="pb-4 flex flex-row items-center justify-between space-y-0">
+          <div className="flex items-center gap-2">
+            <List className="w-4 h-4 text-primary" />
+            <CardTitle className="text-sm font-bold text-slate-800 uppercase tracking-widest">All Investment Assets</CardTitle>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Filter:</span>
+            <Select value={portfolioFilter} onValueChange={setPortfolioFilter}>
+              <SelectTrigger className="h-7 text-[10px] font-bold uppercase tracking-wider min-w-[140px] bg-slate-50 border-slate-200">
+                <SelectValue placeholder="All Portfolios" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all" className="text-[10px] font-bold uppercase">All Portfolios</SelectItem>
+                {portfolios?.map(p => (
+                  <SelectItem key={p.id} value={p.id.toString()} className="text-[10px] font-bold uppercase">
+                    {p.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </CardHeader>
+        <CardContent className="pt-0">
+          <div className="overflow-x-auto rounded-lg border border-slate-100">
+            <table className="w-full">
+              <thead>
+                <tr className="bg-slate-50 border-b border-slate-200">
+                  <th className="text-left py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Asset</th>
+                  <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Quantity</th>
+                  <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Avg Cost</th>
+                  <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Total Cost</th>
+                  <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Current Price</th>
+                  <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Mkt Value</th>
+                  <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Gain/Loss</th>
+                  <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Gain/Loss %</th>
+                  <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Annual Div/Share</th>
+                  <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Total Annual Div</th>
+                </tr>
+              </thead>
+              <tbody>
+                {consolidatedHoldings.length > 0 ? (
+                  consolidatedHoldings.map((asset) => {
+                    const isGain = asset.gainLoss >= 0;
+                    return (
+                      <tr key={asset.symbol} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/50 transition-colors">
+                        <td className="py-3 px-4">
+                          <div className="font-bold text-slate-800">{asset.symbol}</div>
+                          <div className="text-[10px] text-slate-400 font-medium truncate max-w-[150px]">{asset.name}</div>
+                        </td>
+                        <td className="py-3 px-4 text-right font-mono font-medium text-slate-700">{asset.quantity.toFixed(3)}</td>
+                        <td className="py-3 px-4 text-right font-mono text-slate-500 text-xs">{formatCurrency(asset.avgCost)}</td>
+                        <td className="py-3 px-4 text-right font-mono text-slate-600 text-xs">{formatCurrency(asset.totalCost)}</td>
+                        <td className="py-3 px-4 text-right font-mono font-bold text-slate-700">{formatCurrency(asset.currentPrice)}</td>
+                        <td className="py-3 px-4 text-right font-mono font-bold text-primary">{formatCurrency(asset.mktValue)}</td>
+                        <td className={`py-3 px-4 text-right font-mono text-xs font-bold ${isGain ? "text-green-600" : "text-red-600"}`}>
+                          {isGain ? "+" : ""}{formatCurrency(asset.gainLoss)}
+                        </td>
+                        <td className={`py-3 px-4 text-right font-mono text-xs font-bold ${isGain ? "text-green-600" : "text-red-600"}`}>
+                          {isGain ? "+" : ""}{asset.gainLossPercent.toFixed(2)}%
+                        </td>
+                        <td className="py-3 px-4 text-right font-mono text-xs text-slate-600">{formatCurrency(asset.annualDividendPerShare)}</td>
+                        <td className="py-3 px-4 text-right font-mono text-xs font-bold text-blue-600">{formatCurrency(asset.projectedDividend)}</td>
+                      </tr>
+                    );
+                  })
+                ) : (
+                  <tr>
+                    <td colSpan={10} className="py-8 text-center text-slate-400 italic text-sm">
+                      No investment assets found.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+              {consolidatedHoldings.length > 0 && (
+                <tfoot className="bg-slate-100/50 font-bold border-t-2 border-slate-200">
+                  <tr>
+                    <td colSpan={3} className="py-4 px-4 uppercase text-[10px] tracking-widest text-slate-500">Consolidated Assets Totals</td>
+                    <td className="py-4 px-4 text-right font-mono text-xs text-slate-700">{formatCurrency(tableTotals.totalCost)}</td>
+                    <td className="py-4 px-4 text-right"></td>
+                    <td className="py-4 px-4 text-right font-mono text-sm text-primary">{formatCurrency(tableTotals.mktValue)}</td>
+                    <td className={`py-4 px-4 text-right font-mono text-xs ${tableTotals.gainLoss >= 0 ? "text-green-700" : "text-red-700"}`}>
+                      {tableTotals.gainLoss >= 0 ? "+" : ""}{formatCurrency(tableTotals.gainLoss)}
+                    </td>
+                    <td className={`py-4 px-4 text-right font-mono text-xs ${tableTotals.gainLoss >= 0 ? "text-green-700" : "text-red-700"}`}>
+                      {tableTotals.gainLoss >= 0 ? "+" : ""}{(tableTotals.totalCost > 0 ? (tableTotals.gainLoss / tableTotals.totalCost) * 100 : 0).toFixed(2)}%
+                    </td>
+                    <td className="py-4 px-4 text-right"></td>
+                    <td className="py-4 px-4 text-right font-mono text-sm text-blue-700">{formatCurrency(tableTotals.projectedDividend)}</td>
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+          </div>
+        </CardContent>
+      </Card>
 
       {monthlyChartData.length > 0 && (
         <Card className="bg-white border-none shadow-sm shadow-slate-200/50">
