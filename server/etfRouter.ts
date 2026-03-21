@@ -747,45 +747,51 @@ export const etfRouter = router({
         const holding = holdings.find((h: any) => h.symbol.toUpperCase() === symbol)!;
         const currentPrice = parseFloat(holding.currentPrice || "0");
         
-        // Pattern identification (last 14 months)
-        const fourteenMonthsAgo = new Date();
-        fourteenMonthsAgo.setMonth(now.getMonth() - 14);
-        const recentDividends = dividendData.filter((d: any) => new Date(d.exDate) >= fourteenMonthsAgo);
+        // Pattern identification & annual DPS estimation
+        const twelveMonthsAgo = new Date();
+        twelveMonthsAgo.setFullYear(now.getFullYear() - 1);
         
-        const monthYearToSum = new Map<string, number>();
-        recentDividends.forEach((d: any) => {
-          const date = new Date(d.exDate);
-          const m = date.getMonth();
-          const y = date.getFullYear();
-          const key = `${y}-${m}`;
-          monthYearToSum.set(key, (monthYearToSum.get(key) || 0) + d.dividendPerShare);
+        const lastYearPayments = dividendData.filter((d: any) => {
+          const dDate = new Date(d.exDate);
+          return dDate >= twelveMonthsAgo && dDate <= now;
         });
 
+        // Use frequency-aware estimation for trueAnnualDPS
+        const sortedData = [...dividendData].sort((a, b) => new Date(b.exDate).getTime() - new Date(a.exDate).getTime());
+        
+        let estimatedAnnualDPS = 0;
         const monthlyDPSMap = new Map<number, number>();
-        for (let m = 0; m < 12; m++) {
-          let mostRecentYear = -1;
-          let dps = 0;
-          for (const [key, val] of Array.from(monthYearToSum.entries())) {
-            const [y, month] = key.split('-').map(Number);
-            if (month === m && y > mostRecentYear) {
-              mostRecentYear = y;
-              dps = val;
+
+        if (lastYearPayments.length >= 10) {
+          // Likely a monthly payer
+          estimatedAnnualDPS = sortedData[0].dividendPerShare * 12;
+          // For simulation, we'll assume it pays every month
+          for (let m = 0; m < 12; m++) {
+            monthlyDPSMap.set(m, sortedData[0].dividendPerShare);
+          }
+        } else if (lastYearPayments.length >= 3) {
+          // Likely a quarterly payer
+          estimatedAnnualDPS = sortedData[0].dividendPerShare * 4;
+          // Identify which months it pays in based on history
+          lastYearPayments.forEach((d: any) => {
+            const m = new Date(d.exDate).getMonth();
+            monthlyDPSMap.set(m, d.dividendPerShare);
+          });
+          // If we found less than 4 months, use the most recent month's pattern
+          if (monthlyDPSMap.size < 4 && sortedData.length > 0) {
+            const latestMonth = new Date(sortedData[0].exDate).getMonth();
+            for (let i = 0; i < 4; i++) {
+              monthlyDPSMap.set((latestMonth + i * 3) % 12, sortedData[0].dividendPerShare);
             }
           }
-          if (mostRecentYear !== -1) {
-            monthlyDPSMap.set(m, dps);
-          }
+        } else {
+          // Irregular or semi-annual
+          estimatedAnnualDPS = lastYearPayments.reduce((sum: number, d: any) => sum + d.dividendPerShare, 0);
+          lastYearPayments.forEach((d: any) => {
+            const m = new Date(d.exDate).getMonth();
+            monthlyDPSMap.set(m, d.dividendPerShare);
+          });
         }
-
-        // Calculate trueAnnualDPS (last 12 months)
-        const oneYearAgo = new Date();
-        oneYearAgo.setFullYear(now.getFullYear() - 1);
-        const trueAnnualDPS = dividendData
-          .filter((d: any) => {
-            const dDate = new Date(d.exDate);
-            return dDate >= oneYearAgo && dDate <= now;
-          })
-          .reduce((sum: number, d: any) => sum + d.dividendPerShare, 0);
 
         const initialQuantity = holdings
           .filter((h: any) => h.symbol.toUpperCase() === symbol)
@@ -793,7 +799,7 @@ export const etfRouter = router({
 
         symbolDataMap.set(symbol as string, {
           monthlyDPS: monthlyDPSMap,
-          trueAnnualDPS,
+          trueAnnualDPS: estimatedAnnualDPS,
           currentPrice,
           name: holding.name,
           initialQuantity
