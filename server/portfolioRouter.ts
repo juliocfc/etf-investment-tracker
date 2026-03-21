@@ -92,6 +92,34 @@ export const portfolioRouter = router({
         portfolioCashValue += accountCashValue;
       }
 
+      // ALSO include the "default" cash (accountId = 0) that might not be in the accounts table
+      const defaultCashRow = await db
+        .select()
+        .from(cashBalanceTable)
+        .where(and(
+          eq(cashBalanceTable.userId, ctx.user.id),
+          eq(cashBalanceTable.portfolioId, portfolio.id),
+          eq(cashBalanceTable.accountId, 0)
+        ))
+        .then((rows: any[]) => rows[0]);
+      
+      const defaultCashValue = defaultCashRow ? parseFloat(defaultCashRow.amount.toString()) : 0;
+      if (defaultCashValue > 0) {
+        portfolioCashValue += defaultCashValue;
+        // Add a "virtual" account for the default cash if it has balance
+        accountDetails.push({
+          id: 0,
+          name: "Default Cash",
+          number: "No Account Assigned",
+          investmentValue: "0.00",
+          totalCost: "0.00",
+          gain: "0.00",
+          gainPercent: "0.00",
+          cashValue: defaultCashValue.toFixed(2),
+          totalValue: defaultCashValue.toFixed(2),
+        });
+      }
+
       const portfolioTotalCost = accountDetails.reduce((acc, a) => acc + parseFloat(a.totalCost), 0);
       const portfolioGain = portfolioInvestmentValue - portfolioTotalCost;
       const portfolioGainPercent = portfolioTotalCost > 0 ? (portfolioGain / portfolioTotalCost) * 100 : 0;
@@ -323,17 +351,11 @@ export const portfolioRouter = router({
       const { purchases: purchasesTable, cashBalanceHistory: cashBalanceHistoryTable, etfHoldings: holdingsTable } = await import("../drizzle/schema");
       const { gte } = await import("drizzle-orm");
 
-      const startDate = new Date();
-      startDate.setDate(startDate.getDate() - input.days);
-
       const cashHistory = await db
         .select()
         .from(cashBalanceHistoryTable)
-        .where(and(
-          eq(cashBalanceHistoryTable.userId, ctx.user.id),
-          gte(cashBalanceHistoryTable.date, startDate)
-        ))
-        .orderBy(desc(cashBalanceHistoryTable.date));
+        .where(eq(cashBalanceHistoryTable.userId, ctx.user.id))
+        .orderBy(desc(cashBalanceHistoryTable.date), desc(cashBalanceHistoryTable.id));
 
       const allPurchases = await db
         .select()

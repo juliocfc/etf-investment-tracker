@@ -106,12 +106,12 @@ const Portfolios: React.FC = () => {
       const endDate = isCurrentYear ? now : new Date(year, 11, 31, 23, 59, 59);
 
       // Calculate Cash at year end
-      const latestAccountCash: Record<number, number> = {};
+      const latestAccountCash: Record<string, number> = {};
       if (isCurrentYear) {
         portfolios.forEach(p => {
           if (filterId !== null && p.id !== filterId) return;
           p.accounts.forEach((acc: any) => {
-            latestAccountCash[acc.id] = parseFloat(acc.cashValue);
+            latestAccountCash[`${p.id}-${acc.id}`] = parseFloat(acc.cashValue);
           });
         });
       } else {
@@ -120,8 +120,9 @@ const Portfolios: React.FC = () => {
           if (filterId !== null && record.portfolioId !== filterId) return;
           const recordDate = new Date(record.date);
           if (recordDate <= endDate) {
-            if (latestAccountCash[record.accountId] === undefined) {
-              latestAccountCash[record.accountId] = parseFloat(record.amount);
+            const key = `${record.portfolioId}-${record.accountId}`;
+            if (latestAccountCash[key] === undefined) {
+              latestAccountCash[key] = parseFloat(record.amount);
             }
           }
         });
@@ -138,8 +139,12 @@ const Portfolios: React.FC = () => {
       } else {
         historyData.purchases.forEach((p: any) => {
           if (filterId !== null && p.portfolioId !== filterId) return;
+
           const purchaseDate = new Date(p.purchaseDate);
-          if (purchaseDate <= endDate) {
+          const soldDate = p.soldDate ? new Date(p.soldDate) : null;
+
+          // Include if bought before/on year end AND (not sold OR sold after year end)
+          if (purchaseDate <= endDate && (!p.isSold || (soldDate && soldDate > endDate))) {
             totalInv += parseFloat(p.quantity) * parseFloat(p.price);
           }
         });
@@ -195,14 +200,14 @@ const Portfolios: React.FC = () => {
       const monthEndDate = isLastMonth ? new Date() : new Date(year, month, 0, 23, 59, 59);
 
       // 1. Calculate Cash at month end
-      const latestAccountCash: Record<number, number> = {};
+      const latestAccountCash: Record<string, number> = {};
 
       if (isLastMonth) {
         // Use current portfolios data for absolute consistency with the table above
         portfolios.forEach(p => {
           if (filterId !== null && p.id !== filterId) return;
           p.accounts.forEach((acc: any) => {
-            latestAccountCash[acc.id] = parseFloat(acc.cashValue);
+            latestAccountCash[`${p.id}-${acc.id}`] = parseFloat(acc.cashValue);
           });
         });
       } else {
@@ -211,8 +216,9 @@ const Portfolios: React.FC = () => {
 
           const recordDate = new Date(record.date);
           if (recordDate <= monthEndDate) {
-            if (latestAccountCash[record.accountId] === undefined) {
-              latestAccountCash[record.accountId] = parseFloat(record.amount);
+            const key = `${record.portfolioId}-${record.accountId}`;
+            if (latestAccountCash[key] === undefined) {
+              latestAccountCash[key] = parseFloat(record.amount);
             }
           }
         });
@@ -233,10 +239,10 @@ const Portfolios: React.FC = () => {
           if (filterId !== null && p.portfolioId !== filterId) return;
 
           const purchaseDate = new Date(p.purchaseDate);
-          if (purchaseDate <= monthEndDate) {
-            // For historical months, we use cost basis as we don't have historical market prices easily
-            // But if we have the current price, it's at least one price point.
-            // Using cost basis (p.price) is actually more "historical" than using current price for the past.
+          const soldDate = p.soldDate ? new Date(p.soldDate) : null;
+
+          // Include if bought before/on month end AND (not sold OR sold after month end)
+          if (purchaseDate <= monthEndDate && (!p.isSold || (soldDate && soldDate > monthEndDate))) {
             totalInv += parseFloat(p.quantity) * parseFloat(p.price);
           }
         });

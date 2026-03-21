@@ -249,11 +249,37 @@ export const etfRouter = router({
 
           const purchaseQty = parseFloat(purchase.quantity);
           if (purchaseQty <= remainingToSell) {
-            await deletePurchase(purchase.id);
+            // Mark entire purchase as sold
+            await updatePurchase(purchase.id, { 
+              isSold: true, 
+              soldDate: input.purchaseDate 
+            });
             remainingToSell -= purchaseQty;
           } else {
-            const newPurchaseQty = purchaseQty - remainingToSell;
-            await updatePurchase(purchase.id, { quantity: newPurchaseQty.toString() });
+            // Partial sale: split the purchase record
+            const remainingQty = purchaseQty - remainingToSell;
+            
+            // 1. Update existing record with the sold portion and mark as sold
+            await updatePurchase(purchase.id, { 
+              quantity: remainingToSell.toString(),
+              isSold: true,
+              soldDate: input.purchaseDate
+            });
+
+            // 2. Create a new record for the unsold portion
+            await addPurchase({
+              userId: ctx.user.id,
+              portfolioId: purchase.portfolioId,
+              accountId: purchase.accountId,
+              holdingId: purchase.holdingId,
+              symbol: purchase.symbol,
+              quantity: remainingQty.toString(),
+              price: purchase.price,
+              fees: "0", // Original fees stay with the sold portion (or we could split them, but usually they are per transaction)
+              purchaseDate: purchase.purchaseDate,
+              isSold: false
+            });
+
             remainingToSell = 0;
           }
         }
@@ -1029,13 +1055,37 @@ export const etfRouter = router({
 
           const purchaseQty = parseFloat(purchase.quantity);
           if (purchaseQty <= remainingToSell) {
-            // Delete this purchase completely
-            await deletePurchase(purchase.id);
+            // Mark entire purchase as sold
+            await updatePurchase(purchase.id, { 
+              isSold: true, 
+              soldDate: input.purchaseDate 
+            });
             remainingToSell -= purchaseQty;
           } else {
-            // Partial sale from this purchase
-            const newPurchaseQty = purchaseQty - remainingToSell;
-            await updatePurchase(purchase.id, { quantity: newPurchaseQty.toString() });
+            // Partial sale: split the purchase record
+            const remainingQty = purchaseQty - remainingToSell;
+            
+            // 1. Update existing record with the sold portion and mark as sold
+            await updatePurchase(purchase.id, { 
+              quantity: remainingToSell.toString(),
+              isSold: true,
+              soldDate: input.purchaseDate
+            });
+
+            // 2. Create a new record for the unsold portion
+            await addPurchase({
+              userId: ctx.user.id,
+              portfolioId: purchase.portfolioId,
+              accountId: purchase.accountId,
+              holdingId: purchase.holdingId,
+              symbol: purchase.symbol,
+              quantity: remainingQty.toString(),
+              price: purchase.price,
+              fees: "0",
+              purchaseDate: purchase.purchaseDate,
+              isSold: false
+            });
+
             remainingToSell = 0;
           }
         }

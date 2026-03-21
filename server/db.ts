@@ -92,6 +92,12 @@ export async function createAccount(data: any) {
 
 export async function deleteAccount(id: number) {
   const db = await getDb();
+  // Delete related records first
+  await db.delete(cashBalance).where(eq(cashBalance.accountId, id));
+  await db.delete(cashBalanceHistory).where(eq(cashBalanceHistory.accountId, id));
+  // Also delete purchases associated with this account
+  await db.delete(purchases).where(eq(purchases.accountId, id));
+  // Delete the account itself
   return db.delete(accounts).where(eq(accounts.id, id));
 }
 
@@ -156,7 +162,7 @@ export async function deleteEtfHolding(id: number) {
 // Purchase queries
 export async function getPurchases(holdingId: number) {
   const db = await getDb();
-  return db.select().from(purchases).where(eq(purchases.holdingId, holdingId)).orderBy(desc(purchases.purchaseDate));
+  return db.select().from(purchases).where(and(eq(purchases.holdingId, holdingId), eq(purchases.isSold, false))).orderBy(desc(purchases.purchaseDate));
 }
 
 export async function addPurchase(data: any) {

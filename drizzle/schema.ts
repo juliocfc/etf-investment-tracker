@@ -70,6 +70,8 @@ export const purchases = sqliteTable("purchases", {
   fees: text("fees").default("0").notNull(),
   cashTransactionId: integer("cashTransactionId"),
   purchaseDate: integer("purchaseDate", { mode: "timestamp" }).notNull(),
+  isSold: integer("isSold", { mode: "boolean" }).default(false),
+  soldDate: integer("soldDate", { mode: "timestamp" }),
   createdAt: integer("createdAt", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
