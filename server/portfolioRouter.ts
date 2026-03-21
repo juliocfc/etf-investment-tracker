@@ -372,19 +372,37 @@ export const portfolioRouter = router({
     const symbols = Array.from(new Set(holdings.map((h: any) => h.symbol.toUpperCase()))) as string[];
     const symbolDividends: Record<string, number> = {};
 
-    const fourteenMonthsAgo = new Date();
-    fourteenMonthsAgo.setMonth(fourteenMonthsAgo.getMonth() - 14);
+    const now = new Date();
+    const twelveMonthsAgo = new Date();
+    twelveMonthsAgo.setFullYear(now.getFullYear() - 1);
 
     for (const symbol of symbols) {
       try {
         const dividendData = await fetchDividendData(symbol);
         if (dividendData && dividendData.length > 0) {
-          // Calculate annual dividend per share from last 14 months
-          const annualDPS = dividendData
-            .filter((d: any) => new Date(d.exDate) >= fourteenMonthsAgo)
-            .reduce((sum: number, d: any) => sum + d.dividendPerShare, 0);
+          // 1. Get payments in the last 12 months strictly (Trailing Twelve Months)
+          const lastYearPayments = dividendData.filter((d: any) => {
+            const dDate = new Date(d.exDate);
+            return dDate >= twelveMonthsAgo && dDate <= now;
+          });
+
+          // 2. Estimate annual DPS based on frequency for better projection
+          // Sort by date desc to get the most recent ones
+          const sortedData = [...dividendData].sort((a, b) => new Date(b.exDate).getTime() - new Date(a.exDate).getTime());
           
-          symbolDividends[symbol] = annualDPS;
+          let estimatedAnnualDPS = 0;
+          if (lastYearPayments.length >= 10) {
+            // Likely a monthly payer - use the most recent payment * 12
+            estimatedAnnualDPS = sortedData[0].dividendPerShare * 12;
+          } else if (lastYearPayments.length >= 3) {
+            // Likely a quarterly payer - use the most recent payment * 4
+            estimatedAnnualDPS = sortedData[0].dividendPerShare * 4;
+          } else {
+            // Irregular or semi-annual - use sum of last 12 months
+            estimatedAnnualDPS = lastYearPayments.reduce((sum: number, d: any) => sum + d.dividendPerShare, 0);
+          }
+          
+          symbolDividends[symbol] = estimatedAnnualDPS;
         } else {
           symbolDividends[symbol] = 0;
         }

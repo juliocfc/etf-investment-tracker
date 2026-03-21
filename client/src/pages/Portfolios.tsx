@@ -68,6 +68,7 @@ const Portfolios: React.FC = () => {
       const gainLossPercent = asset.totalCost > 0 ? (gainLoss / asset.totalCost) * 100 : 0;
       const avgCost = asset.quantity > 0 ? asset.totalCost / asset.quantity : 0;
       const projectedDividend = asset.quantity * asset.annualDividendPerShare;
+      const divYield = asset.currentPrice > 0 ? (asset.annualDividendPerShare / asset.currentPrice) * 100 : 0;
 
       return {
         ...asset,
@@ -75,7 +76,8 @@ const Portfolios: React.FC = () => {
         mktValue,
         gainLoss,
         gainLossPercent,
-        projectedDividend
+        projectedDividend,
+        divYield
       };
     }).sort((a, b) => b.mktValue - a.mktValue);
   }, [allHoldings, portfolioFilter]);
@@ -602,6 +604,7 @@ const Portfolios: React.FC = () => {
                   <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Gain/Loss</th>
                   <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Gain/Loss %</th>
                   <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Annual Div/Share</th>
+                  <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Yield %</th>
                   <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Total Annual Div</th>
                 </tr>
               </thead>
@@ -627,13 +630,14 @@ const Portfolios: React.FC = () => {
                           {isGain ? "+" : ""}{asset.gainLossPercent.toFixed(2)}%
                         </td>
                         <td className="py-3 px-4 text-right font-mono text-xs text-slate-600">{formatCurrency(asset.annualDividendPerShare)}</td>
+                        <td className="py-3 px-4 text-right font-mono text-xs font-medium text-blue-600">{asset.divYield.toFixed(2)}%</td>
                         <td className="py-3 px-4 text-right font-mono text-xs font-bold text-blue-600">{formatCurrency(asset.projectedDividend)}</td>
                       </tr>
                     );
                   })
                 ) : (
                   <tr>
-                    <td colSpan={10} className="py-8 text-center text-slate-400 italic text-sm">
+                    <td colSpan={11} className="py-8 text-center text-slate-400 italic text-sm">
                       No investment assets found.
                     </td>
                   </tr>
@@ -653,6 +657,9 @@ const Portfolios: React.FC = () => {
                       {tableTotals.gainLoss >= 0 ? "+" : ""}{(tableTotals.totalCost > 0 ? (tableTotals.gainLoss / tableTotals.totalCost) * 100 : 0).toFixed(2)}%
                     </td>
                     <td className="py-4 px-4 text-right"></td>
+                    <td className="py-4 px-4 text-right font-mono text-xs font-medium text-blue-700">
+                      {(tableTotals.mktValue > 0 ? (tableTotals.projectedDividend / tableTotals.mktValue) * 100 : 0).toFixed(2)}%
+                    </td>
                     <td className="py-4 px-4 text-right font-mono text-sm text-blue-700">{formatCurrency(tableTotals.projectedDividend)}</td>
                   </tr>
                 </tfoot>
