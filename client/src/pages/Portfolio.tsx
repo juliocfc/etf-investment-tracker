@@ -588,8 +588,8 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
             key={tab.id}
             onClick={() => setActiveSubTab(tab.id)}
             className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold uppercase tracking-wider transition-all border-b-2 -mb-px ${activeSubTab === tab.id
-                ? "border-primary text-primary bg-primary/5"
-                : "border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-50"
+              ? "border-primary text-primary bg-primary/5"
+              : "border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-50"
               }`}
           >
             {tab.icon}
@@ -640,19 +640,6 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                 </div>
               </div>
 
-              <div className="data-card border-l-4 border-l-green-600">
-                <div className="data-card-title">Investment Value</div>
-                <div className="data-card-value">{formatCurrency(summary?.investmentValue)}</div>
-                <div className="data-card-subtitle flex items-center justify-between text-slate-500">
-                  <span>Market Assets</span>
-                  <span className="font-bold text-primary bg-slate-100 px-1.5 py-0.5 rounded text-[10px]">
-                    {summary?.totalValue && parseFloat(summary.totalValue) > 0
-                      ? ((parseFloat(summary.investmentValue) / parseFloat(summary.totalValue)) * 100).toFixed(1)
-                      : "0"}%
-                  </span>
-                </div>
-              </div>
-
               <div className="data-card border-l-4 border-l-slate-400">
                 <div className="data-card-title">Cash</div>
                 <div className="data-card-value">{formatCurrency(summary?.cashBalance)}</div>
@@ -661,6 +648,19 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                   <span className="font-bold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded text-[10px]">
                     {summary?.totalValue && parseFloat(summary.totalValue) > 0
                       ? ((parseFloat(summary.cashBalance) / parseFloat(summary.totalValue)) * 100).toFixed(1)
+                      : "0"}%
+                  </span>
+                </div>
+              </div>
+
+              <div className="data-card border-l-4 border-l-green-600">
+                <div className="data-card-title">Investment Value</div>
+                <div className="data-card-value">{formatCurrency(summary?.investmentValue)}</div>
+                <div className="data-card-subtitle flex items-center justify-between text-slate-500">
+                  <span>Market Assets</span>
+                  <span className="font-bold text-primary bg-slate-100 px-1.5 py-0.5 rounded text-[10px]">
+                    {summary?.totalValue && parseFloat(summary.totalValue) > 0
+                      ? ((parseFloat(summary.investmentValue) / parseFloat(summary.totalValue)) * 100).toFixed(1)
                       : "0"}%
                   </span>
                 </div>
@@ -739,8 +739,8 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                     <tr className="bg-slate-50/50 border-b border-border">
                       <th className="text-left py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Account</th>
                       <th className="text-right py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Total</th>
-                      <th className="text-right py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Investments</th>
                       <th className="text-right py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Cash</th>
+                      <th className="text-right py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Investments</th>
                       <th className="text-center py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Actions</th>
                     </tr>
                   </thead>
@@ -761,12 +761,12 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                             {formatCurrency(accDetails.totalValue)}
                           </td>
                           <td className="py-4 px-6 text-right">
-                            <div className="font-mono font-medium text-green-600">{formatCurrency(accDetails.investmentValue)}</div>
-                            <div className="text-[9px] font-bold text-slate-400 uppercase">{invPercent}%</div>
-                          </td>
-                          <td className="py-4 px-6 text-right">
                             <div className="font-mono font-medium text-slate-600">{formatCurrency(accDetails.cashValue)}</div>
                             <div className="text-[9px] font-bold text-slate-400 uppercase">{cashPercent}%</div>
+                          </td>
+                          <td className="py-4 px-6 text-right">
+                            <div className="font-mono font-medium text-green-600">{formatCurrency(accDetails.investmentValue)}</div>
+                            <div className="text-[9px] font-bold text-slate-400 uppercase">{invPercent}%</div>
                           </td>
                           <td className="py-4 px-6">
                             <div className="flex items-center justify-center">
@@ -857,15 +857,15 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                           {formatCurrency(summary?.totalValue)}
                         </td>
                         <td className="text-right py-4 px-6">
-                          <div className="font-mono text-sm text-green-700">{formatCurrency(summary?.investmentValue)}</div>
-                          <div className="text-[9px] font-bold text-slate-400 uppercase">
-                            {summary?.totalValue && parseFloat(summary.totalValue) > 0 ? ((parseFloat(summary.investmentValue) / parseFloat(summary.totalValue)) * 100).toFixed(1) : "0"}%
-                          </div>
-                        </td>
-                        <td className="text-right py-4 px-6">
                           <div className="font-mono text-sm text-slate-700">{formatCurrency(summary?.cashBalance)}</div>
                           <div className="text-[9px] font-bold text-slate-400 uppercase">
                             {summary?.totalValue && parseFloat(summary.totalValue) > 0 ? ((parseFloat(summary.cashBalance) / parseFloat(summary.totalValue)) * 100).toFixed(1) : "0"}%
+                          </div>
+                        </td>
+                        <td className="text-right py-4 px-6">
+                          <div className="font-mono text-sm text-green-700">{formatCurrency(summary?.investmentValue)}</div>
+                          <div className="text-[9px] font-bold text-slate-400 uppercase">
+                            {summary?.totalValue && parseFloat(summary.totalValue) > 0 ? ((parseFloat(summary.investmentValue) / parseFloat(summary.totalValue)) * 100).toFixed(1) : "0"}%
                           </div>
                         </td>
                         <td></td>
@@ -1292,16 +1292,16 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                         <td colSpan={5} className="py-4 px-3 uppercase text-[10px] tracking-widest text-slate-500">Total Portfolio Performance</td>
                         <td className="text-right py-4 px-3 font-mono text-sm">{formatCurrency(summary.investmentValue)}</td>
                         <td className={`text-right py-4 px-3 font-mono text-sm ${(summary?.holdings?.reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0) || 0) >= 0
-                            ? "text-green-600"
-                            : "text-red-600"
+                          ? "text-green-600"
+                          : "text-red-600"
                           }`}>
                           {(summary?.holdings?.reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0) || 0) >= 0 ? "+" : ""}
                           {formatCurrency(summary?.holdings?.reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0) || 0)}
                         </td>
                         <td className={`text-right py-4 px-3 font-mono text-sm ${((summary?.holdings?.reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0) || 0) /
-                            (summary?.holdings?.reduce((acc: number, h: any) => acc + (parseFloat(h.averageCost || h.purchasePrice) * parseFloat(h.quantity)), 0) || 1) * 100) >= 0
-                            ? "text-green-600"
-                            : "text-red-600"
+                          (summary?.holdings?.reduce((acc: number, h: any) => acc + (parseFloat(h.averageCost || h.purchasePrice) * parseFloat(h.quantity)), 0) || 1) * 100) >= 0
+                          ? "text-green-600"
+                          : "text-red-600"
                           }`}>
                           {(
                             ((summary?.holdings?.reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0) || 0) /

@@ -312,4 +312,44 @@ export const portfolioRouter = router({
 
       return { success: true };
     }),
+
+  // Get consolidated history for all portfolios
+  getHistory: protectedProcedure
+    .input(z.object({ days: z.number().default(365) }))
+    .query(async ({ ctx, input }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database unavailable" });
+
+      const { purchases: purchasesTable, cashBalanceHistory: cashBalanceHistoryTable, etfHoldings: holdingsTable } = await import("../drizzle/schema");
+      const { gte } = await import("drizzle-orm");
+
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - input.days);
+
+      const cashHistory = await db
+        .select()
+        .from(cashBalanceHistoryTable)
+        .where(and(
+          eq(cashBalanceHistoryTable.userId, ctx.user.id),
+          gte(cashBalanceHistoryTable.date, startDate)
+        ))
+        .orderBy(desc(cashBalanceHistoryTable.date));
+
+      const allPurchases = await db
+        .select()
+        .from(purchasesTable)
+        .where(eq(purchasesTable.userId, ctx.user.id))
+        .orderBy(desc(purchasesTable.purchaseDate));
+
+      const holdings = await db
+        .select()
+        .from(holdingsTable)
+        .where(eq(holdingsTable.userId, ctx.user.id));
+
+      return {
+        cashHistory,
+        purchases: allPurchases,
+        holdings
+      };
+    }),
 });

@@ -5,15 +5,185 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
-import { Briefcase, ChevronDown, ChevronRight, Edit2, Trash2, PieChart, Wallet, DollarSign, Plus } from "lucide-react";
+import { Briefcase, ChevronDown, ChevronRight, Edit2, Trash2, PieChart, Wallet, DollarSign, Plus, BarChart3, CalendarPlus } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { motion, AnimatePresence } from "framer-motion";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, Legend } from "recharts";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 const Portfolios: React.FC = () => {
   const utils = trpc.useUtils();
   const { data: portfolios, isLoading, refetch } = trpc.portfolio.getDetailedAll.useQuery();
-  
+  const { data: historyData } = trpc.portfolio.getHistory.useQuery({ days: 1825 });
+
   const [expandedPortfolios, setExpandedPortfolios] = useState<Set<number>>(new Set());
+  const [portfolioFilter, setPortfolioFilter] = useState<string>("all");
+
+  // Aggregate yearly performance for the last 5 years
+  const yearlyData = useMemo(() => {
+    if (!historyData || !portfolios) return [];
+
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const years = Array.from({ length: 5 }, (_, i) => currentYear - i);
+    const result = [];
+    const filterId = portfolioFilter === "all" ? null : parseInt(portfolioFilter);
+
+    for (const year of years) {
+      const isCurrentYear = year === currentYear;
+      const endDate = isCurrentYear ? now : new Date(year, 11, 31, 23, 59, 59);
+
+      // Calculate Cash at year end
+      const latestAccountCash: Record<number, number> = {};
+      if (isCurrentYear) {
+        portfolios.forEach(p => {
+          if (filterId !== null && p.id !== filterId) return;
+          p.accounts.forEach((acc: any) => {
+            latestAccountCash[acc.id] = parseFloat(acc.cashValue);
+          });
+        });
+      } else {
+        // historyData.cashHistory is sorted desc
+        historyData.cashHistory.forEach((record: any) => {
+          if (filterId !== null && record.portfolioId !== filterId) return;
+          const recordDate = new Date(record.date);
+          if (recordDate <= endDate) {
+            if (latestAccountCash[record.accountId] === undefined) {
+              latestAccountCash[record.accountId] = parseFloat(record.amount);
+            }
+          }
+        });
+      }
+      const totalCash = Object.values(latestAccountCash).reduce((sum, val) => sum + val, 0);
+
+      // Calculate Investment at year end
+      let totalInv = 0;
+      if (isCurrentYear) {
+        portfolios.forEach(p => {
+          if (filterId !== null && p.id !== filterId) return;
+          totalInv += parseFloat(p.investmentValue);
+        });
+      } else {
+        historyData.purchases.forEach((p: any) => {
+          if (filterId !== null && p.portfolioId !== filterId) return;
+          const purchaseDate = new Date(p.purchaseDate);
+          if (purchaseDate <= endDate) {
+            totalInv += parseFloat(p.quantity) * parseFloat(p.price);
+          }
+        });
+      }
+
+      const total = totalCash + totalInv;
+      if (total > 0) {
+        result.push({
+          year,
+          cash: totalCash,
+          investment: totalInv,
+          total
+        });
+      }
+    }
+    return result;
+  }, [historyData, portfolios, portfolioFilter]);
+
+  // Aggregate history data by month for the bar chart
+  const monthlyChartData = useMemo(() => {
+    if (!historyData || !portfolios) return [];
+
+    const monthMap: Record<string, { month: string, displayDate: string, investment: number, cash: number, total: number }> = {};
+    const months: string[] = [];
+    const now = new Date();
+
+    // Initialize last 12 months
+    for (let i = 11; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      months.push(monthKey);
+
+      monthMap[monthKey] = {
+        month: monthKey,
+        displayDate: d.toLocaleDateString('default', { month: 'short', year: '2-digit' }),
+        investment: 0,
+        cash: 0,
+        total: 0
+      };
+    }
+
+    const filterId = portfolioFilter === "all" ? null : parseInt(portfolioFilter);
+
+    // Map to find current price for each symbol
+    const symbolPriceMap: Record<string, number> = {};
+    historyData.holdings.forEach((h: any) => {
+      symbolPriceMap[h.symbol] = parseFloat(h.currentPrice);
+    });
+
+    months.forEach((monthKey, idx) => {
+      const isLastMonth = idx === months.length - 1;
+      const [year, month] = monthKey.split('-').map(Number);
+      const monthEndDate = isLastMonth ? new Date() : new Date(year, month, 0, 23, 59, 59);
+
+      // 1. Calculate Cash at month end
+      const latestAccountCash: Record<number, number> = {};
+
+      if (isLastMonth) {
+        // Use current portfolios data for absolute consistency with the table above
+        portfolios.forEach(p => {
+          if (filterId !== null && p.id !== filterId) return;
+          p.accounts.forEach((acc: any) => {
+            latestAccountCash[acc.id] = parseFloat(acc.cashValue);
+          });
+        });
+      } else {
+        historyData.cashHistory.forEach((record: any) => {
+          if (filterId !== null && record.portfolioId !== filterId) return;
+
+          const recordDate = new Date(record.date);
+          if (recordDate <= monthEndDate) {
+            if (latestAccountCash[record.accountId] === undefined) {
+              latestAccountCash[record.accountId] = parseFloat(record.amount);
+            }
+          }
+        });
+      }
+
+      const totalCash = Object.values(latestAccountCash).reduce((sum, val) => sum + val, 0);
+
+      // 2. Calculate Investment at month end
+      let totalInv = 0;
+      if (isLastMonth) {
+        // Use current portfolios data for absolute consistency
+        portfolios.forEach(p => {
+          if (filterId !== null && p.id !== filterId) return;
+          totalInv += parseFloat(p.investmentValue);
+        });
+      } else {
+        historyData.purchases.forEach((p: any) => {
+          if (filterId !== null && p.portfolioId !== filterId) return;
+
+          const purchaseDate = new Date(p.purchaseDate);
+          if (purchaseDate <= monthEndDate) {
+            // For historical months, we use cost basis as we don't have historical market prices easily
+            // But if we have the current price, it's at least one price point.
+            // Using cost basis (p.price) is actually more "historical" than using current price for the past.
+            totalInv += parseFloat(p.quantity) * parseFloat(p.price);
+          }
+        });
+      }
+
+      monthMap[monthKey].cash = totalCash;
+      monthMap[monthKey].investment = totalInv;
+      monthMap[monthKey].total = totalInv + totalCash;
+    });
+
+    return months.map(m => monthMap[m]).filter(m => m.total > 0 || m.month === months[11]);
+  }, [historyData, portfolios, portfolioFilter]);
+
   const [editingPortfolio, setEditingPortfolio] = useState<{ id: number, name: string } | null>(null);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState<number | null>(null);
 
@@ -59,7 +229,7 @@ const Portfolios: React.FC = () => {
     const overall = investment + cash;
     const gain = investment - totalCost;
     const gainPercent = totalCost > 0 ? ((gain / totalCost) * 100).toFixed(2) : "0.00";
-    
+
     return {
       investment,
       cash,
@@ -110,22 +280,6 @@ const Portfolios: React.FC = () => {
         <Card className="bg-white border-none shadow-sm shadow-slate-200/50">
           <CardContent className="pt-6">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total Investments</span>
-              <PieChart className="w-4 h-4 text-green-500" />
-            </div>
-            <div className="flex items-baseline gap-2">
-              <div className="text-2xl font-bold text-slate-800 font-mono">
-                {formatCurrency(totals.investment)}
-              </div>
-              <div className="text-xs font-bold text-green-600 bg-green-50 px-1.5 py-0.5 rounded">
-                {totals.investmentPercent}%
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="bg-white border-none shadow-sm shadow-slate-200/50">
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between mb-2">
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total Cash</span>
               <Wallet className="w-4 h-4 text-slate-400" />
             </div>
@@ -135,6 +289,22 @@ const Portfolios: React.FC = () => {
               </div>
               <div className="text-xs font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
                 {totals.cashPercent}%
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="bg-white border-none shadow-sm shadow-slate-200/50">
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total Investments</span>
+              <PieChart className="w-4 h-4 text-green-500" />
+            </div>
+            <div className="flex items-baseline gap-2">
+              <div className="text-2xl font-bold text-slate-800 font-mono">
+                {formatCurrency(totals.investment)}
+              </div>
+              <div className="text-xs font-bold text-green-600 bg-green-50 px-1.5 py-0.5 rounded">
+                {totals.investmentPercent}%
               </div>
             </div>
           </CardContent>
@@ -149,11 +319,11 @@ const Portfolios: React.FC = () => {
                 <th className="w-10"></th>
                 <th className="text-left py-4 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Portfolio Name</th>
                 <th className="text-right py-4 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Total Value</th>
+                <th className="text-right py-4 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Cash</th>
                 <th className="text-right py-4 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Investments</th>
                 <th className="text-right py-4 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Cost Basis</th>
                 <th className="text-right py-4 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Gain/Loss</th>
                 <th className="text-right py-4 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Gain/Loss %</th>
-                <th className="text-right py-4 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Cash</th>
                 <th className="text-center py-4 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Actions</th>
               </tr>
             </thead>
@@ -168,7 +338,7 @@ const Portfolios: React.FC = () => {
                   <React.Fragment key={portfolio.id}>
                     <tr className={`border-b border-border transition-colors ${expandedPortfolios.has(portfolio.id) ? "bg-slate-50/50" : "hover:bg-slate-50/30"}`}>
                       <td className="py-4 px-2 text-center">
-                        <button 
+                        <button
                           onClick={() => toggleExpand(portfolio.id)}
                           className="p-1 hover:bg-slate-200 rounded transition-colors text-slate-400"
                         >
@@ -177,6 +347,10 @@ const Portfolios: React.FC = () => {
                       </td>
                       <td className="py-4 px-4 font-bold text-slate-800">{portfolio.name}</td>
                       <td className="py-4 px-4 text-right font-mono font-bold text-primary">{formatCurrency(portfolio.totalValue)}</td>
+                      <td className="py-4 px-4 text-right">
+                        <div className="font-mono font-medium text-slate-600">{formatCurrency(portfolio.cashValue)}</div>
+                        <div className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter">{pCashPercent}%</div>
+                      </td>
                       <td className="py-4 px-4 text-right">
                         <div className="font-mono font-medium text-slate-700">{formatCurrency(portfolio.investmentValue)}</div>
                         <div className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter">{pInvPercent}%</div>
@@ -188,23 +362,19 @@ const Portfolios: React.FC = () => {
                       <td className={`py-4 px-4 text-right font-mono text-xs font-bold ${isGain ? "text-green-600" : "text-red-600"}`}>
                         {isGain ? "+" : ""}{portfolio.gainPercent || "0.00"}%
                       </td>
-                      <td className="py-4 px-4 text-right">
-                        <div className="font-mono font-medium text-slate-600">{formatCurrency(portfolio.cashValue)}</div>
-                        <div className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter">{pCashPercent}%</div>
-                      </td>
                       <td className="py-4 px-4">
                         <div className="flex items-center justify-center gap-2">
-                          <Button 
-                            variant="ghost" 
-                            size="sm" 
+                          <Button
+                            variant="ghost"
+                            size="sm"
                             className="h-8 w-8 p-0 text-slate-400 hover:text-primary"
                             onClick={() => setEditingPortfolio({ id: portfolio.id, name: portfolio.name })}
                           >
                             <Edit2 className="h-3.5 w-3.5" />
                           </Button>
-                          <Button 
-                            variant="ghost" 
-                            size="sm" 
+                          <Button
+                            variant="ghost"
+                            size="sm"
                             className="h-8 w-8 p-0 text-slate-400 hover:text-destructive"
                             onClick={() => setIsDeleteDialogOpen(portfolio.id)}
                           >
@@ -229,17 +399,17 @@ const Portfolios: React.FC = () => {
                                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Account Breakdown</span>
                                   <div className="h-[1px] flex-1 bg-slate-200"></div>
                                 </div>
-                                
-                            <table className="w-full text-sm">
+
+                                <table className="w-full text-sm">
                                   <thead>
                                     <tr className="border-b border-slate-200">
                                       <th className="text-left py-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Account</th>
                                       <th className="text-right py-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total Value</th>
+                                      <th className="text-right py-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Cash</th>
                                       <th className="text-right py-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Investments</th>
                                       <th className="text-right py-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Cost Basis</th>
                                       <th className="text-right py-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Gains / Loss</th>
                                       <th className="text-right py-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">% Return</th>
-                                      <th className="text-right py-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Cash</th>
                                     </tr>
                                   </thead>
                                   <tbody>
@@ -257,6 +427,10 @@ const Portfolios: React.FC = () => {
                                           </td>
                                           <td className="py-2.5 text-right font-mono font-bold text-slate-700">{formatCurrency(acc.totalValue)}</td>
                                           <td className="py-2.5 text-right">
+                                            <div className="font-mono text-slate-600">{formatCurrency(acc.cashValue)}</div>
+                                            <div className="text-[8px] font-bold text-slate-400 uppercase">{accCashPercent}%</div>
+                                          </td>
+                                          <td className="py-2.5 text-right">
                                             <div className="font-mono text-slate-600">{formatCurrency(acc.investmentValue)}</div>
                                             <div className="text-[8px] font-bold text-slate-400 uppercase">{accInvPercent}%</div>
                                           </td>
@@ -267,16 +441,16 @@ const Portfolios: React.FC = () => {
                                           <td className={`py-2.5 text-right font-mono text-[10px] font-bold ${accIsGain ? "text-green-600" : "text-red-600"}`}>
                                             {accIsGain ? "+" : ""}{acc.gainPercent || "0.00"}%
                                           </td>
-                                          <td className="py-2.5 text-right">
-                                            <div className="font-mono text-slate-600">{formatCurrency(acc.cashValue)}</div>
-                                            <div className="text-[8px] font-bold text-slate-400 uppercase">{accCashPercent}%</div>
-                                          </td>
                                         </tr>
                                       );
                                     })}
                                     <tr className="bg-slate-100/50 font-bold border-t border-slate-200">
                                       <td className="py-2.5 px-2 uppercase text-[10px] tracking-widest text-slate-500">Portfolio Totals</td>
                                       <td className="py-2.5 text-right font-mono text-primary">{formatCurrency(portfolio.totalValue)}</td>
+                                      <td className="py-2.5 text-right">
+                                        <div className="font-mono text-slate-700">{formatCurrency(portfolio.cashValue)}</div>
+                                        <div className="text-[8px] font-bold text-slate-400 uppercase">{pCashPercent}%</div>
+                                      </td>
                                       <td className="py-2.5 text-right">
                                         <div className="font-mono text-slate-700">{formatCurrency(portfolio.investmentValue)}</div>
                                         <div className="text-[8px] font-bold text-slate-400 uppercase">{pInvPercent}%</div>
@@ -287,10 +461,6 @@ const Portfolios: React.FC = () => {
                                       </td>
                                       <td className={`py-2.5 text-right font-mono text-[10px] font-bold ${isGain ? "text-green-600" : "text-red-600"}`}>
                                         {isGain ? "+" : ""}{portfolio.gainPercent || "0.00"}%
-                                      </td>
-                                      <td className="py-2.5 text-right">
-                                        <div className="font-mono text-slate-700">{formatCurrency(portfolio.cashValue)}</div>
-                                        <div className="text-[8px] font-bold text-slate-400 uppercase">{pCashPercent}%</div>
                                       </td>
                                     </tr>
                                   </tbody>
@@ -310,6 +480,10 @@ const Portfolios: React.FC = () => {
                 <td colSpan={2} className="py-5 px-4 uppercase text-xs tracking-widest text-slate-600">Consolidated Totals</td>
                 <td className="py-5 px-4 text-right font-mono text-xl text-primary">{formatCurrency(totals.overall)}</td>
                 <td className="py-5 px-4 text-right">
+                  <div className="font-mono text-lg text-slate-700">{formatCurrency(totals.cash)}</div>
+                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">{totals.cashPercent}%</div>
+                </td>
+                <td className="py-5 px-4 text-right">
                   <div className="font-mono text-lg text-slate-800">{formatCurrency(totals.investment)}</div>
                   <div className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">{totals.investmentPercent}%</div>
                 </td>
@@ -320,16 +494,157 @@ const Portfolios: React.FC = () => {
                 <td className={`py-5 px-4 text-right font-mono text-sm ${parseFloat(totals.gain.toString()) >= 0 ? "text-green-700" : "text-red-700"}`}>
                   {parseFloat(totals.gain.toString()) >= 0 ? "+" : ""}{totals.gainPercent}%
                 </td>
-                <td className="py-5 px-4 text-right">
-                  <div className="font-mono text-lg text-slate-700">{formatCurrency(totals.cash)}</div>
-                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">{totals.cashPercent}%</div>
-                </td>
                 <td className="py-5 px-4"></td>
               </tr>
             </tfoot>
           </table>
         </div>
       </div>
+
+      {monthlyChartData.length > 0 && (
+        <Card className="bg-white border-none shadow-sm shadow-slate-200/50">
+          <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
+            <div className="flex items-center gap-2">
+              <BarChart3 className="w-4 h-4 text-primary" />
+              <CardTitle className="text-sm font-bold text-slate-800 uppercase tracking-widest">Portfolio Value History (12 Months)</CardTitle>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Filter:</span>
+              <Select value={portfolioFilter} onValueChange={setPortfolioFilter}>
+                <SelectTrigger className="h-7 text-[10px] font-bold uppercase tracking-wider min-w-[140px] bg-slate-50 border-slate-200">
+                  <SelectValue placeholder="All Portfolios" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all" className="text-[10px] font-bold uppercase">All Portfolios</SelectItem>
+                  {portfolios?.map(p => (
+                    <SelectItem key={p.id} value={p.id.toString()} className="text-[10px] font-bold uppercase">
+                      {p.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <div className="h-[300px] w-full mt-4">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={monthlyChartData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                  <XAxis
+                    dataKey="displayDate"
+                    stroke="#94a3b8"
+                    fontSize={10}
+                    tickLine={false}
+                    axisLine={false}
+                  />
+                  <YAxis
+                    stroke="#94a3b8"
+                    fontSize={10}
+                    tickLine={false}
+                    axisLine={false}
+                    tickFormatter={(value) => `$${(value / 1000).toFixed(0)}k`}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: "#fff",
+                      border: "1px solid #e2e8f0",
+                      borderRadius: "8px",
+                      boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)",
+                      fontSize: "12px",
+                    }}
+                    cursor={{ fill: '#f8fafc' }}
+                    content={({ active, payload, label }) => {
+                      if (active && payload && payload.length) {
+                        const investment = payload.find(p => p.dataKey === 'investment')?.value as number || 0;
+                        const cash = payload.find(p => p.dataKey === 'cash')?.value as number || 0;
+                        const total = investment + cash;
+
+                        return (
+                          <div className="bg-white p-3 border border-slate-200 rounded-lg shadow-lg space-y-1.5">
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 border-b pb-1">{label}</p>
+                            <div className="flex justify-between gap-8 items-center">
+                              <span className="text-[10px] font-bold text-slate-500 uppercase">Investments</span>
+                              <span className="font-mono font-bold text-primary">{formatCurrency(investment)}</span>
+                            </div>
+                            <div className="flex justify-between gap-8 items-center">
+                              <span className="text-[10px] font-bold text-slate-500 uppercase">Cash</span>
+                              <span className="font-mono font-bold text-slate-600">{formatCurrency(cash)}</span>
+                            </div>
+                            <div className="flex justify-between gap-8 items-center pt-1 mt-1 border-t border-slate-100">
+                              <span className="text-[10px] font-bold text-slate-800 uppercase">Total Value</span>
+                              <span className="font-mono font-bold text-slate-800">{formatCurrency(total)}</span>
+                            </div>
+                          </div>
+                        );
+                      }
+                      return null;
+                    }}
+                  />
+                  <Legend
+                    verticalAlign="top"
+                    align="right"
+                    iconType="circle"
+                    wrapperStyle={{ fontSize: '10px', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.05em', paddingBottom: '20px' }}
+                  />
+                  <Bar dataKey="investment" name="Investments" stackId="a" fill="#004a99" radius={[0, 0, 0, 0]} />
+                  <Bar dataKey="cash" name="Cash" stackId="a" fill="#94a3b8" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {yearlyData.length > 0 && (
+        <Card className="bg-white border-none shadow-sm shadow-slate-200/50">
+          <CardHeader className="pb-4 flex flex-row items-center justify-between space-y-0">
+            <div className="flex items-center gap-2">
+              <CalendarPlus className="w-4 h-4 text-primary" />
+              <CardTitle className="text-sm font-bold text-slate-800 uppercase tracking-widest">Yearly Performance Summary</CardTitle>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Filter:</span>
+              <Select value={portfolioFilter} onValueChange={setPortfolioFilter}>
+                <SelectTrigger className="h-7 text-[10px] font-bold uppercase tracking-wider min-w-[140px] bg-slate-50 border-slate-200">
+                  <SelectValue placeholder="All Portfolios" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all" className="text-[10px] font-bold uppercase">All Portfolios</SelectItem>
+                  {portfolios?.map(p => (
+                    <SelectItem key={p.id} value={p.id.toString()} className="text-[10px] font-bold uppercase">
+                      {p.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <div className="overflow-x-auto rounded-lg border border-slate-100">
+              <table className="w-full">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-200">
+                    <th className="text-left py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Year</th>
+                    <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Investments</th>
+                    <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Cash</th>
+                    <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Total Value</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {yearlyData.map((row) => (
+                    <tr key={row.year} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/50 transition-colors">
+                      <td className="py-3 px-4 font-bold text-slate-800">{row.year}</td>
+                      <td className="py-3 px-4 text-right font-mono text-slate-600">{formatCurrency(row.investment)}</td>
+                      <td className="py-3 px-4 text-right font-mono text-slate-600">{formatCurrency(row.cash)}</td>
+                      <td className="py-3 px-4 text-right font-mono font-bold text-primary">{formatCurrency(row.total)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Rename Dialog */}
       <Dialog open={!!editingPortfolio} onOpenChange={() => setEditingPortfolio(null)}>
@@ -340,8 +655,8 @@ const Portfolios: React.FC = () => {
           <div className="py-4 space-y-4">
             <div className="space-y-2">
               <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">New Portfolio Name</label>
-              <Input 
-                value={editingPortfolio?.name || ""} 
+              <Input
+                value={editingPortfolio?.name || ""}
                 onChange={(e) => setEditingPortfolio(prev => prev ? { ...prev, name: e.target.value } : null)}
                 placeholder="Enter portfolio name"
               />
@@ -349,10 +664,10 @@ const Portfolios: React.FC = () => {
           </div>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setEditingPortfolio(null)}>Cancel</Button>
-            <Button 
-              onClick={() => editingPortfolio && updatePortfolioMutation.mutate({ 
-                portfolioId: editingPortfolio.id, 
-                name: editingPortfolio.name 
+            <Button
+              onClick={() => editingPortfolio && updatePortfolioMutation.mutate({
+                portfolioId: editingPortfolio.id,
+                name: editingPortfolio.name
               })}
               disabled={!editingPortfolio?.name}
             >
@@ -375,10 +690,10 @@ const Portfolios: React.FC = () => {
           </div>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setIsDeleteDialogOpen(null)}>Cancel</Button>
-            <Button 
+            <Button
               variant="destructive"
-              onClick={() => isDeleteDialogOpen && deletePortfolioMutation.mutate({ 
-                portfolioId: isDeleteDialogOpen 
+              onClick={() => isDeleteDialogOpen && deletePortfolioMutation.mutate({
+                portfolioId: isDeleteDialogOpen
               })}
             >
               Delete Everything
