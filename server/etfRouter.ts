@@ -765,24 +765,17 @@ export const etfRouter = router({
         if (lastYearPayments.length >= 10) {
           // Likely a monthly payer
           estimatedAnnualDPS = sortedData[0].dividendPerShare * 12;
-          // For simulation, we'll assume it pays every month
+          // For simulation, assume it pays the same amount every month
           for (let m = 0; m < 12; m++) {
             monthlyDPSMap.set(m, sortedData[0].dividendPerShare);
           }
         } else if (lastYearPayments.length >= 3) {
           // Likely a quarterly payer
           estimatedAnnualDPS = sortedData[0].dividendPerShare * 4;
-          // Identify which months it pays in based on history
-          lastYearPayments.forEach((d: any) => {
-            const m = new Date(d.exDate).getMonth();
-            monthlyDPSMap.set(m, d.dividendPerShare);
-          });
-          // If we found less than 4 months, use the most recent month's pattern
-          if (monthlyDPSMap.size < 4 && sortedData.length > 0) {
-            const latestMonth = new Date(sortedData[0].exDate).getMonth();
-            for (let i = 0; i < 4; i++) {
-              monthlyDPSMap.set((latestMonth + i * 3) % 12, sortedData[0].dividendPerShare);
-            }
+          // Set exactly 4 months in the cycle based on the most recent payment
+          const latestMonth = new Date(sortedData[0].exDate).getMonth();
+          for (let i = 0; i < 4; i++) {
+            monthlyDPSMap.set((latestMonth + i * 3) % 12, sortedData[0].dividendPerShare);
           }
         } else {
           // Irregular or semi-annual
@@ -856,12 +849,16 @@ export const etfRouter = router({
       // 3. Final response construction
       const assets = Array.from(symbolDataMap.entries()).map(([symbol, data]) => {
         const state = simulationState.get(symbol)!;
+        const divYield = data.currentPrice > 0 ? (data.trueAnnualDPS / data.currentPrice) * 100 : 0;
+        
         return {
           symbol,
           name: data.name,
           currentQuantity: data.initialQuantity,
           finalQuantity: state.quantity,
           annualDPS: data.trueAnnualDPS.toFixed(4),
+          currentPrice: data.currentPrice,
+          yield: divYield.toFixed(2),
           projectedAnnual: state.projectedTotal.toFixed(2)
         };
       });
