@@ -1344,7 +1344,10 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                               <span className="font-bold text-primary w-16">{item.symbol}</span>
                               <span className="text-slate-500 text-xs truncate max-w-[250px] md:max-w-[400px]">{item.name}</span>
                             </div>
-                            <span className="font-mono font-bold text-slate-700 text-base">{item.percentage}%</span>
+                            <div className="flex items-center gap-6">
+                              <span className="font-mono font-bold text-slate-600 text-sm">{formatCurrency(item.currentValue)}</span>
+                              <span className="font-mono font-bold text-slate-700 text-base w-16 text-right">{item.percentage}%</span>
+                            </div>
                           </div>
                         ))}
                         <div className="border-t border-slate-100 pt-3 mt-3 flex justify-between items-center text-sm p-3 bg-slate-50 rounded">
@@ -1353,8 +1356,12 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                             <span className="font-bold text-slate-600 w-16">CASH</span>
                             <span className="text-slate-500 text-xs">Cash Reserve</span>
                           </div>
-                          <span className="font-mono font-bold text-slate-700 text-base">{summary.cashAllocationPercent}%</span>
+                          <div className="flex items-center gap-6">
+                            <span className="font-mono font-bold text-slate-600 text-sm">{formatCurrency(summary.cashBalance)}</span>
+                            <span className="font-mono font-bold text-slate-700 text-base w-16 text-right">{summary.cashAllocationPercent}%</span>
+                          </div>
                         </div>
+
                       </div>
                     </div>
                   </div>

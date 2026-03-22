@@ -1354,6 +1354,7 @@ export const etfRouter = router({
         allocationBreakdown: processedHoldings.map((h: any) => ({
           symbol: h.symbol,
           name: h.name,
+          currentValue: h.currentValue,
           percentage:
             totalValue > 0
               ? ((parseFloat(h.currentValue) / totalValue) * 100).toFixed(2)
