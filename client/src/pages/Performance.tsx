@@ -18,11 +18,11 @@ import {
 } from "recharts";
 import { TrendingUp, Activity, BarChart3, Database, RefreshCw, ArrowUpRight, ArrowDownRight } from "lucide-react";
 
-type TimeRange = "1m" | "ytd" | "1y" | "all";
+type TimeRange = "ytd" | "1y" | "all";
 
 export default function Performance({ selectedPortfolioId }: { selectedPortfolioId: number }) {
   // Independent time range states for each panel
-  const [growthRange, setGrowthRange] = useState<TimeRange>("1y");
+  const [growthRange, setGrowthRange] = useState<TimeRange>("ytd");
 
   // Independent asset selectors for each chart
   const [evolutionSymbol, setEvolutionSymbol] = useState<string | "ALL">("ALL");
@@ -50,7 +50,8 @@ export default function Performance({ selectedPortfolioId }: { selectedPortfolio
     { 
       portfolioId: selectedPortfolioId, 
       range: growthRange,
-      symbol: evolutionSymbol === "ALL" ? undefined : evolutionSymbol
+      symbol: evolutionSymbol === "ALL" ? undefined : evolutionSymbol,
+      granularity: "1mo"
     },
     { enabled: !!selectedPortfolioId }
   );
@@ -60,8 +61,12 @@ export default function Performance({ selectedPortfolioId }: { selectedPortfolio
     { enabled: !!selectedPortfolioId }
   );
 
+  const { data: monthlyPerformance } = trpc.etf.getMonthlyPerformance.useQuery(
+    { portfolioId: selectedPortfolioId },
+    { enabled: !!selectedPortfolioId }
+  );
+
   const getDaysForRange = (range: TimeRange) => {
-    if (range === "1m") return 30;
     if (range === "ytd") {
       const now = new Date();
       const startOfYear = new Date(now.getFullYear(), 0, 1);
@@ -75,8 +80,7 @@ export default function Performance({ selectedPortfolioId }: { selectedPortfolio
   const evolutionChartData = evolution?.map((item) => ({
     date: new Date(item.date + "T12:00:00").toLocaleDateString(undefined, {
       month: "short",
-      day: "numeric",
-      year: growthRange === "all" ? "2-digit" : undefined,
+      year: "2-digit",
     }),
     value: parseFloat(item.value),
     rawDate: item.date,
@@ -98,9 +102,41 @@ export default function Performance({ selectedPortfolioId }: { selectedPortfolio
 
   const evolutionChange = getEvolutionChange();
 
+  const CustomTooltip = ({ active, payload, label }: any) => {
+    if (active && payload && payload.length) {
+      const data = payload[0].payload;
+      return (
+        <div className="bg-white border border-slate-200 rounded-lg shadow-lg p-3 text-xs">
+          <p className="font-bold text-slate-800 mb-2 border-b border-slate-100 pb-1">{label}</p>
+          <div className="space-y-1.5">
+            <div className="flex justify-between gap-4">
+              <span className="text-slate-500">Total Portfolio Value:</span>
+              <span className="font-bold text-primary">{formatCurrency(Number(data.totalValue))}</span>
+            </div>
+            <div className="flex justify-between gap-4 pl-2 border-l-2 border-slate-100">
+              <span className="text-slate-400">Previous Value + Gains/Losses:</span>
+              <span className="font-mono">{formatCurrency(Number(data.existingValue))}</span>
+            </div>
+            <div className="flex justify-between gap-4 pl-2 border-l-2 border-slate-100">
+              <span className="text-slate-400">New Purchases:</span>
+              <span className="font-mono text-blue-600">+{formatCurrency(Number(data.purchases))}</span>
+            </div>
+            <div className="flex justify-between gap-4 mt-2 pt-1 border-t border-slate-50 italic">
+              <span className="text-slate-400">Monthly Market Change:</span>
+              <span className={`font-mono ${Number(data.marketGainLoss) >= 0 ? "text-green-600" : "text-red-600"}`}>
+                {Number(data.marketGainLoss) >= 0 ? "+" : ""}{formatCurrency(Number(data.marketGainLoss))}
+              </span>
+            </div>
+          </div>
+        </div>
+      );
+    }
+    return null;
+  };
+
   const RangeSelector = ({ value, onChange, className }: { value: TimeRange, onChange: (val: TimeRange) => void, className?: string }) => (
     <div className={`flex bg-slate-100 p-0.5 rounded-md ${className}`}>
-      {(["1m", "ytd", "1y", "all"] as const).map((period) => (
+      {(["ytd", "1y", "all"] as const).map((period) => (
         <button
           key={period}
           onClick={() => onChange(period)}
@@ -251,19 +287,22 @@ export default function Performance({ selectedPortfolioId }: { selectedPortfolio
                   <th className="py-4 px-6 text-right">Start Investment Value</th>
                   <th className="py-4 px-6 text-right">Total Purchases</th>
                   <th className="py-4 px-6 text-right">End Investment Balance</th>
+                  <th className="py-4 px-6 text-right">Yearly Gain / Loss</th>
+                  <th className="py-4 px-6 text-right">Annual % Return</th>
                   <th className="py-4 px-6 text-right">Gain / Loss</th>
                   <th className="py-4 px-6 text-right">Total % Gain</th>
-                  <th className="py-4 px-6 text-right">Annual % Return</th>
                 </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-50">
+                </thead>
+                <tbody className="divide-y divide-slate-50">
                 {yearlyPerformance?.map((row) => {
                   const gainNum = parseFloat(row.gainLoss);
                   const isPositive = gainNum >= 0;
+                  const yearlyGainNum = parseFloat(row.yearlyGainLoss || "0");
+                  const isYearlyPositive = yearlyGainNum >= 0;
                   const annualReturnNum = parseFloat(row.annualReturnPercent);
                   const isAnnualPositive = annualReturnNum >= 0;
                   const isCurrentYear = row.year === new Date().getFullYear();
-                  
+
                   return (
                     <tr key={row.year} className="hover:bg-slate-50/50 transition-colors">
                       <td className="py-4 px-6 font-bold text-slate-700">{row.year}</td>
@@ -276,6 +315,14 @@ export default function Performance({ selectedPortfolioId }: { selectedPortfolio
                           {isCurrentYear && <span className="text-[9px] text-slate-400 uppercase font-bold tracking-tighter">Current Balance</span>}
                         </div>
                       </td>
+                      <td className={`py-4 px-6 text-right font-mono font-bold ${isYearlyPositive ? "text-green-600" : "text-red-600"}`}>
+                        {isYearlyPositive ? "+" : ""}{formatCurrency(row.yearlyGainLoss)}
+                      </td>
+                      <td className={`py-4 px-6 text-right`}>
+                        <span className={`px-2 py-1 rounded text-[10px] font-bold font-mono ${isAnnualPositive ? "bg-blue-50 text-blue-700" : "bg-orange-50 text-orange-700"}`}>
+                          {isAnnualPositive ? "+" : ""}{row.annualReturnPercent}%
+                        </span>
+                      </td>
                       <td className={`py-4 px-6 text-right font-mono font-bold ${isPositive ? "text-green-600" : "text-red-600"}`}>
                         {isPositive ? "+" : ""}{formatCurrency(row.gainLoss)}
                       </td>
@@ -284,17 +331,11 @@ export default function Performance({ selectedPortfolioId }: { selectedPortfolio
                           {isPositive ? "+" : ""}{row.gainLossPercent}%
                         </span>
                       </td>
-                      <td className={`py-4 px-6 text-right`}>
-                        <span className={`px-2 py-1 rounded text-[10px] font-bold font-mono ${isAnnualPositive ? "bg-blue-50 text-blue-700" : "bg-orange-50 text-orange-700"}`}>
-                          {isAnnualPositive ? "+" : ""}{row.annualReturnPercent}%
-                        </span>
-                      </td>
                     </tr>
                   );
-                })}
-                {(!yearlyPerformance || yearlyPerformance.length === 0) && (
+                })}                {(!yearlyPerformance || yearlyPerformance.length === 0) && (
                   <tr>
-                    <td colSpan={8} className="py-12 text-center text-slate-400 italic">No historical data available for this portfolio.</td>
+                    <td colSpan={9} className="py-12 text-center text-slate-400 italic">No historical data available for this portfolio.</td>
                   </tr>
                 )}
               </tbody>
@@ -303,30 +344,58 @@ export default function Performance({ selectedPortfolioId }: { selectedPortfolio
         </div>
       </Card>
 
-      {/* Bottom Insights */}
-      <Card className="p-6 bg-slate-800 text-white shadow-lg border-0 overflow-hidden relative">
-        <div className="absolute top-0 right-0 p-8 opacity-10">
-          <TrendingUp className="w-32 h-32" />
+      {/* Monthly Performance Chart */}
+      <Card className="bg-white border-none shadow-sm shadow-slate-200/50">
+        <div className="p-6 border-b border-slate-50">
+          <div className="flex items-center gap-2">
+            <Activity className="w-4 h-4 text-primary" />
+            <h2 className="text-lg font-bold text-slate-800 uppercase tracking-widest">Last 12 Months Performance</h2>
+          </div>
         </div>
-        <div className="flex items-center gap-2 mb-6 relative z-10">
-          <div className="p-1.5 bg-white/10 rounded">
-            <BarChart3 className="w-4 h-4" />
-          </div>
-          <h2 className="text-lg font-bold uppercase tracking-widest">Market Analysis Insight</h2>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 relative z-10">
-          <div className="space-y-2">
-            <div className="text-[10px] text-white/50 uppercase font-bold tracking-widest">Global Sourcing</div>
-            <div className="text-sm font-semibold">Verified Yahoo Finance Market Link</div>
-          </div>
-          <div className="space-y-2">
-            <div className="text-[10px] text-white/50 uppercase font-bold tracking-widest">Calculated Returns</div>
-            <div className="text-sm font-semibold">TWR - Time Weighted Return Proxy</div>
-          </div>
-          <div className="space-y-2">
-            <div className="text-[10px] text-white/50 uppercase font-bold tracking-widest">Portfolio Tracking</div>
-            <div className="text-sm font-semibold">{holdings?.length || 0} Investments Successfully Indexed</div>
-          </div>
+        <div className="p-6 h-[400px]">
+          {monthlyPerformance && monthlyPerformance.length > 0 ? (
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={monthlyPerformance} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                <XAxis 
+                  dataKey="month" 
+                  stroke="#94a3b8" 
+                  fontSize={10} 
+                  tickLine={false} 
+                  axisLine={false} 
+                />
+                <YAxis 
+                  stroke="#94a3b8" 
+                  fontSize={10} 
+                  tickLine={false} 
+                  axisLine={false} 
+                  tickFormatter={(val) => `$${val}`}
+                />
+                <Tooltip 
+                  cursor={{ fill: '#f1f5f9' }}
+                  content={<CustomTooltip />}
+                />
+                <Bar 
+                  dataKey="existingValue" 
+                  stackId="a" 
+                  fill="#004a99" 
+                  name="existingValue"
+                  radius={[0, 0, 0, 0]}
+                />
+                <Bar 
+                  dataKey="purchases" 
+                  stackId="a" 
+                  fill="#3b82f6" 
+                  name="purchases"
+                  radius={[4, 4, 0, 0]}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-full flex items-center justify-center text-slate-400 italic">
+              No monthly data available.
+            </div>
+          )}
         </div>
       </Card>
     </div>

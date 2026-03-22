@@ -1594,6 +1594,7 @@ export const etfRouter = router({
         range: z.enum(["1m", "ytd", "1y", "all"]),
         holdingId: z.number().optional(),
         symbol: z.string().optional(),
+        granularity: z.enum(["1d", "1wk", "1mo"]).optional(),
       })
     )
     .query(async ({ ctx, input }) => {
@@ -1604,15 +1605,14 @@ export const etfRouter = router({
       } else if (input.holdingId && input.holdingId !== -1) {
         holdings = holdings.filter((h: any) => h.id === input.holdingId);
       }
-      
+
       const includeCash = !input.symbol && (!input.holdingId || input.holdingId === -1);
-      const data = await getProcessedEvolution(ctx.user.id, holdings, input.range, input.portfolioId, includeCash);
+      const data = await getProcessedEvolution(ctx.user.id, holdings, input.range, input.portfolioId, includeCash, input.granularity);
       return data.map((d: any) => ({
         date: d.date,
         value: d.totalValue.toFixed(2)
       }));
     }),
-
   getPerformanceMetrics: protectedProcedure
     .input(
       z.object({
@@ -1919,6 +1919,7 @@ export const etfRouter = router({
 
         // Annual Return Formula: (End Inv Value) / (Start Inv Value + Purchases) - 1
         const denominator = previousYearEndInvValue + purchasesInYear;
+        const yearlyGainLoss = invValue - denominator;
         const annualReturnPercent = denominator > 0 ? ((invValue / denominator) - 1) * 100 : 0;
 
         processedYears.push({
@@ -1931,6 +1932,7 @@ export const etfRouter = router({
           total: totalValue.toFixed(2),
           gainLoss: gainLoss.toFixed(2),
           gainLossPercent: gainLossPercent.toFixed(2),
+          yearlyGainLoss: yearlyGainLoss.toFixed(2),
           annualReturnPercent: annualReturnPercent.toFixed(2)
         });
 
@@ -1938,6 +1940,92 @@ export const etfRouter = router({
       }
 
       return processedYears.reverse();
+    }),
+
+  getMonthlyPerformance: protectedProcedure
+    .input(z.object({ portfolioId: z.number() }))
+    .query(async ({ ctx, input }) => {
+      const db = await getDb();
+      const allPurchases = await db.select()
+        .from(purchases)
+        .where(and(eq(purchases.userId, ctx.user.id), eq(purchases.portfolioId, input.portfolioId)))
+        .orderBy(purchases.purchaseDate);
+      
+      const now = new Date();
+      const months = [];
+      for (let i = 11; i >= 0; i--) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        months.push({
+          year: d.getFullYear(),
+          month: d.getMonth(),
+          label: d.toLocaleString('default', { month: 'short', year: '2-digit' })
+        });
+      }
+
+      const symbolsOwned: string[] = Array.from(new Set(allPurchases.map((p: any) => p.symbol.toUpperCase())));
+      const symbolPriceHistories = new Map<string, any[]>();
+
+      const startDate = new Date(months[0].year, months[0].month, 1);
+      const daysToFetch = Math.ceil((now.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 35;
+      
+      for (const symbol of symbolsOwned) {
+        const history = await fetchHistoricalPrices(symbol, daysToFetch);
+        symbolPriceHistories.set(symbol, history);
+      }
+
+      const result = [];
+      let previousMonthEndValue = 0;
+
+      // Initialize previousMonthEndValue for the first month
+      const firstMonthStart = new Date(months[0].year, months[0].month, 1);
+      const preFirstMonthEnd = new Date(firstMonthStart.getTime() - 1);
+      
+      allPurchases.forEach((p: any) => {
+        const pDate = new Date(p.purchaseDate);
+        if (pDate <= preFirstMonthEnd && (!p.isSold || (p.soldDate && new Date(p.soldDate) > preFirstMonthEnd))) {
+          const history = symbolPriceHistories.get(p.symbol.toUpperCase()) || [];
+          const pricePoint = history.filter(h => new Date(h.timestamp) <= preFirstMonthEnd).pop();
+          const price = pricePoint ? pricePoint.price : parseFloat(p.price);
+          previousMonthEndValue += parseFloat(p.quantity) * price;
+        }
+      });
+
+      for (const m of months) {
+        const monthStart = new Date(m.year, m.month, 1);
+        const monthEnd = new Date(m.year, m.month + 1, 0, 23, 59, 59);
+        const actualEnd = monthEnd > now ? now : monthEnd;
+
+        let purchasesInMonth = 0;
+        let monthEndValue = 0;
+
+        allPurchases.forEach((p: any) => {
+          const pDate = new Date(p.purchaseDate);
+          if (pDate >= monthStart && pDate <= actualEnd) {
+            purchasesInMonth += parseFloat(p.quantity) * parseFloat(p.price);
+          }
+          
+          if (pDate <= actualEnd && (!p.isSold || (p.soldDate && new Date(p.soldDate) > actualEnd))) {
+            const history = symbolPriceHistories.get(p.symbol.toUpperCase()) || [];
+            const pricePoint = history.filter(h => new Date(h.timestamp) <= actualEnd).pop();
+            const price = pricePoint ? pricePoint.price : parseFloat(p.price);
+            monthEndValue += parseFloat(p.quantity) * price;
+          }
+        });
+
+        const marketGainLoss = monthEndValue - (previousMonthEndValue + purchasesInMonth);
+
+        result.push({
+          month: m.label,
+          purchases: purchasesInMonth.toFixed(2),
+          existingValue: (monthEndValue - purchasesInMonth).toFixed(2),
+          totalValue: monthEndValue.toFixed(2),
+          marketGainLoss: marketGainLoss.toFixed(2)
+        });
+
+        previousMonthEndValue = monthEndValue;
+      }
+
+      return result;
     }),
 });
 
@@ -1982,7 +2070,7 @@ function calculateDateRange(range: string) {
  * Shared engine to calculate evolution for any range
  * Ensures perfect consistency between charts and summary cards
  */
-async function getProcessedEvolution(userId: number, holdings: any[], range: "1m" | "ytd" | "1y" | "all", portfolioId?: number, includeCash?: boolean) {
+async function getProcessedEvolution(userId: number, holdings: any[], range: "1m" | "ytd" | "1y" | "all", portfolioId?: number, includeCash?: boolean, granularity?: "1d" | "1wk" | "1mo") {
   const now = new Date();
   now.setHours(23, 59, 59, 999);
 
@@ -2023,6 +2111,10 @@ async function getProcessedEvolution(userId: number, holdings: any[], range: "1m
     if (days < 30) days = 30; // Minimum 1 month for visual consistency
     if (days > 730) interval = "1wk"; // Use weekly for > 2 years
   }
+
+  // Override interval if granularity is specified
+  if (granularity === "1wk") interval = "1wk";
+  if (granularity === "1mo") interval = "1wk"; // Use weekly prices to fill monthly points accurately
 
   const startDate = new Date();
   startDate.setDate(now.getDate() - days);
@@ -2088,10 +2180,16 @@ async function getProcessedEvolution(userId: number, holdings: any[], range: "1m
   while (curr <= now) {
     const dKey = curr.toISOString().split("T")[0];
     resultDates.push(dKey);
-    if (interval === "1d") {
+    
+    if (granularity === "1mo") {
+      // Move to end of current month
+      curr = new Date(curr.getFullYear(), curr.getMonth() + 1, 0);
+      // Then move to the same day next month (it will be adjusted to end of month in next iteration)
       curr.setDate(curr.getDate() + 1);
-    } else {
+    } else if (granularity === "1wk" || (interval === "1wk" && !granularity)) {
       curr.setDate(curr.getDate() + 7);
+    } else {
+      curr.setDate(curr.getDate() + 1);
     }
   }
 
@@ -2101,7 +2199,42 @@ async function getProcessedEvolution(userId: number, holdings: any[], range: "1m
     resultDates.push(todayKey);
   }
 
-  return resultDates.map((dateKey: string) => {
+  let previousTotalValue = 0;
+  
+  // To get the first previousTotalValue, we need to calculate it for the day before startDate
+  const preStartDate = new Date(startDate);
+  preStartDate.setDate(preStartDate.getDate() - 1);
+  const preStartDateKey = preStartDate.toISOString().split("T")[0];
+  
+  let initialValue = 0;
+  for (const item of holdingData) {
+    let price = item.pricesMap.get(preStartDateKey);
+    if (price === undefined) {
+      price = lastPrices.get(item.holding.id) || 0;
+    }
+    
+    let qtyOwned = 0;
+    for (const p of item.purchases) {
+      if (new Date(p.purchaseDate) <= preStartDate) {
+        qtyOwned += parseFloat(p.quantity.toString());
+      }
+    }
+    initialValue += qtyOwned * price;
+  }
+  
+  if (includeCash) {
+    const latestAccountCash = new Map<number, number>();
+    for (const ch of cashHistory) {
+      if (new Date(ch.date) <= preStartDate) {
+        latestAccountCash.set(ch.accountId, parseFloat(ch.amount));
+      }
+    }
+    initialValue += Array.from(latestAccountCash.values()).reduce((sum: number, val: number) => sum + val, 0);
+  }
+  previousTotalValue = initialValue;
+
+  const result = [];
+  for (const dateKey of resultDates) {
     const currentDate = new Date(dateKey + "T12:00:00");
     let totalMarketValue = 0;
     let totalCurrentQtyValue = 0;
@@ -2117,7 +2250,8 @@ async function getProcessedEvolution(userId: number, holdings: any[], range: "1m
       // 1. Market Growth Value (Historical Quantity * Historical Price)
       let qtyOwned = 0;
       for (const p of item.purchases) {
-        if (new Date(p.purchaseDate) <= currentDate) {
+        const pDate = new Date(p.purchaseDate);
+        if (pDate <= currentDate) {
           qtyOwned += parseFloat(p.quantity.toString());
         }
       }
@@ -2126,8 +2260,7 @@ async function getProcessedEvolution(userId: number, holdings: any[], range: "1m
       // 2. Market Performance Value (Current Quantity * Historical Price)
       totalCurrentQtyValue += item.currentQty * price;
     }
-
-    // Add cash balance if requested
+    
     if (includeCash) {
       const latestAccountCash = new Map<number, number>();
       for (const ch of cashHistory) {
@@ -2140,12 +2273,13 @@ async function getProcessedEvolution(userId: number, holdings: any[], range: "1m
       totalCurrentQtyValue += totalCash;
     }
 
-    return {
+    result.push({
       date: dateKey,
       totalValue: totalMarketValue,
       priceOnlyValue: totalCurrentQtyValue
-    };
-  });
+    });
+  }
+  return result;
 }
 
 function calculateDailyReturn(
