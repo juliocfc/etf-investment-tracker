@@ -1543,12 +1543,12 @@ export const etfRouter = router({
         holdings = holdings.filter((h: any) => h.id === input.holdingId);
       }
 
-      const emptyMetrics = { m1: "0", ytd: "0", y1: "0", y5: "0" };
+      const emptyMetrics = { m1: "0", ytd: "0", y1: "0", all: "0" };
       if (!holdings || holdings.length === 0) {
         return { marketGrowth: emptyMetrics, pricePerformance: emptyMetrics };
       }
 
-      const calculateForRange = async (range: "1m" | "ytd" | "1y" | "5y") => {
+      const calculateForRange = async (range: "1m" | "ytd" | "1y" | "all") => {
         const includeCash = !input.symbol && (!input.holdingId || input.holdingId === -1);
         const data = await getProcessedEvolution(ctx.user.id, holdings, range, input.portfolioId, includeCash);
         if (data.length < 2) return { market: "0", price: "0" };
@@ -1574,16 +1574,16 @@ export const etfRouter = router({
         };
       };
 
-      const [m1, ytd, y1, y5] = await Promise.all([
+      const [m1, ytd, y1, allTime] = await Promise.all([
         calculateForRange("1m"),
         calculateForRange("ytd"),
         calculateForRange("1y"),
-        calculateForRange("5y")
+        calculateForRange("all")
       ]);
 
       return {
-        marketGrowth: { m1: m1.market, ytd: ytd.market, y1: y1.market, y5: y5.market },
-        pricePerformance: { m1: m1.price, ytd: ytd.price, y1: y1.price, y5: y5.price }
+        marketGrowth: { m1: m1.market, ytd: ytd.market, y1: y1.market, all: allTime.market },
+        pricePerformance: { m1: m1.price, ytd: ytd.price, y1: y1.price, all: allTime.price }
       };
     }),
 
@@ -1591,7 +1591,7 @@ export const etfRouter = router({
     .input(
       z.object({
         portfolioId: z.number(),
-        range: z.enum(["1m", "ytd", "1y", "5y"]),
+        range: z.enum(["1m", "ytd", "1y", "all"]),
         holdingId: z.number().optional(),
         symbol: z.string().optional(),
       })
@@ -1788,6 +1788,157 @@ export const etfRouter = router({
         new Date(b.date).getTime() - new Date(a.date).getTime()
       );
     }),
+
+  getYearlyPerformance: protectedProcedure
+    .input(z.object({ portfolioId: z.number() }))
+    .query(async ({ ctx, input }) => {
+      const db = await getDb();
+      const holdings = await getUserEtfHoldings(ctx.user.id, input.portfolioId);
+      const allPurchases = await db.select()
+        .from(purchases)
+        .where(and(eq(purchases.userId, ctx.user.id), eq(purchases.portfolioId, input.portfolioId)))
+        .orderBy(purchases.purchaseDate);
+      const cashHistory = await getCashBalanceHistory(ctx.user.id, input.portfolioId);
+
+      const now = new Date();
+      const currentYear = now.getFullYear();
+      
+      let oldestDate = now;
+      if (allPurchases.length > 0 && new Date(allPurchases[0].purchaseDate) < oldestDate) {
+        oldestDate = new Date(allPurchases[0].purchaseDate);
+      }
+      if (cashHistory.length > 0 && new Date(cashHistory[0].date) < oldestDate) {
+        oldestDate = new Date(cashHistory[0].date);
+      }
+
+      const startYear = Math.max(oldestDate.getFullYear(), currentYear - 4);
+      const years = [];
+      for (let y = currentYear; y >= startYear; y--) {
+        years.push(y);
+      }
+
+      // Pre-fetch all symbols price history once
+      const symbolsOwned: string[] = Array.from(new Set(allPurchases.map((p: any) => p.symbol.toUpperCase())));
+      const symbolPriceHistories = new Map<string, any[]>();
+      
+      const daysToFetch = Math.ceil((now.getTime() - new Date(startYear, 0, 1).getTime()) / (1000 * 60 * 60 * 24)) + 10;
+      for (const symbol of symbolsOwned) {
+        const history = await fetchHistoricalPrices(symbol, daysToFetch);
+        symbolPriceHistories.set(symbol, history);
+      }
+
+      const result = [];
+      let previousYearEndValue = 0;
+
+      // To calculate start value for the oldest year in our list, 
+      // we need to know the investment value at the end of the year PRIOR to our startYear
+      const preStartYear = startYear - 1;
+      const preEndDate = new Date(preStartYear, 11, 31, 23, 59, 59);
+      
+      let previousYearEndInvValue = 0;
+      allPurchases.forEach((p: any) => {
+        const pDate = new Date(p.purchaseDate);
+        const sDate = p.soldDate ? new Date(p.soldDate) : null;
+        if (pDate <= preEndDate && (!p.isSold || (sDate && sDate > preEndDate))) {
+          // Find price at year end
+          const history = symbolPriceHistories.get(p.symbol.toUpperCase()) || [];
+          const pricePoint = history.filter(h => new Date(h.timestamp) <= preEndDate).pop();
+          const price = pricePoint ? pricePoint.price : parseFloat(p.price);
+          previousYearEndInvValue += parseFloat(p.quantity) * price;
+        }
+      });
+
+      const processedYears = [];
+      const yearsAsc = [...years].reverse();
+
+      for (const year of yearsAsc) {
+        const isCurrentYear = year === currentYear;
+        const endDate = isCurrentYear ? now : new Date(year, 11, 31, 23, 59, 59);
+        const startDate = new Date(year, 0, 1, 0, 0, 0);
+
+        let invValue = 0;
+        let costBasis = 0;
+        let purchasesInYear = 0;
+
+        // Calculate purchases during this year
+        allPurchases.forEach((p: any) => {
+          const pDate = new Date(p.purchaseDate);
+          if (pDate >= startDate && pDate <= endDate) {
+            purchasesInYear += parseFloat(p.quantity) * parseFloat(p.price);
+          }
+        });
+
+        if (isCurrentYear) {
+          for (const h of holdings) {
+            const price = parseFloat(h.currentPrice || "0");
+            const qty = parseFloat(h.quantity || "0");
+            invValue += price * qty;
+            costBasis += parseFloat(h.purchasePrice || "0") * qty;
+          }
+        } else {
+          const yearEndHoldings = new Map<string, { qty: number, cost: number }>();
+          allPurchases.forEach((p: any) => {
+            const pDate = new Date(p.purchaseDate);
+            const sDate = p.soldDate ? new Date(p.soldDate) : null;
+            if (pDate <= endDate && (!p.isSold || (sDate && sDate > endDate))) {
+              const sym = p.symbol.toUpperCase();
+              const existing = yearEndHoldings.get(sym) || { qty: 0, cost: 0 };
+              const qty = parseFloat(p.quantity);
+              yearEndHoldings.set(sym, {
+                qty: existing.qty + qty,
+                cost: existing.cost + (qty * parseFloat(p.price))
+              });
+            }
+          });
+
+          yearEndHoldings.forEach((data, symbol) => {
+            const history = symbolPriceHistories.get(symbol) || [];
+            let yearEndPrice = 0;
+            const pricePoint = history.filter(p => new Date(p.timestamp) <= endDate).pop();
+            if (pricePoint) {
+              yearEndPrice = pricePoint.price;
+            } else if (history.length > 0) {
+              yearEndPrice = history[0].price;
+            }
+            invValue += data.qty * yearEndPrice;
+            costBasis += data.cost;
+          });
+        }
+
+        const latestAccountCash = new Map<number, number>();
+        cashHistory.forEach((ch: any) => {
+          if (new Date(ch.date) <= endDate) {
+            latestAccountCash.set(ch.accountId, parseFloat(ch.amount));
+          }
+        });
+        const cashValue = Array.from(latestAccountCash.values()).reduce((sum, val) => sum + val, 0);
+        
+        const totalValue = invValue + cashValue;
+        const gainLoss = invValue - costBasis;
+        const gainLossPercent = costBasis > 0 ? (gainLoss / costBasis) * 100 : 0;
+
+        // Annual Return Formula: (End Inv Value) / (Start Inv Value + Purchases) - 1
+        const denominator = previousYearEndInvValue + purchasesInYear;
+        const annualReturnPercent = denominator > 0 ? ((invValue / denominator) - 1) * 100 : 0;
+
+        processedYears.push({
+          year,
+          startInvestment: previousYearEndInvValue.toFixed(2),
+          investment: invValue.toFixed(2),
+          costBasis: costBasis.toFixed(2),
+          purchasesInYear: purchasesInYear.toFixed(2),
+          cash: cashValue.toFixed(2),
+          total: totalValue.toFixed(2),
+          gainLoss: gainLoss.toFixed(2),
+          gainLossPercent: gainLossPercent.toFixed(2),
+          annualReturnPercent: annualReturnPercent.toFixed(2)
+        });
+
+        previousYearEndInvValue = invValue;
+      }
+
+      return processedYears.reverse();
+    }),
 });
 
 /**
@@ -1831,7 +1982,7 @@ function calculateDateRange(range: string) {
  * Shared engine to calculate evolution for any range
  * Ensures perfect consistency between charts and summary cards
  */
-async function getProcessedEvolution(userId: number, holdings: any[], range: "1m" | "ytd" | "1y" | "5y", portfolioId?: number, includeCash?: boolean) {
+async function getProcessedEvolution(userId: number, holdings: any[], range: "1m" | "ytd" | "1y" | "all", portfolioId?: number, includeCash?: boolean) {
   const now = new Date();
   now.setHours(23, 59, 59, 999);
 
@@ -1843,9 +1994,34 @@ async function getProcessedEvolution(userId: number, holdings: any[], range: "1m
     const startOfYear = new Date(now.getFullYear(), 0, 1);
     days = Math.ceil((now.getTime() - startOfYear.getTime()) / (1000 * 60 * 60 * 24)) + 1;
   } else if (range === "1y") days = 365;
-  else if (range === "5y") {
-    days = 365 * 5;
-    interval = "1wk";
+  else if (range === "all") {
+    // Find oldest transaction (purchase or cash)
+    const db = await getDb();
+    const oldestPurchase = await db.select({ date: purchases.purchaseDate })
+      .from(purchases)
+      .where(eq(purchases.userId, userId))
+      .orderBy(purchases.purchaseDate)
+      .limit(1)
+      .then((rows: any[]) => rows[0]?.date);
+    
+    let oldestDate = oldestPurchase ? new Date(oldestPurchase) : new Date();
+
+    if (includeCash && portfolioId) {
+      const oldestCash = await db.select({ date: cashBalanceHistory.date })
+        .from(cashBalanceHistory)
+        .where(and(eq(cashBalanceHistory.userId, userId), eq(cashBalanceHistory.portfolioId, portfolioId)))
+        .orderBy(cashBalanceHistory.date)
+        .limit(1)
+        .then((rows: any[]) => rows[0]?.date);
+      
+      if (oldestCash && new Date(oldestCash) < oldestDate) {
+        oldestDate = new Date(oldestCash);
+      }
+    }
+
+    days = Math.ceil((now.getTime() - oldestDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+    if (days < 30) days = 30; // Minimum 1 month for visual consistency
+    if (days > 730) interval = "1wk"; // Use weekly for > 2 years
   }
 
   const startDate = new Date();

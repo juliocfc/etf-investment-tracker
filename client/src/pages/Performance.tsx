@@ -7,6 +7,9 @@ import {
   Line,
   AreaChart,
   Area,
+  BarChart,
+  Bar,
+  Cell,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -15,38 +18,24 @@ import {
 } from "recharts";
 import { TrendingUp, Activity, BarChart3, Database, RefreshCw, ArrowUpRight, ArrowDownRight } from "lucide-react";
 
-type TimeRange = "1m" | "ytd" | "1y" | "5y";
+type TimeRange = "1m" | "ytd" | "1y" | "all";
 
 export default function Performance({ selectedPortfolioId }: { selectedPortfolioId: number }) {
   // Independent time range states for each panel
   const [growthRange, setGrowthRange] = useState<TimeRange>("1y");
-  const [priceRange, setPriceRange] = useState<TimeRange>("1y");
-  const [quantityRange, setQuantityRange] = useState<TimeRange>("1y");
 
   // Independent asset selectors for each chart
   const [evolutionSymbol, setEvolutionSymbol] = useState<string | "ALL">("ALL");
-  const [priceSymbol, setPriceSymbol] = useState<string | null>(null);
-  const [quantitySymbol, setQuantitySymbol] = useState<string | null>(null);
 
   // Reset symbols when portfolio changes
   useEffect(() => {
     setEvolutionSymbol("ALL");
-    setPriceSymbol(null);
-    setQuantitySymbol(null);
   }, [selectedPortfolioId]);
 
   const { data: holdings } = trpc.etf.getHoldings.useQuery(
     { portfolioId: selectedPortfolioId },
     { enabled: !!selectedPortfolioId }
   );
-
-  // Initialize independent holding selectors when holdings are loaded
-  useEffect(() => {
-    if (holdings && holdings.length > 0) {
-      if (priceSymbol === null) setPriceSymbol(holdings[0].symbol);
-      if (quantitySymbol === null) setQuantitySymbol(holdings[0].symbol);
-    }
-  }, [holdings, priceSymbol, quantitySymbol]);
 
   // Queries
   const { data: growthMetrics, isLoading: isLoadingMetrics } = trpc.etf.getPortfolioGrowthMetrics.useQuery(
@@ -66,8 +55,11 @@ export default function Performance({ selectedPortfolioId }: { selectedPortfolio
     { enabled: !!selectedPortfolioId }
   );
 
-  const selectedPriceHolding = holdings?.find(h => h.symbol === priceSymbol) || holdings?.[0];
-  
+  const { data: yearlyPerformance } = trpc.etf.getYearlyPerformance.useQuery(
+    { portfolioId: selectedPortfolioId },
+    { enabled: !!selectedPortfolioId }
+  );
+
   const getDaysForRange = (range: TimeRange) => {
     if (range === "1m") return 30;
     if (range === "ytd") {
@@ -75,57 +67,19 @@ export default function Performance({ selectedPortfolioId }: { selectedPortfolio
       const startOfYear = new Date(now.getFullYear(), 0, 1);
       return Math.ceil((now.getTime() - startOfYear.getTime()) / (1000 * 60 * 60 * 24));
     }
-    if (range === "5y") return 365 * 5;
+    if (range === "all") return 3650; // Use a large number for all time
     return 365;
   };
-
-  const { data: priceHistory, isLoading: isLoadingPrice } = trpc.etf.getMarketPriceHistory.useQuery(
-    {
-      symbol: selectedPriceHolding?.symbol || "",
-      days: getDaysForRange(priceRange),
-    },
-    { enabled: !!selectedPriceHolding }
-  );
-
-  const { data: quantityHistory, isLoading: isLoadingQuantity } = trpc.etf.getAssetQuantityHistory.useQuery(
-    {
-      holdingId: -1,
-      symbol: quantitySymbol || "",
-      portfolioId: selectedPortfolioId,
-      range: quantityRange,
-    },
-    { enabled: !!quantitySymbol && !!selectedPortfolioId }
-  );
 
   // Format evolution data for chart
   const evolutionChartData = evolution?.map((item) => ({
     date: new Date(item.date + "T12:00:00").toLocaleDateString(undefined, {
       month: "short",
       day: "numeric",
-      year: growthRange === "5y" ? "2-digit" : undefined,
+      year: growthRange === "all" ? "2-digit" : undefined,
     }),
     value: parseFloat(item.value),
     rawDate: item.date,
-  })) || [];
-
-  // Format price history data
-  const priceChartData = priceHistory?.map((item) => ({
-    date: new Date(item.timestamp).toLocaleDateString(undefined, {
-      month: "short",
-      day: "numeric",
-      year: priceRange === "5y" ? "2-digit" : undefined,
-    }),
-    price: parseFloat(item.price.toString()),
-  })) || [];
-
-  // Format quantity history data
-  const quantityChartData = quantityHistory?.map((item) => ({
-    date: new Date(item.date + "T12:00:00").toLocaleDateString(undefined, {
-      month: "short",
-      day: "numeric",
-      year: quantityRange === "5y" ? "2-digit" : undefined,
-    }),
-    shares: parseFloat(item.quantity),
   })) || [];
 
   const getEvolutionChange = () => {
@@ -146,7 +100,7 @@ export default function Performance({ selectedPortfolioId }: { selectedPortfolio
 
   const RangeSelector = ({ value, onChange, className }: { value: TimeRange, onChange: (val: TimeRange) => void, className?: string }) => (
     <div className={`flex bg-slate-100 p-0.5 rounded-md ${className}`}>
-      {(["1m", "ytd", "1y", "5y"] as const).map((period) => (
+      {(["1m", "ytd", "1y", "all"] as const).map((period) => (
         <button
           key={period}
           onClick={() => onChange(period)}
@@ -156,7 +110,7 @@ export default function Performance({ selectedPortfolioId }: { selectedPortfolio
               : "text-slate-500 hover:text-slate-800"
           }`}
         >
-          {period}
+          {period === "all" ? "ALL" : period}
         </button>
       ))}
     </div>
@@ -193,63 +147,6 @@ export default function Performance({ selectedPortfolioId }: { selectedPortfolio
         </div>
       </div>
 
-      {/* Performance Summary Cards */}
-      <div className="space-y-6">
-        <div>
-          <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 px-1">Market Performance (Pure Price Movement)</div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-            {[
-              { label: "1 Month", value: growthMetrics?.pricePerformance.m1, id: "pp-m1" },
-              { label: "YTD", value: growthMetrics?.pricePerformance.ytd, id: "pp-ytd" },
-              { label: "1 Year", value: growthMetrics?.pricePerformance.y1, id: "pp-y1" },
-              { label: "5 Years", value: growthMetrics?.pricePerformance.y5, id: "pp-pp5" },
-            ].map((metric) => {
-              const val = parseFloat(metric.value || "0");
-              const isPositive = val >= 0;
-              return (
-                <Card key={metric.id} className="p-4 bg-white shadow-sm border border-border flex flex-col items-center justify-center text-center">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">{metric.label}</span>
-                  {isLoadingMetrics ? (
-                    <div className="h-8 w-16 bg-slate-100 animate-pulse rounded" />
-                  ) : (
-                    <div className={`text-2xl font-bold font-mono ${isPositive ? "text-green-600" : "text-red-600"}`}>
-                      {isPositive ? "+" : ""}{val.toFixed(2)}%
-                    </div>
-                  )}
-                </Card>
-              );
-            })}
-          </div>
-        </div>
-
-        <div>
-          <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 px-1">Portfolio Growth (Total Value Change)</div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-            {[
-              { label: "1 Month", value: growthMetrics?.marketGrowth.m1, id: "mg-m1" },
-              { label: "YTD", value: growthMetrics?.marketGrowth.ytd, id: "mg-ytd" },
-              { label: "1 Year", value: growthMetrics?.marketGrowth.y1, id: "mg-y1" },
-              { label: "5 Years", value: growthMetrics?.marketGrowth.y5, id: "mg-y5" },
-            ].map((metric) => {
-              const val = parseFloat(metric.value || "0");
-              const isPositive = val >= 0;
-              return (
-                <Card key={metric.id} className="p-4 bg-white shadow-sm border border-border flex flex-col items-center justify-center text-center border-t-2 border-t-primary/20">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">{metric.label}</span>
-                  {isLoadingMetrics ? (
-                    <div className="h-8 w-16 bg-slate-100 animate-pulse rounded" />
-                  ) : (
-                    <div className={`text-2xl font-bold font-mono ${isPositive ? "text-green-600" : "text-red-600"}`}>
-                      {isPositive ? "+" : ""}{val.toFixed(2)}%
-                    </div>
-                  )}
-                </Card>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-
       {/* Main Portfolio Evolution Chart */}
       <Card className="p-8 bg-white shadow-sm border border-border">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-6">
@@ -272,7 +169,7 @@ export default function Performance({ selectedPortfolioId }: { selectedPortfolio
                 </div>
               </div>
               <div className={`text-right px-4 py-2 rounded-lg ${evolutionChange.isPositive ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
-                <div className="text-[10px] font-bold uppercase tracking-widest opacity-70">{growthRange} Change</div>
+                <div className="text-[10px] font-bold uppercase tracking-widest opacity-70">{growthRange === "all" ? "All Time" : growthRange} Change</div>
                 <div className="flex items-center justify-end gap-1 font-bold">
                   {evolutionChange.isPositive ? <ArrowUpRight className="w-4 h-4" /> : <ArrowDownRight className="w-4 h-4" />}
                   <span>{evolutionChange.isPositive ? "+" : ""}{evolutionChange.percent}%</span>
@@ -290,13 +187,7 @@ export default function Performance({ selectedPortfolioId }: { selectedPortfolio
             </div>
           ) : evolutionChartData.length > 0 ? (
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={evolutionChartData}>
-                <defs>
-                  <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#004a99" stopOpacity={0.1} />
-                    <stop offset="95%" stopColor="#004a99" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
+              <BarChart data={evolutionChartData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
                 <XAxis 
                   dataKey="date" 
@@ -314,6 +205,7 @@ export default function Performance({ selectedPortfolioId }: { selectedPortfolio
                   tickFormatter={(value) => `$${value}`}
                 />
                 <Tooltip
+                  cursor={{ fill: '#f1f5f9' }}
                   contentStyle={{
                     backgroundColor: "#fff",
                     border: "1px solid #e2e8f0",
@@ -324,16 +216,14 @@ export default function Performance({ selectedPortfolioId }: { selectedPortfolio
                   itemStyle={{ color: "#004a99", fontWeight: "bold" }}
                   formatter={(value) => [formatCurrency(value as number), "Value"]}
                 />
-                <Area
-                  type="monotone"
+                <Bar
                   dataKey="value"
-                  stroke="#004a99"
-                  strokeWidth={3}
-                  fillOpacity={1}
-                  fill="url(#colorValue)"
+                  fill="#004a99"
+                  radius={[4, 4, 0, 0]}
+                  maxBarSize={50}
                   animationDuration={1500}
                 />
-              </AreaChart>
+              </BarChart>
             </ResponsiveContainer>
           ) : (
             <div className="h-full flex items-center justify-center text-slate-400 italic">
@@ -343,162 +233,75 @@ export default function Performance({ selectedPortfolioId }: { selectedPortfolio
         </div>
       </Card>
 
-      {/* Grid for Asset Details */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        {/* Price History */}
-        <Card className="p-6 bg-white shadow-sm border border-border">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
-            <div className="flex items-center gap-2">
-              <div className="p-1.5 bg-slate-100 rounded text-slate-600">
-                <Activity className="w-4 h-4" />
-              </div>
-              <h2 className="text-lg font-bold text-slate-800">Asset Price History</h2>
-            </div>
-            <div className="flex items-center gap-2">
-              <select
-                value={priceSymbol || ""}
-                onChange={(e) => setPriceSymbol(e.target.value)}
-                className="bg-slate-50 border border-slate-200 rounded px-2 py-1 text-xs font-bold text-slate-600 focus:outline-none focus:border-primary"
-              >
-                {holdings?.map((h) => (
-                  <option key={h.symbol} value={h.symbol}>{h.symbol}</option>
-                ))}
-              </select>
-              <RangeSelector value={priceRange} onChange={setPriceRange} />
-            </div>
+      {/* Yearly Performance Table */}
+      <Card className="bg-white border-none shadow-sm shadow-slate-200/50">
+        <div className="p-6 border-b border-slate-50">
+          <div className="flex items-center gap-2">
+            <BarChart3 className="w-4 h-4 text-primary" />
+            <h2 className="text-lg font-bold text-slate-800 uppercase tracking-widest">Yearly Portfolio Performance</h2>
           </div>
-
-          <div className="h-[250px] w-full">
-            {isLoadingPrice ? (
-              <div className="h-full flex items-center justify-center">
-                <RefreshCw className="w-6 h-6 animate-spin text-slate-300" />
-              </div>
-            ) : priceChartData.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={priceChartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f8fafc" vertical={false} />
-                  <XAxis 
-                    dataKey="date" 
-                    stroke="#cbd5e1" 
-                    fontSize={10} 
-                    tickLine={false} 
-                    axisLine={false}
-                    minTickGap={40}
-                  />
-                  <YAxis 
-                    stroke="#cbd5e1" 
-                    fontSize={10} 
-                    tickLine={false} 
-                    axisLine={false}
-                    tickFormatter={(value) => `$${value}`}
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: "#fff",
-                      border: "1px solid #e2e8f0",
-                      borderRadius: "6px",
-                      fontSize: "11px",
-                    }}
-                    formatter={(value) => [formatCurrency(value as number), "Price"]}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="price"
-                    stroke="#004a99"
-                    strokeWidth={2}
-                    dot={false}
-                    animationDuration={1000}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="h-full flex items-center justify-center text-slate-400 text-xs">
-                No market data found for this asset.
-              </div>
-            )}
+        </div>
+        <div className="p-0">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-slate-50/50 text-slate-400 font-bold text-[10px] uppercase tracking-widest border-b border-slate-100">
+                  <th className="py-4 px-6 text-left">Year</th>
+                  <th className="py-4 px-6 text-right">Investment Cost Basis</th>
+                  <th className="py-4 px-6 text-right">Start Investment Value</th>
+                  <th className="py-4 px-6 text-right">Total Purchases</th>
+                  <th className="py-4 px-6 text-right">End Investment Balance</th>
+                  <th className="py-4 px-6 text-right">Gain / Loss</th>
+                  <th className="py-4 px-6 text-right">Total % Gain</th>
+                  <th className="py-4 px-6 text-right">Annual % Return</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {yearlyPerformance?.map((row) => {
+                  const gainNum = parseFloat(row.gainLoss);
+                  const isPositive = gainNum >= 0;
+                  const annualReturnNum = parseFloat(row.annualReturnPercent);
+                  const isAnnualPositive = annualReturnNum >= 0;
+                  const isCurrentYear = row.year === new Date().getFullYear();
+                  
+                  return (
+                    <tr key={row.year} className="hover:bg-slate-50/50 transition-colors">
+                      <td className="py-4 px-6 font-bold text-slate-700">{row.year}</td>
+                      <td className="py-4 px-6 text-right font-mono text-slate-600">{formatCurrency(row.costBasis)}</td>
+                      <td className="py-4 px-6 text-right font-mono text-slate-600">{formatCurrency(row.startInvestment)}</td>
+                      <td className="py-4 px-6 text-right font-mono text-slate-600">{formatCurrency(row.purchasesInYear)}</td>
+                      <td className="py-4 px-6 text-right font-mono text-slate-600">
+                        <div className="flex flex-col items-end">
+                          <span>{formatCurrency(row.investment)}</span>
+                          {isCurrentYear && <span className="text-[9px] text-slate-400 uppercase font-bold tracking-tighter">Current Balance</span>}
+                        </div>
+                      </td>
+                      <td className={`py-4 px-6 text-right font-mono font-bold ${isPositive ? "text-green-600" : "text-red-600"}`}>
+                        {isPositive ? "+" : ""}{formatCurrency(row.gainLoss)}
+                      </td>
+                      <td className={`py-4 px-6 text-right`}>
+                        <span className={`px-2 py-1 rounded text-[10px] font-bold font-mono ${isPositive ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
+                          {isPositive ? "+" : ""}{row.gainLossPercent}%
+                        </span>
+                      </td>
+                      <td className={`py-4 px-6 text-right`}>
+                        <span className={`px-2 py-1 rounded text-[10px] font-bold font-mono ${isAnnualPositive ? "bg-blue-50 text-blue-700" : "bg-orange-50 text-orange-700"}`}>
+                          {isAnnualPositive ? "+" : ""}{row.annualReturnPercent}%
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {(!yearlyPerformance || yearlyPerformance.length === 0) && (
+                  <tr>
+                    <td colSpan={8} className="py-12 text-center text-slate-400 italic">No historical data available for this portfolio.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           </div>
-        </Card>
-
-        {/* Quantity History */}
-        <Card className="p-6 bg-white shadow-sm border border-border">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
-            <div className="flex items-center gap-2">
-              <div className="p-1.5 bg-slate-100 rounded text-slate-600">
-                <Database className="w-4 h-4" />
-              </div>
-              <h2 className="text-lg font-bold text-slate-800">Position Over Time</h2>
-            </div>
-            <div className="flex items-center gap-2">
-              <select
-                value={quantitySymbol || ""}
-                onChange={(e) => setQuantitySymbol(e.target.value)}
-                className="bg-slate-50 border border-slate-200 rounded px-2 py-1 text-xs font-bold text-slate-600 focus:outline-none focus:border-primary"
-              >
-                {holdings?.map((h) => (
-                  <option key={h.symbol} value={h.symbol}>{h.symbol}</option>
-                ))}
-              </select>
-              <RangeSelector value={quantityRange} onChange={setQuantityRange} />
-            </div>
-          </div>
-
-          <div className="h-[250px] w-full">
-            {isLoadingQuantity ? (
-              <div className="h-full flex items-center justify-center">
-                <RefreshCw className="w-6 h-6 animate-spin text-slate-300" />
-              </div>
-            ) : quantityChartData.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={quantityChartData}>
-                  <defs>
-                    <linearGradient id="colorShares" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#3d8a3d" stopOpacity={0.1} />
-                      <stop offset="95%" stopColor="#3d8a3d" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f8fafc" vertical={false} />
-                  <XAxis 
-                    dataKey="date" 
-                    stroke="#cbd5e1" 
-                    fontSize={10} 
-                    tickLine={false} 
-                    axisLine={false}
-                    minTickGap={40}
-                  />
-                  <YAxis 
-                    stroke="#cbd5e1" 
-                    fontSize={10} 
-                    tickLine={false} 
-                    axisLine={false}
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: "#fff",
-                      border: "1px solid #e2e8f0",
-                      borderRadius: "6px",
-                      fontSize: "11px",
-                    }}
-                    formatter={(value) => [`${value} Shares`, "Shares Owned"]}
-                  />
-                  <Area
-                    type="stepAfter"
-                    dataKey="shares"
-                    stroke="#3d8a3d"
-                    strokeWidth={2}
-                    fillOpacity={1}
-                    fill="url(#colorShares)"
-                    animationDuration={1000}
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="h-full flex items-center justify-center text-slate-400 text-xs">
-                No ledger records available.
-              </div>
-            )}
-          </div>
-        </Card>
-      </div>
+        </div>
+      </Card>
 
       {/* Bottom Insights */}
       <Card className="p-6 bg-slate-800 text-white shadow-lg border-0 overflow-hidden relative">
