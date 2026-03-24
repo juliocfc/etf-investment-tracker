@@ -349,7 +349,7 @@ export const portfolioRouter = router({
       if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database unavailable" });
 
       const { purchases: purchasesTable, cashBalanceHistory: cashBalanceHistoryTable, etfHoldings: holdingsTable } = await import("../drizzle/schema");
-      const { gte } = await import("drizzle-orm");
+      const { getSmartHistoricalPrices } = await import("./priceService");
 
       const cashHistory = await db
         .select()
@@ -368,10 +368,29 @@ export const portfolioRouter = router({
         .from(holdingsTable)
         .where(eq(holdingsTable.userId, ctx.user.id));
 
+      // Fetch historical prices for all unique symbols in parallel
+      const symbols = Array.from(new Set(holdings.map((h: any) => h.symbol.toUpperCase()))) as string[];
+      const historicalPrices: Record<string, any[]> = {};
+
+      // Filter to save only 1st and last day of month to DB cache
+      const saveFilter = (date: Date) => {
+        const d = new Date(date);
+        const day = d.getUTCDate();
+        const lastDay = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
+        return day === 1 || day === lastDay;
+      };
+
+      await Promise.all(symbols.map(async (symbol) => {
+        // Fetch with '1mo' interval for the frontend, but the service will fetch daily and save filtered in background
+        const prices = await getSmartHistoricalPrices(symbol, input.days, '1mo', saveFilter);
+        historicalPrices[symbol] = prices;
+      }));
+
       return {
         cashHistory,
         purchases: allPurchases,
-        holdings
+        holdings,
+        historicalPrices
       };
     }),
 

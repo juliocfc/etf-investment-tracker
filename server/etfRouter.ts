@@ -32,10 +32,10 @@ import {
 import { gte, lte } from "drizzle-orm";
 import {
   fetchEtfPrice,
-  fetchHistoricalPrices,
   validateEtfSymbol,
   fetchDividendData,
 } from "./financialApi";
+import { getSmartHistoricalPrices } from "./priceService";
 import { fetchETFName } from "./etfLookup";
 import { calculatePerformanceMetrics } from "./performanceMetrics";
 
@@ -408,7 +408,7 @@ export const etfRouter = router({
     )
     .query(async ({ ctx, input }) => {
       const interval = input.days <= 30 ? "1d" : "1wk";
-      const history = await fetchHistoricalPrices(input.symbol, input.days, interval);
+      const history = await getSmartHistoricalPrices(input.symbol, input.days, interval);
       
       // Find current price in our DB for this symbol
       const db = await getDb();
@@ -443,7 +443,7 @@ export const etfRouter = router({
   syncHistoricalPrices: protectedProcedure
     .input(z.object({ symbol: z.string(), days: z.number().default(365) }))
     .mutation(async ({ ctx, input }) => {
-      const prices = await fetchHistoricalPrices(input.symbol, input.days);
+      const prices = await getSmartHistoricalPrices(input.symbol, input.days);
 
       for (const price of prices) {
         await addPriceHistory(
@@ -1526,67 +1526,6 @@ export const etfRouter = router({
       return result;
     }),
 
-  getPortfolioGrowthMetrics: protectedProcedure
-    .input(
-      z.object({
-        portfolioId: z.number(),
-        holdingId: z.number().optional(),
-        symbol: z.string().optional(),
-      })
-    )
-    .query(async ({ ctx, input }) => {
-      let holdings = await getUserEtfHoldings(ctx.user.id, input.portfolioId);
-      if (input.symbol) {
-        const symbolUpper = input.symbol.toUpperCase();
-        holdings = holdings.filter((h: any) => h.symbol === symbolUpper);
-      } else if (input.holdingId && input.holdingId !== -1) {
-        holdings = holdings.filter((h: any) => h.id === input.holdingId);
-      }
-
-      const emptyMetrics = { m1: "0", ytd: "0", y1: "0", all: "0" };
-      if (!holdings || holdings.length === 0) {
-        return { marketGrowth: emptyMetrics, pricePerformance: emptyMetrics };
-      }
-
-      const calculateForRange = async (range: "1m" | "ytd" | "1y" | "all") => {
-        const includeCash = !input.symbol && (!input.holdingId || input.holdingId === -1);
-        const data = await getProcessedEvolution(ctx.user.id, holdings, range, input.portfolioId, includeCash);
-        if (data.length < 2) return { market: "0", price: "0" };
-
-        const first = data[0];
-        const last = data[data.length - 1];
-
-        // Find first non-zero point to calculate growth from
-        const firstNonZeroMarket = data.find(d => d.totalValue > 0) || first;
-        const firstNonZeroPrice = data.find(d => d.priceOnlyValue > 0) || first;
-
-        const marketGrowth = firstNonZeroMarket.totalValue > 0 
-          ? ((last.totalValue - firstNonZeroMarket.totalValue) / firstNonZeroMarket.totalValue) * 100 
-          : 0;
-        
-        const pricePerformance = firstNonZeroPrice.priceOnlyValue > 0 
-          ? ((last.priceOnlyValue - firstNonZeroPrice.priceOnlyValue) / firstNonZeroPrice.priceOnlyValue) * 100 
-          : 0;
-
-        return {
-          market: marketGrowth.toFixed(2),
-          price: pricePerformance.toFixed(2)
-        };
-      };
-
-      const [m1, ytd, y1, allTime] = await Promise.all([
-        calculateForRange("1m"),
-        calculateForRange("ytd"),
-        calculateForRange("1y"),
-        calculateForRange("all")
-      ]);
-
-      return {
-        marketGrowth: { m1: m1.market, ytd: ytd.market, y1: y1.market, all: allTime.market },
-        pricePerformance: { m1: m1.price, ytd: ytd.price, y1: y1.price, all: allTime.price }
-      };
-    }),
-
   getPortfolioEvolution: protectedProcedure
     .input(
       z.object({
@@ -1598,20 +1537,27 @@ export const etfRouter = router({
       })
     )
     .query(async ({ ctx, input }) => {
-      let holdings = await getUserEtfHoldings(ctx.user.id, input.portfolioId);
-      if (input.symbol) {
-        const symbolUpper = input.symbol.toUpperCase();
-        holdings = holdings.filter((h: any) => h.symbol === symbolUpper);
-      } else if (input.holdingId && input.holdingId !== -1) {
-        holdings = holdings.filter((h: any) => h.id === input.holdingId);
-      }
+      try {
+        let holdings = await getUserEtfHoldings(ctx.user.id, input.portfolioId);
+        if (input.symbol) {
+          const symbolUpper = input.symbol.toUpperCase();
+          holdings = holdings.filter((h: any) => h.symbol === symbolUpper);
+        } else if (input.holdingId && input.holdingId !== -1) {
+          holdings = holdings.filter((h: any) => h.id === input.holdingId);
+        }
 
-      const includeCash = !input.symbol && (!input.holdingId || input.holdingId === -1);
-      const data = await getProcessedEvolution(ctx.user.id, holdings, input.range, input.portfolioId, includeCash, input.granularity);
-      return data.map((d: any) => ({
-        date: d.date,
-        value: d.totalValue.toFixed(2)
-      }));
+        const includeCash = !input.symbol && (!input.holdingId || input.holdingId === -1);
+        const data = await getProcessedEvolution(ctx.user.id, holdings, input.range, input.portfolioId, includeCash, input.granularity);
+        return data.map((d: any) => ({
+          date: d.date,
+          value: d.totalValue.toFixed(2),
+          investmentValue: d.investmentValue.toFixed(2),
+          cashValue: d.cashValue.toFixed(2)
+        }));
+      } catch (error) {
+        console.error(`[etfRouter] Error in getPortfolioEvolution:`, error);
+        throw error;
+      }
     }),
   getPerformanceMetrics: protectedProcedure
     .input(
@@ -1621,7 +1567,7 @@ export const etfRouter = router({
     )
     .query(async ({ ctx, input }) => {
       // Fetch 1+ year of historical prices
-      const prices = await fetchHistoricalPrices(input.symbol, 400);
+      const prices = await getSmartHistoricalPrices(input.symbol, 400);
       
       if (!prices || prices.length === 0) {
         return {
@@ -1823,7 +1769,7 @@ export const etfRouter = router({
       
       const daysToFetch = Math.ceil((now.getTime() - new Date(startYear, 0, 1).getTime()) / (1000 * 60 * 60 * 24)) + 10;
       for (const symbol of symbolsOwned) {
-        const history = await fetchHistoricalPrices(symbol, daysToFetch);
+        const history = await getSmartHistoricalPrices(symbol, daysToFetch, '1mo');
         symbolPriceHistories.set(symbol, history);
       }
 
@@ -1969,7 +1915,7 @@ export const etfRouter = router({
       const daysToFetch = Math.ceil((now.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 35;
       
       for (const symbol of symbolsOwned) {
-        const history = await fetchHistoricalPrices(symbol, daysToFetch);
+        const history = await getSmartHistoricalPrices(symbol, daysToFetch, '1mo');
         symbolPriceHistories.set(symbol, history);
       }
 
@@ -2075,7 +2021,7 @@ async function getProcessedEvolution(userId: number, holdings: any[], range: "1m
   now.setHours(23, 59, 59, 999);
 
   let days = 365;
-  let interval: "1d" | "1wk" = "1d";
+  let interval: "1d" | "1wk" | "1mo" = "1d";
 
   if (range === "1m") days = 30;
   else if (range === "ytd") {
@@ -2114,7 +2060,7 @@ async function getProcessedEvolution(userId: number, holdings: any[], range: "1m
 
   // Override interval if granularity is specified
   if (granularity === "1wk") interval = "1wk";
-  if (granularity === "1mo") interval = "1wk"; // Use weekly prices to fill monthly points accurately
+  if (granularity === "1mo") interval = "1mo";
 
   const startDate = new Date();
   startDate.setDate(now.getDate() - days);
@@ -2126,7 +2072,7 @@ async function getProcessedEvolution(userId: number, holdings: any[], range: "1m
 
   for (const holding of holdings) {
     // Fetch a bit more to have "warm up" data for lastPrices
-    const priceHistory = await fetchHistoricalPrices(holding.symbol as string, days + 10, interval);
+    const priceHistory = await getSmartHistoricalPrices(holding.symbol as string, days + 10, interval);
     const purchases = await getPurchases(holding.id);
     const pricesMap = new Map<string, number>();
     
@@ -2177,15 +2123,19 @@ async function getProcessedEvolution(userId: number, holdings: any[], range: "1m
   // Generate continuous list of dates for the result
   const resultDates: string[] = [];
   let curr = new Date(startDate);
+  
+  if (granularity === "1mo") {
+    // Start from the end of the first month in range
+    curr = new Date(curr.getFullYear(), curr.getMonth() + 1, 0);
+  }
+
   while (curr <= now) {
     const dKey = curr.toISOString().split("T")[0];
     resultDates.push(dKey);
     
     if (granularity === "1mo") {
-      // Move to end of current month
-      curr = new Date(curr.getFullYear(), curr.getMonth() + 1, 0);
-      // Then move to the same day next month (it will be adjusted to end of month in next iteration)
-      curr.setDate(curr.getDate() + 1);
+      // Move to end of next month
+      curr = new Date(curr.getFullYear(), curr.getMonth() + 2, 0);
     } else if (granularity === "1wk" || (interval === "1wk" && !granularity)) {
       curr.setDate(curr.getDate() + 7);
     } else {
@@ -2195,8 +2145,19 @@ async function getProcessedEvolution(userId: number, holdings: any[], range: "1m
 
   // Also ensure today is included at the end if not already
   const todayKey = now.toISOString().split("T")[0];
-  if (resultDates[resultDates.length - 1] !== todayKey) {
-    resultDates.push(todayKey);
+  if (resultDates.length === 0 || resultDates[resultDates.length - 1] !== todayKey) {
+    // For monthly, if the last entry is already in the same month as today, 
+    // replace it with today to show the most recent balance.
+    if (granularity === "1mo" && resultDates.length > 0) {
+      const lastDate = new Date(resultDates[resultDates.length - 1]);
+      if (lastDate.getUTCFullYear() === now.getUTCFullYear() && lastDate.getUTCMonth() === now.getUTCMonth()) {
+        resultDates[resultDates.length - 1] = todayKey;
+      } else {
+        resultDates.push(todayKey);
+      }
+    } else {
+      resultDates.push(todayKey);
+    }
   }
 
   let previousTotalValue = 0;
@@ -2236,7 +2197,8 @@ async function getProcessedEvolution(userId: number, holdings: any[], range: "1m
   const result = [];
   for (const dateKey of resultDates) {
     const currentDate = new Date(dateKey + "T12:00:00");
-    let totalMarketValue = 0;
+    let investmentValue = 0;
+    let totalCashValue = 0;
     let totalCurrentQtyValue = 0;
 
     for (const item of holdingData) {
@@ -2255,7 +2217,7 @@ async function getProcessedEvolution(userId: number, holdings: any[], range: "1m
           qtyOwned += parseFloat(p.quantity.toString());
         }
       }
-      totalMarketValue += qtyOwned * price;
+      investmentValue += qtyOwned * price;
 
       // 2. Market Performance Value (Current Quantity * Historical Price)
       totalCurrentQtyValue += item.currentQty * price;
@@ -2268,14 +2230,15 @@ async function getProcessedEvolution(userId: number, holdings: any[], range: "1m
           latestAccountCash.set(ch.accountId, parseFloat(ch.amount));
         }
       }
-      const totalCash = Array.from(latestAccountCash.values()).reduce((sum: number, val: number) => sum + val, 0);
-      totalMarketValue += totalCash;
-      totalCurrentQtyValue += totalCash;
+      totalCashValue = Array.from(latestAccountCash.values()).reduce((sum: number, val: number) => sum + val, 0);
+      totalCurrentQtyValue += totalCashValue;
     }
 
     result.push({
       date: dateKey,
-      totalValue: totalMarketValue,
+      totalValue: investmentValue + totalCashValue,
+      investmentValue: investmentValue,
+      cashValue: totalCashValue,
       priceOnlyValue: totalCurrentQtyValue
     });
   }

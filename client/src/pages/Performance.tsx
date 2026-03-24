@@ -15,6 +15,7 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
+  Legend,
 } from "recharts";
 import { TrendingUp, Activity, BarChart3, Database, RefreshCw, ArrowUpRight, ArrowDownRight } from "lucide-react";
 
@@ -38,14 +39,6 @@ export default function Performance({ selectedPortfolioId }: { selectedPortfolio
   );
 
   // Queries
-  const { data: growthMetrics, isLoading: isLoadingMetrics } = trpc.etf.getPortfolioGrowthMetrics.useQuery(
-    { 
-      portfolioId: selectedPortfolioId, 
-      symbol: evolutionSymbol === "ALL" ? undefined : evolutionSymbol
-    },
-    { enabled: !!selectedPortfolioId }
-  );
-
   const { data: evolution, isLoading: isLoadingEvolution } = trpc.etf.getPortfolioEvolution.useQuery(
     { 
       portfolioId: selectedPortfolioId, 
@@ -83,8 +76,36 @@ export default function Performance({ selectedPortfolioId }: { selectedPortfolio
       year: "2-digit",
     }),
     value: parseFloat(item.value),
+    investmentValue: parseFloat((item as any).investmentValue || "0"),
+    cashValue: parseFloat((item as any).cashValue || "0"),
     rawDate: item.date,
   })) || [];
+
+  const EvolutionTooltip = ({ active, payload, label }: any) => {
+    if (active && payload && payload.length) {
+      const data = payload[0].payload;
+      return (
+        <div className="bg-white border border-slate-200 rounded-lg shadow-lg p-3 text-xs">
+          <p className="font-bold text-slate-800 mb-2 border-b border-slate-100 pb-1">{label}</p>
+          <div className="space-y-1.5">
+            <div className="flex justify-between gap-8">
+              <span className="text-slate-500 font-bold uppercase text-[10px]">Total Value:</span>
+              <span className="font-bold text-slate-800">{formatCurrency(data.value)}</span>
+            </div>
+            <div className="flex justify-between gap-8">
+              <span className="text-slate-400 font-bold uppercase text-[10px]">Investments:</span>
+              <span className="font-mono text-primary">{formatCurrency(data.investmentValue)}</span>
+            </div>
+            <div className="flex justify-between gap-8">
+              <span className="text-slate-400 font-bold uppercase text-[10px]">Cash:</span>
+              <span className="font-mono text-slate-500">{formatCurrency(data.cashValue)}</span>
+            </div>
+          </div>
+        </div>
+      );
+    }
+    return null;
+  };
 
   const getEvolutionChange = () => {
     if (evolutionChartData.length < 2) return { val: 0, percent: 0, isPositive: true };
@@ -242,21 +263,28 @@ export default function Performance({ selectedPortfolioId }: { selectedPortfolio
                 />
                 <Tooltip
                   cursor={{ fill: '#f1f5f9' }}
-                  contentStyle={{
-                    backgroundColor: "#fff",
-                    border: "1px solid #e2e8f0",
-                    borderRadius: "8px",
-                    boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)",
-                    fontSize: "12px",
-                  }}
-                  itemStyle={{ color: "#004a99", fontWeight: "bold" }}
-                  formatter={(value) => [formatCurrency(value as number), "Value"]}
+                  content={<EvolutionTooltip />}
+                />
+                <Legend
+                  verticalAlign="top"
+                  align="right"
+                  iconType="circle"
+                  wrapperStyle={{ fontSize: '10px', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.05em', paddingBottom: '20px' }}
                 />
                 <Bar
-                  dataKey="value"
+                  dataKey="investmentValue"
+                  name="Investments"
+                  stackId="a"
                   fill="#004a99"
+                  radius={[0, 0, 0, 0]}
+                  animationDuration={1500}
+                />
+                <Bar
+                  dataKey="cashValue"
+                  name="Cash"
+                  stackId="a"
+                  fill="#94a3b8"
                   radius={[4, 4, 0, 0]}
-                  maxBarSize={50}
                   animationDuration={1500}
                 />
               </BarChart>

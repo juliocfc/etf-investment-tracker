@@ -1,10 +1,104 @@
-import { eq, and, gte, desc, sql } from "drizzle-orm";
+import { eq, and, gte, lte, desc, sql } from "drizzle-orm";
 export { eq, and, desc };
 import { drizzle } from "drizzle-orm/libsql";
 import { createClient } from "@libsql/client";
-import { InsertUser, users, portfolios, accounts, etfHoldings, purchases, priceHistory, balanceHistory, dividendHistory, cashBalance, cashBalanceHistory } from "../drizzle/schema";
+import { InsertUser, users, portfolios, accounts, etfHoldings, purchases, priceHistory, balanceHistory, dividendHistory, cashBalance, cashBalanceHistory, assetPrices } from "../drizzle/schema";
 
 let _db: any = null;
+
+// Asset Price queries
+export async function addAssetPrice(symbol: string, price: string, date: Date) {
+  const db = await getDb();
+  const dateOnly = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const sym = symbol.toUpperCase();
+
+  // Check if it already exists
+  const existing = await getAssetPriceByDate(sym, dateOnly);
+  
+  if (existing) {
+    return db.update(assetPrices)
+      .set({ price, createdAt: new Date() })
+      .where(and(
+        eq(assetPrices.symbol, sym),
+        eq(assetPrices.date, dateOnly)
+      ));
+  } else {
+    return db.insert(assetPrices).values({ 
+      symbol: sym, 
+      price, 
+      date: dateOnly 
+    });
+  }
+}
+
+export async function bulkAddAssetPrices(prices: Array<{ symbol: string, price: string, date: Date }>) {
+  const db = await getDb();
+  
+  // Use a transaction for bulk operations in SQLite for MUCH better performance
+  return db.transaction(async (tx: any) => {
+    for (const p of prices) {
+      const dateOnly = new Date(Date.UTC(p.date.getFullYear(), p.date.getMonth(), p.date.getDate()));
+      const sym = p.symbol.toUpperCase();
+      
+      // We still check for existence to avoid unique constraint errors if using raw insert
+      // or we can use onConflictDoUpdate if we can get it to work.
+      // But in a transaction, individual selects are much faster.
+      const rows = await tx.select()
+        .from(assetPrices)
+        .where(and(
+          eq(assetPrices.symbol, sym),
+          eq(assetPrices.date, dateOnly)
+        ))
+        .limit(1);
+      
+      const existing = rows[0];
+
+      if (existing) {
+        if (existing.price !== p.price) {
+          await tx.update(assetPrices)
+            .set({ price: p.price, createdAt: new Date() })
+            .where(eq(assetPrices.id, existing.id));
+        }
+      } else {
+        await tx.insert(assetPrices).values({ 
+          symbol: sym, 
+          price: p.price, 
+          date: dateOnly 
+        });
+      }
+    }
+  });
+}
+
+export async function getAssetPricesInRange(symbol: string, startDate: Date, endDate: Date) {
+  const db = await getDb();
+  const startOnly = new Date(Date.UTC(startDate.getFullYear(), startDate.getMonth(), startDate.getDate()));
+  const endOnly = new Date(Date.UTC(endDate.getFullYear(), endDate.getMonth(), endDate.getDate()));
+
+  return db.select()
+    .from(assetPrices)
+    .where(and(
+      eq(assetPrices.symbol, symbol.toUpperCase()),
+      gte(assetPrices.date, startOnly),
+      lte(assetPrices.date, endOnly)
+    ))
+    .orderBy(assetPrices.date);
+}
+
+export async function getAssetPriceByDate(symbol: string, date: Date) {
+  const db = await getDb();
+  const dateOnly = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+
+  return db.select()
+    .from(assetPrices)
+    .where(and(
+      eq(assetPrices.symbol, symbol.toUpperCase()),
+      eq(assetPrices.date, dateOnly)
+    ))
+    .limit(1)
+    .then((rows: any[]) => rows[0]);
+}
+
 
 export async function getDb() {
   if (_db) return _db;

@@ -8,6 +8,13 @@
       "when": 1772896056062,
       "tag": "0000_fast_bastion",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1774318442762,
+      "tag": "0001_powerful_white_queen",
+      "breakpoints": true
     }
   ]
 }

@@ -1,4 +1,4 @@
-import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 import { sql } from "drizzle-orm";
 
 export const users = sqliteTable("users", {
@@ -83,6 +83,16 @@ export const priceHistory = sqliteTable("priceHistory", {
   date: integer("date", { mode: "timestamp" }).notNull(),
   timestamp: integer("timestamp", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
+
+export const assetPrices = sqliteTable("assetPrices", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  symbol: text("symbol").notNull(),
+  price: text("price").notNull(),
+  date: integer("date", { mode: "timestamp" }).notNull(),
+  createdAt: integer("createdAt", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+}, (table) => [
+  uniqueIndex("symbol_date_idx").on(table.symbol, table.date),
+]);
 
 export const cashBalance = sqliteTable("cashBalance", {
   id: integer("id").primaryKey({ autoIncrement: true }),

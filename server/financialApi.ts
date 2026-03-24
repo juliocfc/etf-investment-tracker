@@ -125,9 +125,6 @@ async function fetchPriceFromAlphaVantage(symbol: string): Promise<PriceData | n
   }
 }
 
-/**
- * Fetch historical prices for an ETF
- */
 export async function fetchHistoricalPrices(
   symbol: string,
   days: number = 365,
@@ -139,13 +136,20 @@ export async function fetchHistoricalPrices(
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
 
+    console.log(`[FinancialApi] Fetching historical prices for ${sym} from ${startDate.toISOString().split('T')[0]} to ${endDate.toISOString().split('T')[0]} with interval ${interval}`);
+
     const results = await yahooFinance.historical(sym, {
       period1: startDate,
       period2: endDate,
       interval: interval,
     });
 
-    if (!results || results.length === 0) return [];
+    if (!results || results.length === 0) {
+      console.warn(`[FinancialApi] No historical results returned for ${sym}`);
+      return [];
+    }
+
+    console.log(`[FinancialApi] Successfully fetched ${results.length} historical prices for ${sym}`);
 
     return results.map((day) => ({
       symbol: sym,
@@ -153,7 +157,7 @@ export async function fetchHistoricalPrices(
       timestamp: new Date(day.date),
     })).sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
   } catch (error: any) {
-    console.error(`[FinancialApi] Historical fetch failed for ${sym}:`, error.message);
+    console.error(`[FinancialApi] Historical fetch failed for ${sym}:`, error.message, error);
     return [];
   }
 }

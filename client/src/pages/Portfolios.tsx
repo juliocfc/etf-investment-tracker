@@ -98,10 +98,10 @@ const Portfolios: React.FC = () => {
     const now = new Date();
     const currentYear = now.getFullYear();
     const years = Array.from({ length: 5 }, (_, i) => currentYear - i);
-    const result = [];
+    const result: any[] = [];
     const filterId = portfolioFilter === "all" ? null : parseInt(portfolioFilter);
 
-    for (const year of years) {
+    years.forEach((year) => {
       const isCurrentYear = year === currentYear;
       const endDate = isCurrentYear ? now : new Date(year, 11, 31, 23, 59, 59);
 
@@ -115,7 +115,6 @@ const Portfolios: React.FC = () => {
           });
         });
       } else {
-        // historyData.cashHistory is sorted desc
         historyData.cashHistory.forEach((record: any) => {
           if (filterId !== null && record.portfolioId !== filterId) return;
           const recordDate = new Date(record.date);
@@ -137,16 +136,22 @@ const Portfolios: React.FC = () => {
           totalInv += parseFloat(p.investmentValue);
         });
       } else {
+        // Group by symbol to use historical prices efficiently
+        const symbolQty: Record<string, number> = {};
         historyData.purchases.forEach((p: any) => {
           if (filterId !== null && p.portfolioId !== filterId) return;
-
           const purchaseDate = new Date(p.purchaseDate);
           const soldDate = p.soldDate ? new Date(p.soldDate) : null;
-
-          // Include if bought before/on year end AND (not sold OR sold after year end)
           if (purchaseDate <= endDate && (!p.isSold || (soldDate && soldDate > endDate))) {
-            totalInv += parseFloat(p.quantity) * parseFloat(p.price);
+            symbolQty[p.symbol] = (symbolQty[p.symbol] || 0) + parseFloat(p.quantity);
           }
+        });
+
+        Object.entries(symbolQty).forEach(([symbol, qty]) => {
+          const prices = (historyData as any).historicalPrices?.[symbol.toUpperCase()] || [];
+          const pricePoint = prices.filter((hp: any) => new Date(hp.timestamp) <= endDate).pop();
+          const price = pricePoint ? pricePoint.price : 0;
+          totalInv += qty * price;
         });
       }
 
@@ -159,7 +164,7 @@ const Portfolios: React.FC = () => {
           total
         });
       }
-    }
+    });
     return result;
   }, [historyData, portfolios, portfolioFilter]);
 
@@ -188,12 +193,6 @@ const Portfolios: React.FC = () => {
 
     const filterId = portfolioFilter === "all" ? null : parseInt(portfolioFilter);
 
-    // Map to find current price for each symbol
-    const symbolPriceMap: Record<string, number> = {};
-    historyData.holdings.forEach((h: any) => {
-      symbolPriceMap[h.symbol] = parseFloat(h.currentPrice);
-    });
-
     months.forEach((monthKey, idx) => {
       const isLastMonth = idx === months.length - 1;
       const [year, month] = monthKey.split('-').map(Number);
@@ -203,7 +202,6 @@ const Portfolios: React.FC = () => {
       const latestAccountCash: Record<string, number> = {};
 
       if (isLastMonth) {
-        // Use current portfolios data for absolute consistency with the table above
         portfolios.forEach(p => {
           if (filterId !== null && p.id !== filterId) return;
           p.accounts.forEach((acc: any) => {
@@ -213,7 +211,6 @@ const Portfolios: React.FC = () => {
       } else {
         historyData.cashHistory.forEach((record: any) => {
           if (filterId !== null && record.portfolioId !== filterId) return;
-
           const recordDate = new Date(record.date);
           if (recordDate <= monthEndDate) {
             const key = `${record.portfolioId}-${record.accountId}`;
@@ -229,22 +226,26 @@ const Portfolios: React.FC = () => {
       // 2. Calculate Investment at month end
       let totalInv = 0;
       if (isLastMonth) {
-        // Use current portfolios data for absolute consistency
         portfolios.forEach(p => {
           if (filterId !== null && p.id !== filterId) return;
           totalInv += parseFloat(p.investmentValue);
         });
       } else {
+        const symbolQty: Record<string, number> = {};
         historyData.purchases.forEach((p: any) => {
           if (filterId !== null && p.portfolioId !== filterId) return;
-
           const purchaseDate = new Date(p.purchaseDate);
           const soldDate = p.soldDate ? new Date(p.soldDate) : null;
-
-          // Include if bought before/on month end AND (not sold OR sold after month end)
           if (purchaseDate <= monthEndDate && (!p.isSold || (soldDate && soldDate > monthEndDate))) {
-            totalInv += parseFloat(p.quantity) * parseFloat(p.price);
+            symbolQty[p.symbol] = (symbolQty[p.symbol] || 0) + parseFloat(p.quantity);
           }
+        });
+
+        Object.entries(symbolQty).forEach(([symbol, qty]) => {
+          const prices = (historyData as any).historicalPrices?.[symbol.toUpperCase()] || [];
+          const pricePoint = prices.filter((hp: any) => new Date(hp.timestamp) <= monthEndDate).pop();
+          const price = pricePoint ? pricePoint.price : 0;
+          totalInv += qty * price;
         });
       }
 
