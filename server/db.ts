@@ -201,12 +201,14 @@ export async function updateAccount(id: number, data: any) {
 }
 
 // ETF Holdings queries
-export async function getUserEtfHoldings(userId: number, portfolioId: number, accountId?: number) {
+export async function getUserEtfHoldings(userId: number, portfolioId?: number, accountId?: number) {
   const db = await getDb();
   let conditions = [
     eq(etfHoldings.userId, userId),
-    eq(etfHoldings.portfolioId, portfolioId)
   ];
+  if (portfolioId) {
+    conditions.push(eq(etfHoldings.portfolioId, portfolioId));
+  }
   if (accountId) {
     conditions.push(eq(etfHoldings.accountId, accountId));
   }

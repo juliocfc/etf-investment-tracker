@@ -351,25 +351,27 @@ export const etfRouter = router({
     }),
 
   updatePrices: protectedProcedure
-    .input(z.object({ portfolioId: z.number() }))
-    .mutation(async ({ ctx, input }) => {
-      const holdings = await getUserEtfHoldings(ctx.user.id, input.portfolioId);
-      const uniqueSymbols = Array.from(new Set(holdings.map((h: any) => h.symbol)));
+    .input(z.object({ portfolioId: z.number().optional() }))
+    .mutation(async ({ ctx }) => {
+      // Get all holdings for the user across all portfolios
+      const holdings = await getUserEtfHoldings(ctx.user.id);
+      const uniqueSymbols = Array.from(new Set(holdings.map((h: any) => h.symbol.toUpperCase()))) as string[];
       const results = [];
 
       for (let i = 0; i < uniqueSymbols.length; i++) {
-        const symbol = uniqueSymbols[i] as string;
-        
-        // Small delay between requests to be polite to Yahoo Finance
+        const symbol = uniqueSymbols[i];
+
+        // Polite delay
         if (i > 0) {
-          await new Promise((resolve) => setTimeout(resolve, 100));
+          await new Promise((resolve) => setTimeout(resolve, 150));
         }
-        
+
         const priceData = await fetchEtfPrice(symbol);
         if (priceData) {
           const currentPrice = priceData.price.toString();
           const lastPriceUpdate = new Date();
 
+          // Update ALL holdings with this symbol for this user across ALL portfolios
           await updateEtfHoldingBySymbol(ctx.user.id, symbol, {
             currentPrice,
             lastPriceUpdate,
@@ -398,7 +400,6 @@ export const etfRouter = router({
 
       return results;
     }),
-
   getMarketPriceHistory: protectedProcedure
     .input(
       z.object({
