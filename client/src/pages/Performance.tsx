@@ -25,15 +25,15 @@ export default function Performance({ selectedPortfolioId }: { selectedPortfolio
   // Independent time range states for each panel
   const [growthRange, setGrowthRange] = useState<TimeRange>("ytd");
 
-  // Independent asset selectors for each chart
-  const [evolutionSymbol, setEvolutionSymbol] = useState<string | "ALL">("ALL");
+  // Account filter
+  const [selectedAccountId, setSelectedAccountId] = useState<number | "ALL">("ALL");
 
-  // Reset symbols when portfolio changes
+  // Reset filter when portfolio changes
   useEffect(() => {
-    setEvolutionSymbol("ALL");
+    setSelectedAccountId("ALL");
   }, [selectedPortfolioId]);
 
-  const { data: holdings } = trpc.etf.getHoldings.useQuery(
+  const { data: accounts } = trpc.account.getAccounts.useQuery(
     { portfolioId: selectedPortfolioId },
     { enabled: !!selectedPortfolioId }
   );
@@ -43,19 +43,25 @@ export default function Performance({ selectedPortfolioId }: { selectedPortfolio
     { 
       portfolioId: selectedPortfolioId, 
       range: growthRange,
-      symbol: evolutionSymbol === "ALL" ? undefined : evolutionSymbol,
+      accountId: selectedAccountId === "ALL" ? undefined : selectedAccountId,
       granularity: "1mo"
     },
     { enabled: !!selectedPortfolioId }
   );
 
   const { data: yearlyPerformance } = trpc.etf.getYearlyPerformance.useQuery(
-    { portfolioId: selectedPortfolioId },
+    { 
+      portfolioId: selectedPortfolioId,
+      accountId: selectedAccountId === "ALL" ? undefined : selectedAccountId
+    },
     { enabled: !!selectedPortfolioId }
   );
 
   const { data: monthlyPerformance } = trpc.etf.getMonthlyPerformance.useQuery(
-    { portfolioId: selectedPortfolioId },
+    { 
+      portfolioId: selectedPortfolioId,
+      accountId: selectedAccountId === "ALL" ? undefined : selectedAccountId
+    },
     { enabled: !!selectedPortfolioId }
   );
 
@@ -189,15 +195,15 @@ export default function Performance({ selectedPortfolioId }: { selectedPortfolio
 
         <div className="flex items-center gap-3 w-full md:w-auto">
           <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-md border border-slate-100">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Focus:</span>
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Account:</span>
             <select 
               className="bg-transparent border-none p-0 text-xs font-bold text-slate-600 focus:outline-none h-6 min-w-[140px]"
-              value={evolutionSymbol}
-              onChange={(e) => setEvolutionSymbol(e.target.value)}
+              value={selectedAccountId}
+              onChange={(e) => setSelectedAccountId(e.target.value === "ALL" ? "ALL" : Number(e.target.value))}
             >
-              <option value="ALL">Total Portfolio</option>
-              {holdings?.map((h) => (
-                <option key={h.symbol} value={h.symbol}>{h.symbol}</option>
+              <option value="ALL">All Accounts</option>
+              {accounts?.map((acc: any) => (
+                <option key={acc.id} value={acc.id}>{acc.name}</option>
               ))}
             </select>
           </div>

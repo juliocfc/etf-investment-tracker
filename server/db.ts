@@ -434,14 +434,20 @@ export async function updateCashBalance(
   return { success: true, historyId };
 }
 
-export async function getCashBalanceHistory(userId: number, portfolioId: number) {
+export async function getCashBalanceHistory(userId: number, portfolioId: number, accountId?: number) {
   const db = await getDb();
+  const conditions = [
+    eq(cashBalanceHistory.userId, userId),
+    eq(cashBalanceHistory.portfolioId, portfolioId)
+  ];
+  
+  if (accountId !== undefined) {
+    conditions.push(eq(cashBalanceHistory.accountId, accountId));
+  }
+
   return db.select()
     .from(cashBalanceHistory)
-    .where(and(
-      eq(cashBalanceHistory.userId, userId),
-      eq(cashBalanceHistory.portfolioId, portfolioId)
-    ))
+    .where(and(...conditions))
     .orderBy(cashBalanceHistory.date);
 }
 

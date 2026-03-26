@@ -29,7 +29,7 @@ import {
   eq,
   desc,
 } from "./db";
-import { gte, lte } from "drizzle-orm";
+import { gte, lte, sql } from "drizzle-orm";
 import {
   fetchEtfPrice,
   validateEtfSymbol,
@@ -1533,10 +1533,11 @@ export const etfRouter = router({
         portfolioId: z.number(),
         holdingId: z.number().optional(),
         symbol: z.string().optional(),
+        accountId: z.number().optional(),
       })
     )
     .query(async ({ ctx, input }) => {
-      let holdings = await getUserEtfHoldings(ctx.user.id, input.portfolioId);
+      let holdings = await getUserEtfHoldings(ctx.user.id, input.portfolioId, input.accountId);
       if (input.symbol) {
         const symbolUpper = input.symbol.toUpperCase();
         holdings = holdings.filter((h: any) => h.symbol === symbolUpper);
@@ -1551,7 +1552,7 @@ export const etfRouter = router({
 
       const calculateForRange = async (range: "ytd" | "1y" | "all") => {
         const includeCash = !input.symbol && (!input.holdingId || input.holdingId === -1);
-        const data = await getProcessedEvolution(ctx.user.id, holdings, range, input.portfolioId, includeCash);
+        const data = await getProcessedEvolution(ctx.user.id, holdings, range, input.portfolioId, includeCash, undefined, input.accountId);
         if (data.length < 2) return { market: "0", price: "0" };
 
         const first = data[0];
@@ -1595,11 +1596,12 @@ export const etfRouter = router({
         holdingId: z.number().optional(),
         symbol: z.string().optional(),
         granularity: z.enum(["1d", "1wk", "1mo"]).optional(),
+        accountId: z.number().optional(),
       })
     )
     .query(async ({ ctx, input }) => {
       try {
-        let holdings = await getUserEtfHoldings(ctx.user.id, input.portfolioId);
+        let holdings = await getUserEtfHoldings(ctx.user.id, input.portfolioId, input.accountId);
         if (input.symbol) {
           const symbolUpper = input.symbol.toUpperCase();
           holdings = holdings.filter((h: any) => h.symbol === symbolUpper);
@@ -1610,7 +1612,7 @@ export const etfRouter = router({
         const includeCash = !input.symbol && (!input.holdingId || input.holdingId === -1);
         // Force "1mo" granularity if not specifically overridden, but Performance page wants monthly bars
         const granularity = input.granularity || "1mo";
-        const data = await getProcessedEvolution(ctx.user.id, holdings, input.range, input.portfolioId, includeCash, granularity);
+        const data = await getProcessedEvolution(ctx.user.id, holdings, input.range, input.portfolioId, includeCash, granularity, input.accountId);
         return data.map((d: any) => ({
           date: d.date,
           value: d.totalValue.toFixed(2),
@@ -1799,15 +1801,24 @@ export const etfRouter = router({
     }),
 
   getYearlyPerformance: protectedProcedure
-    .input(z.object({ portfolioId: z.number() }))
+    .input(z.object({ portfolioId: z.number(), accountId: z.number().optional() }))
     .query(async ({ ctx, input }) => {
       const db = await getDb();
-      const holdings = await getUserEtfHoldings(ctx.user.id, input.portfolioId);
+      const holdings = await getUserEtfHoldings(ctx.user.id, input.portfolioId, input.accountId);
+      
+      const purchaseConditions = [
+        eq(purchases.userId, ctx.user.id),
+        eq(purchases.portfolioId, input.portfolioId)
+      ];
+      if (input.accountId !== undefined) {
+        purchaseConditions.push(eq(purchases.accountId, input.accountId));
+      }
+
       const allPurchases = await db.select()
         .from(purchases)
-        .where(and(eq(purchases.userId, ctx.user.id), eq(purchases.portfolioId, input.portfolioId)))
+        .where(and(...purchaseConditions))
         .orderBy(purchases.purchaseDate);
-      const cashHistory = await getCashBalanceHistory(ctx.user.id, input.portfolioId);
+      const cashHistory = await getCashBalanceHistory(ctx.user.id, input.portfolioId, input.accountId);
 
       const now = new Date();
       const currentYear = now.getFullYear();
@@ -1952,12 +1963,21 @@ export const etfRouter = router({
     }),
 
   getMonthlyPerformance: protectedProcedure
-    .input(z.object({ portfolioId: z.number() }))
+    .input(z.object({ portfolioId: z.number(), accountId: z.number().optional() }))
     .query(async ({ ctx, input }) => {
       const db = await getDb();
+      
+      const purchaseConditions = [
+        eq(purchases.userId, ctx.user.id),
+        eq(purchases.portfolioId, input.portfolioId)
+      ];
+      if (input.accountId !== undefined) {
+        purchaseConditions.push(eq(purchases.accountId, input.accountId));
+      }
+
       const allPurchases = await db.select()
         .from(purchases)
-        .where(and(eq(purchases.userId, ctx.user.id), eq(purchases.portfolioId, input.portfolioId)))
+        .where(and(...purchaseConditions))
         .orderBy(purchases.purchaseDate);
       
       const now = new Date();
@@ -2079,7 +2099,7 @@ function calculateDateRange(range: string) {
  * Shared engine to calculate evolution for any range
  * Ensures perfect consistency between charts and summary cards
  */
-async function getProcessedEvolution(userId: number, holdings: any[], range: "1m" | "ytd" | "1y" | "all", portfolioId?: number, includeCash?: boolean, granularity?: "1d" | "1wk" | "1mo") {
+async function getProcessedEvolution(userId: number, holdings: any[], range: "1m" | "ytd" | "1y" | "all", portfolioId?: number, includeCash?: boolean, granularity?: "1d" | "1wk" | "1mo", accountId?: number) {
   const now = new Date();
   now.setHours(23, 59, 59, 999);
 
@@ -2094,9 +2114,14 @@ async function getProcessedEvolution(userId: number, holdings: any[], range: "1m
   else if (range === "all") {
     // Find oldest transaction (purchase or cash)
     const db = await getDb();
+    const purchaseConditions = [eq(purchases.userId, userId)];
+    if (accountId !== undefined) {
+      purchaseConditions.push(eq(purchases.accountId, accountId));
+    }
+
     const oldestPurchase = await db.select({ date: purchases.purchaseDate })
       .from(purchases)
-      .where(eq(purchases.userId, userId))
+      .where(and(...purchaseConditions))
       .orderBy(purchases.purchaseDate)
       .limit(1)
       .then((rows: any[]) => rows[0]?.date);
@@ -2106,7 +2131,11 @@ async function getProcessedEvolution(userId: number, holdings: any[], range: "1m
     if (includeCash && portfolioId) {
       const oldestCash = await db.select({ date: cashBalanceHistory.date })
         .from(cashBalanceHistory)
-        .where(and(eq(cashBalanceHistory.userId, userId), eq(cashBalanceHistory.portfolioId, portfolioId)))
+        .where(and(
+          eq(cashBalanceHistory.userId, userId), 
+          eq(cashBalanceHistory.portfolioId, portfolioId),
+          accountId !== undefined ? eq(cashBalanceHistory.accountId, accountId) : sql`1=1`
+        ))
         .orderBy(cashBalanceHistory.date)
         .limit(1)
         .then((rows: any[]) => rows[0]?.date);
@@ -2136,7 +2165,17 @@ async function getProcessedEvolution(userId: number, holdings: any[], range: "1m
   for (const holding of holdings) {
     // Fetch a bit more to have "warm up" data for lastPrices
     const priceHistory = await getSmartHistoricalPrices(holding.symbol as string, days + 10, interval);
-    const purchases = await getPurchases(holding.id);
+    
+    const db = await getDb();
+    // getPurchases already filters by holdingId and isSold = false, but it doesn't filter by accountId usually
+    const holdingPurchases = await db.select()
+      .from(purchases)
+      .where(and(
+        eq(purchases.holdingId, holding.id),
+        accountId !== undefined ? eq(purchases.accountId, accountId) : sql`1=1`
+      ))
+      .orderBy(desc(purchases.purchaseDate));
+
     const pricesMap = new Map<string, number>();
     
     priceHistory.forEach((p: any) => {
@@ -2153,7 +2192,7 @@ async function getProcessedEvolution(userId: number, holdings: any[], range: "1m
     holdingData.push({ 
       holding, 
       pricesMap, 
-      purchases, 
+      purchases: holdingPurchases, 
       currentQty: parseFloat(holding.quantity) 
     });
   }
@@ -2161,7 +2200,7 @@ async function getProcessedEvolution(userId: number, holdings: any[], range: "1m
   // Fetch cash history if requested
   let cashHistory: any[] = [];
   if (includeCash && portfolioId) {
-    cashHistory = await getCashBalanceHistory(userId, portfolioId);
+    cashHistory = await getCashBalanceHistory(userId, portfolioId, accountId);
     cashHistory.forEach((ch: any) => {
       const dKey = new Date(ch.date).toISOString().split("T")[0];
       allDatesSet.add(dKey);
