@@ -68,11 +68,13 @@ export async function getSmartHistoricalPrices(
   // Await the fast fetch so the user gets data immediately
   const fastProviderPrices = await fetchHistoricalPrices(sym, days, interval);
   
-  // 3. Trigger deep daily fetch in the background to populate cache accurately
+  // 3. Trigger background fetch to populate cache
   (async () => {
     try {
-      console.log(`[PriceService] Background deep fetch started for ${sym} (1d)...`);
-      const deepPrices = await fetchHistoricalPrices(sym, days, '1d');
+      // Use the requested interval for background fetch as well to avoid over-fetching and bloating DB
+      // However, if daily is requested, we do daily.
+      console.log(`[PriceService] Background fetch started for ${sym} (${interval})...`);
+      const deepPrices = await fetchHistoricalPrices(sym, days, interval);
       
       if (deepPrices.length > 0) {
         const todayStr = new Date().toISOString().split('T')[0];
@@ -81,6 +83,7 @@ export async function getSmartHistoricalPrices(
             return pDateStr < todayStr;
         });
 
+        // Apply provided filter or save all if no filter provided (since we already fetched at the correct interval)
         if (saveFilter) {
             historicalToSave = historicalToSave.filter(p => saveFilter(p.timestamp));
         }
@@ -91,11 +94,11 @@ export async function getSmartHistoricalPrices(
             price: p.price.toString(),
             date: p.timestamp
           })));
-          console.log(`[PriceService] Background deep fetch completed for ${sym}. Saved ${historicalToSave.length} points.`);
+          console.log(`[PriceService] Background fetch completed for ${sym}. Saved ${historicalToSave.length} points.`);
         }
       }
     } catch (err) {
-      console.error(`[PriceService] Background deep fetch failed for ${sym}:`, err);
+      console.error(`[PriceService] Background fetch failed for ${sym}:`, err);
     }
   })();
 

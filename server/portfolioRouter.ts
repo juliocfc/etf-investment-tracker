@@ -372,17 +372,9 @@ export const portfolioRouter = router({
       const symbols = Array.from(new Set(holdings.map((h: any) => h.symbol.toUpperCase()))) as string[];
       const historicalPrices: Record<string, any[]> = {};
 
-      // Filter to save only 1st and last day of month to DB cache
-      const saveFilter = (date: Date) => {
-        const d = new Date(date);
-        const day = d.getUTCDate();
-        const lastDay = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
-        return day === 1 || day === lastDay;
-      };
-
       await Promise.all(symbols.map(async (symbol) => {
-        // Fetch with '1mo' interval for the frontend, but the service will fetch daily and save filtered in background
-        const prices = await getSmartHistoricalPrices(symbol, input.days, '1mo', saveFilter);
+        // Fetch with '1mo' interval for the frontend
+        const prices = await getSmartHistoricalPrices(symbol, input.days, '1mo');
         historicalPrices[symbol] = prices;
       }));
 

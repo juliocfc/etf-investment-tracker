@@ -1527,11 +1527,71 @@ export const etfRouter = router({
       return result;
     }),
 
+  getPortfolioGrowthMetrics: protectedProcedure
+    .input(
+      z.object({
+        portfolioId: z.number(),
+        holdingId: z.number().optional(),
+        symbol: z.string().optional(),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      let holdings = await getUserEtfHoldings(ctx.user.id, input.portfolioId);
+      if (input.symbol) {
+        const symbolUpper = input.symbol.toUpperCase();
+        holdings = holdings.filter((h: any) => h.symbol === symbolUpper);
+      } else if (input.holdingId && input.holdingId !== -1) {
+        holdings = holdings.filter((h: any) => h.id === input.holdingId);
+      }
+
+      const emptyMetrics = { ytd: "0", y1: "0", all: "0" };
+      if (!holdings || holdings.length === 0) {
+        return { marketGrowth: emptyMetrics, pricePerformance: emptyMetrics };
+      }
+
+      const calculateForRange = async (range: "ytd" | "1y" | "all") => {
+        const includeCash = !input.symbol && (!input.holdingId || input.holdingId === -1);
+        const data = await getProcessedEvolution(ctx.user.id, holdings, range, input.portfolioId, includeCash);
+        if (data.length < 2) return { market: "0", price: "0" };
+
+        const first = data[0];
+        const last = data[data.length - 1];
+
+        // Find first non-zero point to calculate growth from
+        const firstNonZeroMarket = data.find(d => d.totalValue > 0) || first;
+        const firstNonZeroPrice = data.find(d => d.priceOnlyValue > 0) || first;
+
+        const marketGrowth = firstNonZeroMarket.totalValue > 0 
+          ? ((last.totalValue - firstNonZeroMarket.totalValue) / firstNonZeroMarket.totalValue) * 100 
+          : 0;
+        
+        const pricePerformance = firstNonZeroPrice.priceOnlyValue > 0 
+          ? ((last.priceOnlyValue - firstNonZeroPrice.priceOnlyValue) / firstNonZeroPrice.priceOnlyValue) * 100 
+          : 0;
+
+        return {
+          market: marketGrowth.toFixed(2),
+          price: pricePerformance.toFixed(2)
+        };
+      };
+
+      const [ytd, y1, allTime] = await Promise.all([
+        calculateForRange("ytd"),
+        calculateForRange("1y"),
+        calculateForRange("all")
+      ]);
+
+      return {
+        marketGrowth: { ytd: ytd.market, y1: y1.market, all: allTime.market },
+        pricePerformance: { ytd: ytd.price, y1: y1.price, all: allTime.price }
+      };
+    }),
+
   getPortfolioEvolution: protectedProcedure
     .input(
       z.object({
         portfolioId: z.number(),
-        range: z.enum(["1m", "ytd", "1y", "all"]),
+        range: z.enum(["ytd", "1y", "all"]),
         holdingId: z.number().optional(),
         symbol: z.string().optional(),
         granularity: z.enum(["1d", "1wk", "1mo"]).optional(),
@@ -1548,7 +1608,9 @@ export const etfRouter = router({
         }
 
         const includeCash = !input.symbol && (!input.holdingId || input.holdingId === -1);
-        const data = await getProcessedEvolution(ctx.user.id, holdings, input.range, input.portfolioId, includeCash, input.granularity);
+        // Force "1mo" granularity if not specifically overridden, but Performance page wants monthly bars
+        const granularity = input.granularity || "1mo";
+        const data = await getProcessedEvolution(ctx.user.id, holdings, input.range, input.portfolioId, includeCash, granularity);
         return data.map((d: any) => ({
           date: d.date,
           value: d.totalValue.toFixed(2),
