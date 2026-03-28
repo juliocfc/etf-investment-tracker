@@ -483,6 +483,13 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
     }
   };
 
+  const mergeDateWithCurrentTime = (dateStr: string) => {
+    const selected = new Date(dateStr + "T00:00:00");
+    const now = new Date();
+    selected.setHours(now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds());
+    return selected;
+  };
+
   const handleAddHolding = async () => {
     if (!selectedPortfolioId) {
       toast.error("Please select a portfolio");
@@ -504,7 +511,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
       name: formData.name,
       quantity: formData.quantity,
       purchasePrice: formData.purchasePrice,
-      purchaseDate: new Date(formData.purchaseDate + "T00:00:00"),
+      purchaseDate: mergeDateWithCurrentTime(formData.purchaseDate),
       fees: formData.fees,
       type: formData.type,
     });
@@ -531,7 +538,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
       accountId,
       quantity: tradeData.quantity,
       price: tradeData.price,
-      purchaseDate: new Date(tradeData.purchaseDate + "T00:00:00"),
+      purchaseDate: mergeDateWithCurrentTime(tradeData.purchaseDate),
       fees: tradeData.fees,
       type: tradeData.type,
     });
@@ -809,13 +816,6 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                                   }}>
                                     <ArrowDownCircle className="mr-2 h-4 w-4 text-red-600" />
                                     <span>Withdraw Cash</span>
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem onClick={() => {
-                                    setHistoricalCashData(prev => ({ ...prev, accountId: account.id.toString(), amount: "" }));
-                                    setIsHistoricalCashDialogOpen(true);
-                                  }}>
-                                    <CalendarPlus className="mr-2 h-4 w-4 text-slate-500" />
-                                    <span>Historical Balance</span>
                                   </DropdownMenuItem>
                                   <DropdownMenuSeparator />
                                   <DropdownMenuItem onClick={() => setCashHistoryOpen({ id: account.id, name: account.name })}>
@@ -1407,7 +1407,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                         portfolioId: selectedPortfolioId,
                         accountId: Number(historicalCashData.accountId),
                         amount: historicalCashData.amount,
-                        date: new Date(historicalCashData.date + "T12:00:00") // Mid-day to avoid TZ issues
+                        date: mergeDateWithCurrentTime(historicalCashData.date)
                       });
                     } else {
                       toast.error("Please fill in all fields");
@@ -1497,7 +1497,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                         amount: adjustCashData.amount,
                         type: adjustCashData.type as "deposit" | "withdrawal",
                         description: adjustCashData.description,
-                        date: new Date(adjustCashData.date + "T12:00:00")
+                        date: mergeDateWithCurrentTime(adjustCashData.date)
                       });
                     }
                   }}

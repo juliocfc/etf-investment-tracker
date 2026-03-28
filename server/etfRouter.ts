@@ -28,7 +28,7 @@ import {
   and,
   eq,
   desc,
-} from "./db";
+  } from "./db";
 import { gte, lte, sql } from "drizzle-orm";
 import {
   fetchEtfPrice,
@@ -1746,7 +1746,7 @@ export const etfRouter = router({
           gte(cashBalanceHistory.date, startDate),
           lte(cashBalanceHistory.date, endDate)
         ))
-        .orderBy(desc(cashBalanceHistory.date));
+        .orderBy(desc(cashBalanceHistory.date), desc(cashBalanceHistory.id));
     }),
 
   getUnifiedHistory: protectedProcedure
@@ -1795,9 +1795,14 @@ export const etfRouter = router({
         description: c.description
       }));
 
-      return [...unifiedPurchases, ...unifiedCash].sort((a, b) => 
-        new Date(b.date).getTime() - new Date(a.date).getTime()
-      );
+      return [...unifiedPurchases, ...unifiedCash].sort((a, b) => {
+        const timeA = new Date(a.date).getTime();
+        const timeB = new Date(b.date).getTime();
+        if (timeB !== timeA) return timeB - timeA;
+        const idA = parseInt(a.id.toString().split('-')[1]);
+        const idB = parseInt(b.id.toString().split('-')[1]);
+        return idB - idA;
+      });
     }),
 
   getYearlyPerformance: protectedProcedure

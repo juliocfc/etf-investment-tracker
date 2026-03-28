@@ -361,7 +361,7 @@ export const portfolioRouter = router({
         .select()
         .from(purchasesTable)
         .where(eq(purchasesTable.userId, ctx.user.id))
-        .orderBy(desc(purchasesTable.purchaseDate));
+        .orderBy(desc(purchasesTable.purchaseDate), desc(purchasesTable.id));
 
       const holdings = await db
         .select()
