@@ -50,6 +50,7 @@ export default function BrokerageTransactions() {
   const [isConfigOpen, setIsConfigOpen] = useState(!config.userId);
   const [selectedAccountId, setSelectedAccountId] = useState<string>("all");
   const [selectedHoldingsAccountId, setSelectedHoldingsAccountId] = useState<string>("all");
+  const [selectedType, setSelectedType] = useState<string>("all");
 
   const [dateRange, setDateRange] = useState({
     startDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
@@ -114,6 +115,14 @@ export default function BrokerageTransactions() {
     if (selectedAccountId !== "all") {
       filtered = filtered.filter((tx: any) => tx.account?.id === selectedAccountId);
     }
+
+    // Filter by type if selected
+    if (selectedType !== "all") {
+      filtered = filtered.filter((tx: any) => {
+        const typeStr = (typeof tx.type === "string" ? tx.type : tx.type?.name || "transaction").toLowerCase();
+        return typeStr === selectedType.toLowerCase();
+      });
+    }
     
     // Sort by date DESC
     return filtered.sort((a: any, b: any) => {
@@ -121,7 +130,17 @@ export default function BrokerageTransactions() {
       const dateB = new Date(b.settlement_date || b.trade_date).getTime();
       return dateB - dateA;
     });
-  }, [transactions, selectedAccountId]);
+  }, [transactions, selectedAccountId, selectedType]);
+
+  const transactionTypes = useMemo(() => {
+    if (!transactions) return [];
+    const types = new Set<string>();
+    transactions.forEach((tx: any) => {
+      const typeStr = (typeof tx.type === "string" ? tx.type : tx.type?.name || "transaction");
+      if (typeStr) types.add(typeStr);
+    });
+    return Array.from(types).sort();
+  }, [transactions]);
 
   const filteredHoldings = useMemo(() => {
     if (!holdings) return [];
@@ -295,18 +314,34 @@ export default function BrokerageTransactions() {
             <div className="px-6 py-4 border-b border-border bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Transaction Ledger</h3>
               
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Filter Account:</span>
-                <select 
-                  className="bg-white border border-slate-200 rounded px-2 py-1 text-xs font-bold text-slate-600 focus:outline-none focus:ring-1 focus:ring-primary h-8 min-w-[160px]"
-                  value={selectedAccountId}
-                  onChange={(e) => setSelectedAccountId(e.target.value)}
-                >
-                  <option value="all">All Accounts</option>
-                  {accounts?.map((acc: any) => (
-                    <option key={acc.id} value={acc.id}>{acc.name} ({acc.number})</option>
-                  ))}
-                </select>
+              <div className="flex flex-wrap items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Filter Account:</span>
+                  <select 
+                    className="bg-white border border-slate-200 rounded px-2 py-1 text-xs font-bold text-slate-600 focus:outline-none focus:ring-1 focus:ring-primary h-8 min-w-[160px]"
+                    value={selectedAccountId}
+                    onChange={(e) => setSelectedAccountId(e.target.value)}
+                  >
+                    <option value="all">All Accounts</option>
+                    {accounts?.map((acc: any) => (
+                      <option key={acc.id} value={acc.id}>{acc.name} ({acc.number})</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Filter Type:</span>
+                  <select 
+                    className="bg-white border border-slate-200 rounded px-2 py-1 text-xs font-bold text-slate-600 focus:outline-none focus:ring-1 focus:ring-primary h-8 min-w-[120px]"
+                    value={selectedType}
+                    onChange={(e) => setSelectedType(e.target.value)}
+                  >
+                    <option value="all">All Types</option>
+                    {transactionTypes.map((type: string) => (
+                      <option key={type} value={type}>{type}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
             </div>
             <div className="overflow-x-auto">
