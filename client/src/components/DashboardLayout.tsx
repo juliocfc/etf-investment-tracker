@@ -3,7 +3,7 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import { formatCurrency } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Menu, X, LogOut, TrendingUp, Wallet, Briefcase, Plus, Mail } from "lucide-react";
+import { Menu, X, LogOut, TrendingUp, Wallet, Briefcase, Plus, Mail, ArrowRightLeft } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 
@@ -122,7 +122,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
         >
           <div className="p-4 flex-1 overflow-y-auto space-y-1 custom-scrollbar">
             <div className="px-4 py-2 mb-1">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Portfolios</span>
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Navigation</span>
             </div>
             
             {/* All Portfolios Link */}
@@ -144,8 +144,31 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
               )}
             </button>
 
+            {/* Brokerage Link */}
+            <button
+              onClick={() => {
+                onTabChange?.("brokerage");
+                if (window.innerWidth < 1024) setSidebarOpen(false);
+              }}
+              className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-md transition-all duration-200 font-medium ${
+                activeTab === "brokerage"
+                  ? "bg-slate-100 text-[#004a99]"
+                  : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+              }`}
+            >
+              <ArrowRightLeft className="w-4 h-4" />
+              <span className="text-sm font-bold uppercase tracking-wider">Brokerage</span>
+              {activeTab === "brokerage" && (
+                <div className="ml-auto w-1.5 h-1.5 rounded-full bg-[#004a99]" />
+              )}
+            </button>
+
             <div className="pt-2 pb-1 px-4">
               <div className="h-px bg-slate-100 w-full" />
+            </div>
+
+            <div className="px-4 py-2 mb-1">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">My Portfolios</span>
             </div>
 
             {/* Individual Portfolios */}

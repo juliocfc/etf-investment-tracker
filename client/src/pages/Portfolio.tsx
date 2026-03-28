@@ -1995,7 +1995,14 @@ function CashHistoryTable({
 
   const filteredHistory = useMemo(() => {
     if (!history) return [];
-    return history.filter((h: any) => h.accountId === accountId);
+    return history
+      .filter((h: any) => h.accountId === accountId)
+      .sort((a: any, b: any) => {
+        const dateA = new Date(a.date).getTime();
+        const dateB = new Date(b.date).getTime();
+        if (dateB !== dateA) return dateB - dateA;
+        return b.id - a.id; // DESC: newest ID first for same timestamp
+      });
   }, [history, accountId]);
 
   if (isLoading) {

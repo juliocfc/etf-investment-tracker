@@ -66,8 +66,16 @@ export default function Activities({ selectedPortfolioId }: { selectedPortfolioI
 
   const filteredCashActivities = useMemo(() => {
     if (!cashActivities) return [];
-    if (!cashAccountId) return cashActivities;
-    return cashActivities.filter((a: any) => a.accountId === Number(cashAccountId));
+    const base = !cashAccountId 
+      ? cashActivities 
+      : cashActivities.filter((a: any) => a.accountId === Number(cashAccountId));
+    
+    return [...base].sort((a: any, b: any) => {
+      const dateA = new Date(a.date).getTime();
+      const dateB = new Date(b.date).getTime();
+      if (dateB !== dateA) return dateB - dateA;
+      return b.id - a.id;
+    });
   }, [cashActivities, cashAccountId]);
 
   const filteredPurchases = useMemo(() => {

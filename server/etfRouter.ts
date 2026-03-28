@@ -25,11 +25,8 @@ import {
   parseCSVContent,
   bulkImportPurchases,
   getDb,
-  and,
-  eq,
-  desc,
-  } from "./db";
-import { gte, lte, sql } from "drizzle-orm";
+} from "./db";
+import { gte, lte, sql, and, eq, desc, asc } from "drizzle-orm";
 import {
   fetchEtfPrice,
   validateEtfSymbol,

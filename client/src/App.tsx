@@ -8,6 +8,7 @@ import DashboardLayout from "./components/DashboardLayout";
 import Holdings from "./pages/Portfolio";
 import Contact from "./pages/Contact";
 import Portfolios from "./pages/Portfolios";
+import BrokerageTransactions from "./pages/BrokerageTransactions";
 import Privacy from "./pages/Privacy";
 import { trpc } from "@/lib/trpc";
 import { useState, useEffect } from "react";
@@ -89,6 +90,8 @@ function DashboardRouter() {
         return <Contact />;
       case "portfolios":
         return <Portfolios />;
+      case "brokerage":
+        return <BrokerageTransactions />;
       case "privacy":
         return <Privacy onBack={() => {
           setActiveTab("portfolio");
