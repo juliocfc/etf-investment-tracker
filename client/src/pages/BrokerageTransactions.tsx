@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
-import { formatCurrency, formatDate } from "@/lib/utils";
+import { formatCurrency, formatDate, formatUTCDate } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -584,7 +584,7 @@ export default function BrokerageTransactions() {
                             className="w-4 h-4 rounded border-slate-400 text-primary focus:ring-primary cursor-pointer"
                           />
                         </td>
-                        <td className="py-4 px-6 font-mono text-xs text-slate-500">{formatDate(tx.settlement_date || tx.trade_date)}</td>
+                        <td className="py-4 px-6 font-mono text-xs text-slate-500">{formatUTCDate(tx.settlement_date || tx.trade_date)}</td>
                         <td className="py-4 px-6">
                           <div className="text-sm font-bold text-slate-700">{tx.account?.name}</div>
                           <div className="text-[10px] text-slate-400 font-mono">{tx.account?.number}</div>
@@ -647,7 +647,7 @@ export default function BrokerageTransactions() {
                     {importMappings.map((mapping, idx) => (
                       <tr key={idx} className="group hover:bg-slate-50/50">
                         <td className="py-3 px-3">
-                          <div className="font-mono text-[10px] text-slate-400">{formatDate(mapping.date)}</div>
+                          <div className="font-mono text-[10px] text-slate-400">{formatUTCDate(mapping.date)}</div>
                           <div className="text-xs font-medium truncate max-w-[150px]" title={mapping.description}>{mapping.description}</div>
                         </td>
                         <td className="py-3 px-3">
