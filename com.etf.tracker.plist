@@ -10,15 +10,15 @@
         <string>start</string>
     </array>
     <key>WorkingDirectory</key>
-    <string>/Users/juliocfc/projects/etf-investment-tracker</string>
+    <string>$HOME/projects/etf-investment-tracker</string>
     <key>RunAtLoad</key>
     <true/>
     <key>KeepAlive</key>
     <true/>
     <key>StandardOutPath</key>
-    <string>/Users/juliocfc/projects/etf-investment-tracker/logs/out.log</string>
+    <string>$HOME/projects/etf-investment-tracker/logs/out.log</string>
     <key>StandardErrorPath</key>
-    <string>/Users/juliocfc/projects/etf-investment-tracker/logs/err.log</string>
+    <string>$HOME/projects/etf-investment-tracker/logs/err.log</string>
     <key>EnvironmentVariables</key>
     <dict>
         <key>PATH</key>
