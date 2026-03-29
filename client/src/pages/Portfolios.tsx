@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
 import { Briefcase, ChevronDown, ChevronRight, Edit2, Trash2, PieChart, Wallet, DollarSign, Plus, BarChart3, CalendarPlus, List } from "lucide-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import { motion, AnimatePresence } from "framer-motion";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, Legend } from "recharts";
 import {
@@ -17,13 +17,35 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-const Portfolios: React.FC = () => {
+interface PortfoliosProps {
+  onPortfolioSelect?: (id: number) => void;
+}
+
+const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
   const utils = trpc.useUtils();
   const { data: portfolios, isLoading, refetch } = trpc.portfolio.getDetailedAll.useQuery();
   const { data: historyData } = trpc.portfolio.getHistory.useQuery({ days: 1825 });
   const { data: allHoldings } = trpc.portfolio.getAllHoldings.useQuery();
   const [expandedPortfolios, setExpandedPortfolios] = useState<Set<number>>(new Set());
   const [portfolioFilter, setPortfolioFilter] = useState<string>("all");
+  const [isAddPortfolioOpen, setIsAddPortfolioOpen] = useState(false);
+  const [newPortfolioName, setNewPortfolioName] = useState("");
+
+  const createPortfolioMutation = trpc.portfolio.create.useMutation({
+    onSuccess: (newPortfolio) => {
+      toast.success("Portfolio created!");
+      utils.portfolio.getDetailedAll.invalidate();
+      utils.portfolio.getAll.invalidate();
+      setIsAddPortfolioOpen(false);
+      setNewPortfolioName("");
+      if (onPortfolioSelect) {
+        onPortfolioSelect(newPortfolio.id);
+      }
+    },
+    onError: (error) => {
+      toast.error(error.message || "Failed to create portfolio");
+    }
+  });
 
   const { data: yearlyPerformance, isLoading: isLoadingYearly } = trpc.portfolio.getYearlyPerformance.useQuery({ 
     portfolioId: portfolioFilter === "all" ? undefined : parseInt(portfolioFilter) 
@@ -249,6 +271,65 @@ const Portfolios: React.FC = () => {
       <div className="flex flex-col items-center justify-center h-96 gap-4">
         <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin" />
         <p className="text-sm font-bold text-slate-500 uppercase tracking-widest text-center">Loading Portfolios...</p>
+      </div>
+    );
+  }
+
+  if (!portfolios || portfolios.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[70vh] gap-8 p-6 text-center max-w-lg mx-auto">
+        <div className="relative">
+          <div className="absolute inset-0 bg-primary/10 rounded-full animate-ping" />
+          <div className="relative p-6 bg-white rounded-full shadow-xl border-2 border-primary/20">
+            <Briefcase className="w-12 h-12 text-primary" />
+          </div>
+        </div>
+        
+        <div className="space-y-3">
+          <h2 className="text-3xl font-extrabold text-slate-800 tracking-tight">No Portfolios Found</h2>
+          <p className="text-slate-500 leading-relaxed">
+            Start your investment journey by creating your first portfolio. You'll be able to organize accounts, track assets, and analyze performance in one professional terminal.
+          </p>
+        </div>
+
+        <Dialog open={isAddPortfolioOpen} onOpenChange={setIsAddPortfolioOpen}>
+          <DialogTrigger asChild>
+            <Button size="lg" className="px-10 h-14 text-base font-bold bg-[#004a99] hover:bg-[#003d7a] shadow-lg shadow-blue-900/20 active:scale-95 transition-all">
+              <Plus className="w-5 h-5 mr-3" />
+              Create First Portfolio
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="sm:max-w-[425px] bg-white text-slate-900">
+            <DialogHeader>
+              <DialogTitle className="text-xl font-bold text-slate-800">New Portfolio</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-6 pt-6">
+              <div className="space-y-3">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Portfolio Name</label>
+                <Input
+                  placeholder="e.g., Long Term Growth, Retirement"
+                  value={newPortfolioName}
+                  onChange={(e) => setNewPortfolioName(e.target.value)}
+                  className="h-12 border-slate-200 focus:border-primary focus:ring-primary shadow-sm"
+                  autoFocus
+                />
+              </div>
+              <Button 
+                onClick={() => {
+                  if (newPortfolioName) {
+                    createPortfolioMutation.mutate({ name: newPortfolioName });
+                    setIsAddPortfolioOpen(false);
+                    setNewPortfolioName("");
+                  }
+                }}
+                className="w-full h-12 bg-[#004a99] hover:bg-[#003d7a] font-bold uppercase tracking-wider"
+                disabled={!newPortfolioName || createPortfolioMutation.isPending}
+              >
+                {createPortfolioMutation.isPending ? "Initializing..." : "Establish Portfolio"}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     );
   }

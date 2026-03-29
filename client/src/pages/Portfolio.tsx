@@ -579,6 +579,78 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
     );
   }
 
+  if (accounts && accounts.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[70vh] gap-8 p-6 text-center max-w-lg mx-auto">
+        <div className="relative">
+          <div className="absolute inset-0 bg-primary/10 rounded-full animate-ping" />
+          <div className="relative p-6 bg-white rounded-full shadow-xl border-2 border-primary/20">
+            <Wallet className="w-12 h-12 text-primary" />
+          </div>
+        </div>
+        
+        <div className="space-y-3">
+          <h2 className="text-3xl font-extrabold text-slate-800 tracking-tight">Empty Portfolio</h2>
+          <p className="text-slate-500 leading-relaxed">
+            This portfolio doesn't have any accounts yet. To start tracking your assets, create your first cash or brokerage account within this portfolio.
+          </p>
+        </div>
+
+        <Dialog open={isAccountsDialogOpen} onOpenChange={setIsAccountsDialogOpen}>
+          <DialogTrigger asChild>
+            <Button size="lg" className="px-10 h-14 text-base font-bold bg-[#004a99] hover:bg-[#003d7a] shadow-lg shadow-blue-900/20 active:scale-95 transition-all">
+              <Plus className="w-5 h-5 mr-3" />
+              Create First Account
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="sm:max-w-[425px] bg-white text-slate-900">
+            <DialogHeader>
+              <DialogTitle className="text-xl font-bold text-slate-800">New Account</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-6 pt-6">
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Account Name</label>
+                  <Input
+                    placeholder="e.g., Fidelity Brokerage, Personal Savings"
+                    value={accountFormData.name}
+                    onChange={(e) => setAccountFormData(prev => ({ ...prev, name: e.target.value }))}
+                    className="h-12 border-slate-200 focus:border-primary focus:ring-primary shadow-sm"
+                    autoFocus
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Account Number (Optional)</label>
+                  <Input
+                    placeholder="e.g., x-1234"
+                    value={accountFormData.number}
+                    onChange={(e) => setAccountFormData(prev => ({ ...prev, number: e.target.value }))}
+                    className="h-12 border-slate-200 focus:border-primary focus:ring-primary shadow-sm"
+                  />
+                </div>
+              </div>
+              <Button 
+                onClick={() => {
+                  if (accountFormData.name) {
+                    addAccountMutation.mutate({ 
+                      portfolioId: selectedPortfolioId, 
+                      name: accountFormData.name,
+                      number: accountFormData.number
+                    });
+                  }
+                }}
+                className="w-full h-12 bg-[#004a99] hover:bg-[#003d7a] font-bold uppercase tracking-wider"
+                disabled={!accountFormData.name || addAccountMutation.isPending}
+              >
+                {addAccountMutation.isPending ? "Initializing..." : "Establish Account"}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      </div>
+    );
+  }
+
   const subTabs = [
     { id: "overview", label: "Overview", icon: <LayoutDashboard className="w-3.5 h-3.5" /> },
     { id: "activities", label: "Activities", icon: <List className="w-3.5 h-3.5" /> },

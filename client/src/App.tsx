@@ -89,7 +89,12 @@ function DashboardRouter() {
       case "contact":
         return <Contact />;
       case "portfolios":
-        return <Portfolios />;
+        return <Portfolios 
+          onPortfolioSelect={(id) => {
+            setSelectedPortfolioId(id);
+            setActiveTab("portfolio");
+          }} 
+        />;
       case "brokerage":
         return <BrokerageTransactions />;
       case "privacy":
