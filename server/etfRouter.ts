@@ -1225,13 +1225,17 @@ export const etfRouter = router({
     .query(async ({ ctx, input }) => {
       const holdings = await getUserEtfHoldings(ctx.user.id, input.portfolioId, input.accountId);
       const currentCashBalance = await getCashBalance(ctx.user.id, input.portfolioId, input.accountId);
-      
+
       const db = await getDb();
+      const portfolioAccounts = await db.select().from(accounts).where(and(
+        eq(accounts.userId, ctx.user.id),
+        eq(accounts.portfolioId, input.portfolioId)
+      ));
+
       const allCashBalances = await db.select().from(cashBalance).where(and(
         eq(cashBalance.userId, ctx.user.id),
         eq(cashBalance.portfolioId, input.portfolioId)
-      ));
-      
+      ));      
       const cashBalancesMap: Record<number, string> = {};
       allCashBalances.forEach((cb: any) => {
         if (cb.accountId) {
@@ -1281,6 +1285,7 @@ export const etfRouter = router({
               currentValueNum: 0,
               totalCostNum: 0,
               gainNum: 0,
+              accountBreakdown: [],
             });
           }
           const existing = consolidatedMap.get(h.symbol);
@@ -1288,6 +1293,22 @@ export const etfRouter = router({
           existing.currentValueNum += h.currentValueNum;
           existing.totalCostNum += h.totalCostNum;
           existing.gainNum += h.gainNum;
+          
+          // Find account info for this holding
+          const account = portfolioAccounts.find((a: any) => a.id === h.accountId);
+          
+          existing.accountBreakdown.push({
+            id: h.id,
+            accountId: h.accountId,
+            accountName: account?.name || "Unknown Account",
+            quantity: h.quantity.toString(),
+            averageCost: h.averageCost,
+            totalCost: h.totalCostNum.toFixed(2),
+            currentValue: h.currentValueNum.toFixed(2),
+            gain: h.gainNum.toFixed(2),
+            gainPercent: h.totalCostNum > 0 ? ((h.gainNum / h.totalCostNum) * 100).toFixed(2) : "0",
+            currentPrice: h.currentPrice,
+          });
         }
         processedHoldings = Array.from(consolidatedMap.values()).map((h) => ({
           ...h,

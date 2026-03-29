@@ -103,10 +103,10 @@ export const brokerageRouter = router({
         // Helper to augment SnapTrade data with DB info (like importDate)
         const augmentWithDbInfo = async (snapTxs: any[]) => {
           const dbTxs = await getBrokerageTransactions(ctx.user.id);
-          const dbMap = new Map(dbTxs.map(t => [t.externalId, t]));
+          const dbMap = new Map(dbTxs.map((t: any) => [t.externalId, t]));
           
           return snapTxs.map(tx => {
-            const dbInfo = dbMap.get(tx.id);
+            const dbInfo = dbMap.get(tx.id) as any;
             return {
               ...tx,
               importDate: dbInfo?.importDate || null,
@@ -126,7 +126,7 @@ export const brokerageRouter = router({
           if (dbTransactions.length > 0) {
             console.log(`[Brokerage] Cache HIT for user ${ctx.user.id} (${dbTransactions.length} items)`);
             return {
-              transactions: dbTransactions.map(tx => ({
+              transactions: dbTransactions.map((tx: any) => ({
                 ...JSON.parse(tx.rawResponse),
                 importDate: tx.importDate,
                 updatedAt: tx.updatedAt,
@@ -200,7 +200,7 @@ export const brokerageRouter = router({
           if (dbHoldings.length > 0) {
             console.log(`[Brokerage] Holdings cache HIT for user ${ctx.user.id} (${dbHoldings.length} items)`);
             return {
-              holdings: dbHoldings.map(h => ({
+              holdings: dbHoldings.map((h: any) => ({
                 ...JSON.parse(h.rawResponse),
                 account: {
                   id: h.accountId,
