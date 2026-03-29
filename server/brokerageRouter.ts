@@ -86,8 +86,58 @@ export const brokerageRouter = router({
       endDate: z.string().optional(),   // YYYY-MM-DD
       accounts: z.string().optional(),  // Comma-separated account IDs
     }))
-    .query(async ({ input }) => {
+    .query(async ({ ctx, input }) => {
+      const { 
+        getLastBrokerageSync, 
+        updateLastBrokerageSync, 
+        upsertBrokerageTransactions, 
+        getBrokerageTransactions 
+      } = await import("./db");
+
       try {
+        const lastSync = await getLastBrokerageSync(ctx.user.id);
+        const now = new Date();
+        const isToday = lastSync && 
+          new Date(lastSync.lastSyncAt).toDateString() === now.toDateString();
+
+        // Helper to augment SnapTrade data with DB info (like importDate)
+        const augmentWithDbInfo = async (snapTxs: any[]) => {
+          const dbTxs = await getBrokerageTransactions(ctx.user.id);
+          const dbMap = new Map(dbTxs.map(t => [t.externalId, t]));
+          
+          return snapTxs.map(tx => {
+            const dbInfo = dbMap.get(tx.id);
+            return {
+              ...tx,
+              importDate: dbInfo?.importDate || null,
+              updatedAt: dbInfo?.updatedAt || null,
+            };
+          });
+        };
+
+        // If synced today, return from DB
+        if (isToday) {
+          const start = input.startDate ? new Date(input.startDate) : undefined;
+          const end = input.endDate ? new Date(input.endDate) : undefined;
+          const accountIds = input.accounts ? input.accounts.split(',') : undefined;
+          
+          const dbTransactions = await getBrokerageTransactions(ctx.user.id, start, end, accountIds);
+          
+          if (dbTransactions.length > 0) {
+            console.log(`[Brokerage] Cache HIT for user ${ctx.user.id} (${dbTransactions.length} items)`);
+            return {
+              transactions: dbTransactions.map(tx => ({
+                ...JSON.parse(tx.rawResponse),
+                importDate: tx.importDate,
+                updatedAt: tx.updatedAt,
+              })),
+              lastSyncAt: lastSync.lastSyncAt
+            };
+          }
+        }
+
+        // 2. Cache miss: Fetch from SnapTrade
+        console.log(`[Brokerage] Cache MISS for user ${ctx.user.id}. Fetching from SnapTrade...`);
         const snaptrade = getSnapTradeClient(input.clientId, input.consumerKey);
         const response = await snaptrade.transactionsAndReporting.getActivities({
           userId: input.userId,
@@ -96,7 +146,25 @@ export const brokerageRouter = router({
           endDate: input.endDate,
           accounts: input.accounts,
         });
-        return response.data;
+
+        // Trigger background update
+        (async () => {
+          try {
+            await upsertBrokerageTransactions(ctx.user.id, response.data);
+            await updateLastBrokerageSync(ctx.user.id);
+            console.log(`[Brokerage] Background sync completed for user ${ctx.user.id}`);
+          } catch (err) {
+            console.error(`[Brokerage] Background sync failed:`, err);
+          }
+        })();
+
+        // For the immediate response on MISS, we try to augment with what we have in DB
+        const augmented = await augmentWithDbInfo(response.data);
+
+        return {
+          transactions: augmented,
+          lastSyncAt: lastSync?.lastSyncAt
+        };
       } catch (error: any) {
         console.error("SnapTrade getTransactions error:", error.response?.data || error.message);
         throw new Error("Failed to fetch brokerage transactions");

@@ -2,9 +2,106 @@ import { eq, and, gte, lte, desc, sql } from "drizzle-orm";
 export { eq, and, desc };
 import { drizzle } from "drizzle-orm/libsql";
 import { createClient } from "@libsql/client";
-import { InsertUser, users, portfolios, accounts, etfHoldings, purchases, priceHistory, balanceHistory, dividendHistory, cashBalance, cashBalanceHistory, assetPrices, importedTransactions } from "../drizzle/schema";
+import { InsertUser, users, portfolios, accounts, etfHoldings, purchases, priceHistory, balanceHistory, dividendHistory, cashBalance, cashBalanceHistory, assetPrices, importedTransactions, brokerageTransactions, brokerageSyncs } from "../drizzle/schema";
 
 let _db: any = null;
+
+export async function upsertBrokerageTransactions(userId: number, activities: any[]) {
+  const db = await getDb();
+
+  return db.transaction(async (tx: any) => {
+    for (const activity of activities) {
+      const externalId = activity.id;
+      if (!externalId) continue;
+
+      const existing = await tx.select()
+        .from(brokerageTransactions)
+        .where(eq(brokerageTransactions.externalId, externalId))
+        .limit(1)
+        .then((rows: any[]) => rows[0]);
+
+      const data = {
+        userId,
+        externalId,
+        accountId: activity.account?.id || "unknown",
+        type: typeof activity.type === 'string' ? activity.type : activity.type?.name,
+        description: activity.description,
+        symbol: JSON.stringify(activity.symbol),
+        units: activity.units?.toString(),
+        price: activity.price?.toString(),
+        amount: activity.amount?.toString(),
+        currency: activity.currency?.code,
+        tradeDate: activity.trade_date ? new Date(activity.trade_date) : null,
+        settlementDate: activity.settlement_date ? new Date(activity.settlement_date) : null,
+        rawResponse: JSON.stringify(activity),
+        updatedAt: new Date(),
+      };
+
+      if (existing) {
+        await tx.update(brokerageTransactions)
+          .set(data)
+          .where(eq(brokerageTransactions.id, existing.id));
+      } else {
+        await tx.insert(brokerageTransactions).values({
+          ...data,
+          createdAt: new Date(),
+        });
+      }
+    }
+  });
+}
+
+export async function getBrokerageTransactions(userId: number, startDate?: Date, endDate?: Date, accountIds?: string[]) {
+  const db = await getDb();
+  let conditions = [eq(brokerageTransactions.userId, userId)];
+
+  if (startDate) conditions.push(gte(brokerageTransactions.tradeDate, startDate));
+  if (endDate) conditions.push(lte(brokerageTransactions.tradeDate, endDate));
+  if (accountIds && accountIds.length > 0) {
+    // Note: accountIds filter is handled in app logic or we could add in(...) here
+  }
+
+  return db.select()
+    .from(brokerageTransactions)
+    .where(and(...conditions))
+    .orderBy(desc(brokerageTransactions.tradeDate));
+}
+
+export async function getLastBrokerageSync(userId: number) {
+  const db = await getDb();
+  return db.select()
+    .from(brokerageSyncs)
+    .where(eq(brokerageSyncs.userId, userId))
+    .limit(1)
+    .then((rows: any[]) => rows[0]);
+}
+
+export async function updateLastBrokerageSync(userId: number) {
+  const db = await getDb();
+  const existing = await getLastBrokerageSync(userId);
+
+  if (existing) {
+    return db.update(brokerageSyncs)
+      .set({ lastSyncAt: new Date() })
+      .where(eq(brokerageSyncs.id, existing.id));
+  } else {
+    return db.insert(brokerageSyncs).values({
+      userId,
+      lastSyncAt: new Date(),
+    });
+  }
+}
+
+export async function markBrokerageTransactionImported(externalId: string, userId: number) {
+  const db = await getDb();
+  return db.update(brokerageTransactions)
+    .set({ importDate: new Date() })
+    .where(and(
+      eq(brokerageTransactions.externalId, externalId),
+      eq(brokerageTransactions.userId, userId)
+    ));
+}
+
 
 // Asset Price queries
 export async function addAssetPrice(symbol: string, price: string, date: Date) {
@@ -631,13 +728,26 @@ export async function calculateAverageCost(holdingId: number) {
 // Import tracking queries
 export async function getImportedTransactionIds(userId: number, source: string) {
   const db = await getDb();
-  return db.select({ externalId: importedTransactions.externalId })
+  
+  // Get from legacy table
+  const legacyIds = await db.select({ externalId: importedTransactions.externalId })
     .from(importedTransactions)
     .where(and(
       eq(importedTransactions.userId, userId),
       eq(importedTransactions.source, source)
     ))
-    .then((rows: any[]) => new Set(rows.map(r => r.externalId)));
+    .then((rows: any[]) => rows.map(r => r.externalId));
+
+  // Get from new brokerageTransactions table (where importDate is not null)
+  const newIds = await db.select({ externalId: brokerageTransactions.externalId })
+    .from(brokerageTransactions)
+    .where(and(
+      eq(brokerageTransactions.userId, userId),
+      sql`${brokerageTransactions.importDate} IS NOT NULL`
+    ))
+    .then((rows: any[]) => rows.map(r => r.externalId));
+
+  return new Set([...legacyIds, ...newIds]);
 }
 
 export async function markTransactionsAsImported(userId: number, externalIds: string[], source: string) {
@@ -645,6 +755,10 @@ export async function markTransactionsAsImported(userId: number, externalIds: st
   if (externalIds.length === 0) return;
   
   for (const id of externalIds) {
+    // Update new table if possible
+    await markBrokerageTransactionImported(id, userId);
+
+    // Also update legacy table for backward compatibility
     try {
       await db.insert(importedTransactions).values({
         userId,
@@ -652,7 +766,7 @@ export async function markTransactionsAsImported(userId: number, externalIds: st
         source
       });
     } catch (e) {
-      // Ignore duplicates (unique index will trigger error)
+      // Ignore duplicates
     }
   }
 }

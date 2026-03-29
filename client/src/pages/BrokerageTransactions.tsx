@@ -131,7 +131,7 @@ export default function BrokerageTransactions() {
     { enabled: !!config.userId && !!config.userSecret }
   );
 
-  const { data: transactions, isLoading: isLoadingTx, refetch } = trpc.brokerage.getTransactions.useQuery(
+  const { data: transactionsData, isLoading: isLoadingTx, refetch } = trpc.brokerage.getTransactions.useQuery(
     { 
       clientId: config.clientId,
       consumerKey: config.consumerKey,
@@ -142,6 +142,9 @@ export default function BrokerageTransactions() {
     },
     { enabled: !!config.userId && !!config.userSecret }
   );
+
+  const transactions = transactionsData?.transactions;
+  const lastSyncAt = transactionsData?.lastSyncAt;
 
   const { data: holdings, isLoading: isLoadingHoldings } = trpc.brokerage.getHoldings.useQuery(
     { 
@@ -154,6 +157,7 @@ export default function BrokerageTransactions() {
   );
 
   const { data: portfolios } = trpc.portfolio.getDetailedAll.useQuery();
+  // We keep this for now but will also use importDate from the cache
   const { data: importedIds, refetch: refetchImported } = trpc.brokerage.getImportedTransactionIds.useQuery(
     { source: "snaptrade" },
     { enabled: !!config.userId }
@@ -391,7 +395,14 @@ export default function BrokerageTransactions() {
           </div>
           <div>
             <h2 className="text-lg font-bold text-slate-800">Brokerage Transactions</h2>
-            <p className="text-xs text-slate-500 font-medium">Real-time sync via SnapTrade Secure Link</p>
+            <p className="text-xs text-slate-500 font-medium">
+              Real-time sync via SnapTrade Secure Link
+              {lastSyncAt && (
+                <span className="ml-2 text-primary font-bold">
+                  (Last Sync: {new Date(lastSyncAt).toLocaleString()})
+                </span>
+              )}
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -580,20 +591,21 @@ export default function BrokerageTransactions() {
                     <th className="text-right py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Units</th>
                     <th className="text-right py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Price</th>
                     <th className="text-right py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Amount</th>
+                    <th className="text-center py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Updated</th>
                     <th className="text-center py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {isLoadingTx ? (
                     <tr>
-                      <td colSpan={10} className="py-20 text-center">
+                      <td colSpan={11} className="py-20 text-center">
                         <RefreshCw className="w-8 h-8 animate-spin text-primary mx-auto mb-4 opacity-50" />
                         <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Syncing with Broker...</p>
                       </td>
                     </tr>
                   ) : filteredTransactions && filteredTransactions.length > 0 ? (
                     filteredTransactions.map((tx: any, idx: number) => {
-                      const isAlreadyImported = importedSet.has(tx.id);
+                      const isAlreadyImported = !!tx.importDate || importedSet.has(tx.id);
                       return (
                         <tr key={idx} className={`transition-colors ${selectedTxIds.has(idx) ? "bg-blue-50/30" : "hover:bg-slate-50/50"} ${isAlreadyImported ? "opacity-60" : ""}`}>
                           <td className="py-4 px-6 bg-slate-50/30 border-r border-slate-100 text-center">
@@ -624,6 +636,9 @@ export default function BrokerageTransactions() {
                           <td className={`py-4 px-6 text-right font-mono font-bold ${tx.amount < 0 ? "text-red-600" : "text-green-600"}`}>
                             {formatCurrency(tx.amount)}
                           </td>
+                          <td className="py-4 px-6 text-center font-mono text-[9px] text-slate-400">
+                            {tx.updatedAt ? new Date(tx.updatedAt).toLocaleDateString() : "-"}
+                          </td>
                           <td className="py-4 px-6 text-center">
                             {isAlreadyImported ? (
                               <Badge className="bg-slate-100 text-slate-500 border-slate-200 text-[8px] font-bold uppercase">Imported</Badge>
@@ -636,7 +651,7 @@ export default function BrokerageTransactions() {
                     })
                   ) : (
                     <tr>
-                      <td colSpan={9} className="py-20 text-center text-slate-400 italic">
+                      <td colSpan={11} className="py-20 text-center text-slate-400 italic">
                         No transactions found for this period.
                       </td>
                     </tr>

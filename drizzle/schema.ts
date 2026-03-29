@@ -145,3 +145,31 @@ export const importedTransactions = sqliteTable("importedTransactions", {
 }, (table) => [
   uniqueIndex("external_id_source_idx").on(table.externalId, table.source),
 ]);
+
+export const brokerageTransactions = sqliteTable("brokerageTransactions", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("userId").notNull(),
+  externalId: text("externalId").notNull().unique(), // Activity ID from SnapTrade
+  accountId: text("accountId").notNull(), // SnapTrade Account ID
+  type: text("type"),
+  description: text("description"),
+  symbol: text("symbol"), // JSON string or identifier
+  units: text("units"),
+  price: text("price"),
+  amount: text("amount"),
+  currency: text("currency"),
+  tradeDate: integer("tradeDate", { mode: "timestamp" }),
+  settlementDate: integer("settlementDate", { mode: "timestamp" }),
+  rawResponse: text("rawResponse").notNull(), // Full JSON from SnapTrade
+  importDate: integer("importDate", { mode: "timestamp" }), // Null if not imported
+  createdAt: integer("createdAt", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+  updatedAt: integer("updatedAt", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+export const brokerageSyncs = sqliteTable("brokerageSyncs", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("userId").notNull(),
+  lastSyncAt: integer("lastSyncAt", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+}, (table) => [
+  uniqueIndex("user_sync_idx").on(table.userId),
+]);
