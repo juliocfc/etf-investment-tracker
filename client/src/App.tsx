@@ -96,7 +96,10 @@ function DashboardRouter() {
           }} 
         />;
       case "brokerage":
-        return <BrokerageTransactions />;
+        if (user?.role === "admin" || user?.role === "premium") {
+          return <BrokerageTransactions />;
+        }
+        return <Holdings selectedPortfolioId={selectedPortfolioId!} />;
       case "privacy":
         return <Privacy onBack={() => {
           setActiveTab("portfolio");

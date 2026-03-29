@@ -202,22 +202,25 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
               </DialogContent>
             </Dialog>
             {/* Brokerage Link */}
-            <button
-              onClick={() => {
-                onTabChange?.("brokerage");
-                if (window.innerWidth < 1024) setSidebarOpen(false);
-              }}
-              className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-md transition-all duration-200 font-medium ${activeTab === "brokerage"
-                ? "bg-slate-100 text-[#004a99]"
-                : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+            {(user?.role === "admin" || user?.role === "premium") && (
+              <button
+                onClick={() => {
+                  onTabChange?.("brokerage");
+                  if (window.innerWidth < 1024) setSidebarOpen(false);
+                }}
+                className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-md transition-all duration-200 font-medium ${
+                  activeTab === "brokerage"
+                    ? "bg-slate-100 text-[#004a99]"
+                    : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
                 }`}
-            >
-              <ArrowRightLeft className="w-4 h-4" />
-              <span className="text-sm font-bold uppercase tracking-wider">Brokerage</span>
-              {activeTab === "brokerage" && (
-                <div className="ml-auto w-1.5 h-1.5 rounded-full bg-[#004a99]" />
-              )}
-            </button>
+              >
+                <ArrowRightLeft className="w-4 h-4" />
+                <span className="text-sm font-bold uppercase tracking-wider">Brokerage</span>
+                {activeTab === "brokerage" && (
+                  <div className="ml-auto w-1.5 h-1.5 rounded-full bg-[#004a99]" />
+                )}
+              </button>
+            )}
 
           </div>
 
