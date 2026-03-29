@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Configuration
-APP_DIR="/Users/juliocfc/projects/etf-investment-tracker"
+APP_DIR="$HOME/projects/etf-investment-tracker"
 PLIST_NAME="com.etf.tracker.plist"
 PLIST_PATH="$HOME/Library/LaunchAgents/$PLIST_NAME"
 
