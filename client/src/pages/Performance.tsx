@@ -315,16 +315,18 @@ export default function Performance({ selectedPortfolioId }: { selectedPortfolio
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-slate-50/50 text-slate-400 font-bold text-[10px] uppercase tracking-widest border-b border-slate-100">
-                  <th className="py-4 px-6 text-left">Year</th>
-                  <th className="py-4 px-6 text-right">Investment Cost Basis</th>
-                  <th className="py-4 px-6 text-right">Start Investment Value</th>
-                  <th className="py-4 px-6 text-right">Total Purchases</th>
-                  <th className="py-4 px-6 text-right">End Investment Balance</th>
-                  <th className="py-4 px-6 text-right">Yearly Gain / Loss</th>
-                  <th className="py-4 px-6 text-right">Annual % Return</th>
-                  <th className="py-4 px-6 text-right">Gain / Loss</th>
-                  <th className="py-4 px-6 text-right">Total % Gain</th>
+                <tr className="bg-slate-50/50 text-slate-400 font-bold text-[10px] uppercase tracking-tighter border-b border-slate-100">
+                  <th className="py-2 px-3 text-left">Year</th>
+                  <th className="py-2 px-3 text-right">Cost Basis</th>
+                  <th className="py-2 px-3 text-right">Start Val.</th>
+                  <th className="py-2 px-3 text-right">Purchases</th>
+                  <th className="py-2 px-3 text-right">End Bal.</th>
+                  <th className="py-2 px-3 text-right">Cash</th>
+                  <th className="py-2 px-3 text-right">Total</th>
+                  <th className="py-2 px-3 text-right">Yearly G/L</th>
+                  <th className="py-2 px-3 text-right">Annual %</th>
+                  <th className="py-2 px-3 text-right">Total G/L</th>
+                  <th className="py-2 px-3 text-right">Total %</th>
                 </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
@@ -339,37 +341,40 @@ export default function Performance({ selectedPortfolioId }: { selectedPortfolio
 
                   return (
                     <tr key={row.year} className="hover:bg-slate-50/50 transition-colors">
-                      <td className="py-4 px-6 font-bold text-slate-700">{row.year}</td>
-                      <td className="py-4 px-6 text-right font-mono text-slate-600">{formatCurrency(row.costBasis)}</td>
-                      <td className="py-4 px-6 text-right font-mono text-slate-600">{formatCurrency(row.startInvestment)}</td>
-                      <td className="py-4 px-6 text-right font-mono text-slate-600">{formatCurrency(row.purchasesInYear)}</td>
-                      <td className="py-4 px-6 text-right font-mono text-slate-600">
+                      <td className="py-3 px-3 font-bold text-slate-700 text-xs">{row.year}</td>
+                      <td className="py-3 px-3 text-right font-mono text-slate-600 text-[11px]">{formatCurrency(row.costBasis)}</td>
+                      <td className="py-3 px-3 text-right font-mono text-slate-600 text-[11px]">{formatCurrency(row.startInvestment)}</td>
+                      <td className="py-3 px-3 text-right font-mono text-slate-600 text-[11px]">{formatCurrency(row.purchasesInYear)}</td>
+                      <td className="py-3 px-3 text-right font-mono text-slate-600 text-[11px]">
                         <div className="flex flex-col items-end">
                           <span>{formatCurrency(row.investment)}</span>
-                          {isCurrentYear && <span className="text-[9px] text-slate-400 uppercase font-bold tracking-tighter">Current Balance</span>}
+                          {isCurrentYear && <span className="text-[8px] text-slate-400 uppercase font-bold tracking-tighter leading-none">Current</span>}
                         </div>
                       </td>
-                      <td className={`py-4 px-6 text-right font-mono font-bold ${isYearlyPositive ? "text-green-600" : "text-red-600"}`}>
+                      <td className="py-3 px-3 text-right font-mono text-slate-600 text-[11px]">{formatCurrency(row.cash)}</td>
+                      <td className="py-3 px-3 text-right font-mono font-bold text-slate-800 text-[11px]">{formatCurrency(row.total)}</td>
+                      <td className={`py-3 px-3 text-right font-mono font-bold text-[11px] ${isYearlyPositive ? "text-green-600" : "text-red-600"}`}>
                         {isYearlyPositive ? "+" : ""}{formatCurrency(row.yearlyGainLoss)}
                       </td>
-                      <td className={`py-4 px-6 text-right`}>
-                        <span className={`px-2 py-1 rounded text-[10px] font-bold font-mono ${isAnnualPositive ? "bg-blue-50 text-blue-700" : "bg-orange-50 text-orange-700"}`}>
+                      <td className={`py-3 px-3 text-right`}>
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold font-mono ${isAnnualPositive ? "bg-blue-50 text-blue-700" : "bg-orange-50 text-orange-700"}`}>
                           {isAnnualPositive ? "+" : ""}{row.annualReturnPercent}%
                         </span>
                       </td>
-                      <td className={`py-4 px-6 text-right font-mono font-bold ${isPositive ? "text-green-600" : "text-red-600"}`}>
+                      <td className={`py-3 px-3 text-right font-mono font-bold text-[11px] ${isPositive ? "text-green-600" : "text-red-600"}`}>
                         {isPositive ? "+" : ""}{formatCurrency(row.gainLoss)}
                       </td>
-                      <td className={`py-4 px-6 text-right`}>
-                        <span className={`px-2 py-1 rounded text-[10px] font-bold font-mono ${isPositive ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
+                      <td className={`py-3 px-3 text-right`}>
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold font-mono ${isPositive ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
                           {isPositive ? "+" : ""}{row.gainLossPercent}%
                         </span>
                       </td>
                     </tr>
                   );
-                })}                {(!yearlyPerformance || yearlyPerformance.length === 0) && (
+                })}
+                {(!yearlyPerformance || yearlyPerformance.length === 0) && (
                   <tr>
-                    <td colSpan={9} className="py-12 text-center text-slate-400 italic">No historical data available for this portfolio.</td>
+                    <td colSpan={11} className="py-12 text-center text-slate-400 italic">No historical data available for this portfolio.</td>
                   </tr>
                 )}
               </tbody>

@@ -728,14 +728,16 @@ const Portfolios: React.FC = () => {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-slate-50 border-b border-slate-200">
-                    <th className="text-left py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Year</th>
-                    <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Investment Cost Basis</th>
-                    <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Start Investment Value</th>
-                    <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Total Purchases</th>
-                    <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">End Investment Balance</th>
-                    <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Gain / Loss</th>
-                    <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Total % Gain</th>
-                    <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Annual % Return</th>
+                    <th className="text-left py-2 px-2 text-[10px] font-bold text-slate-500 uppercase tracking-tighter">Year</th>
+                    <th className="text-right py-2 px-2 text-[10px] font-bold text-slate-500 uppercase tracking-tighter">Cost Basis</th>
+                    <th className="text-right py-2 px-2 text-[10px] font-bold text-slate-500 uppercase tracking-tighter">Start Val.</th>
+                    <th className="text-right py-2 px-2 text-[10px] font-bold text-slate-500 uppercase tracking-tighter">Purchases</th>
+                    <th className="text-right py-2 px-2 text-[10px] font-bold text-slate-500 uppercase tracking-tighter">End Bal.</th>
+                    <th className="text-right py-2 px-2 text-[10px] font-bold text-slate-500 uppercase tracking-tighter">Cash</th>
+                    <th className="text-right py-2 px-2 text-[10px] font-bold text-slate-500 uppercase tracking-tighter">Total</th>
+                    <th className="text-right py-2 px-2 text-[10px] font-bold text-slate-500 uppercase tracking-tighter">Gain/Loss</th>
+                    <th className="text-right py-2 px-2 text-[10px] font-bold text-slate-500 uppercase tracking-tighter">Total %</th>
+                    <th className="text-right py-2 px-2 text-[10px] font-bold text-slate-500 uppercase tracking-tighter">Annual %</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -748,26 +750,28 @@ const Portfolios: React.FC = () => {
 
                     return (
                       <tr key={row.year} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/50 transition-colors">
-                        <td className="py-3 px-4 font-bold text-slate-800">{row.year}</td>
-                        <td className="py-3 px-4 text-right font-mono text-slate-600">{formatCurrency(row.costBasis)}</td>
-                        <td className="py-3 px-4 text-right font-mono text-slate-600">{formatCurrency(row.startInvestment)}</td>
-                        <td className="py-3 px-4 text-right font-mono text-slate-600">{formatCurrency(row.purchasesInYear)}</td>
-                        <td className="py-3 px-4 text-right font-mono text-slate-600">
+                        <td className="py-3 px-2 font-bold text-slate-800 text-sm">{row.year}</td>
+                        <td className="py-3 px-2 text-right font-mono text-slate-600 text-[11px]">{formatCurrency(row.costBasis)}</td>
+                        <td className="py-3 px-2 text-right font-mono text-slate-600 text-[11px]">{formatCurrency(row.startInvestment)}</td>
+                        <td className="py-3 px-2 text-right font-mono text-slate-600 text-[11px]">{formatCurrency(row.purchasesInYear)}</td>
+                        <td className="py-3 px-2 text-right font-mono text-slate-600 text-[11px]">
                           <div className="flex flex-col items-end">
                             <span>{formatCurrency(row.investment)}</span>
-                            {isCurrentYear && <span className="text-[9px] text-slate-400 uppercase font-bold tracking-tighter">Current Balance</span>}
+                            {isCurrentYear && <span className="text-[8px] text-slate-400 uppercase font-bold tracking-tighter leading-none">Current</span>}
                           </div>
                         </td>
-                        <td className={`py-3 px-4 text-right font-mono font-bold ${isPositive ? "text-green-600" : "text-red-600"}`}>
+                        <td className="py-3 px-2 text-right font-mono text-slate-600 text-[11px]">{formatCurrency(row.cash)}</td>
+                        <td className="py-3 px-2 text-right font-mono font-bold text-slate-800 text-[11px]">{formatCurrency(row.total)}</td>
+                        <td className={`py-3 px-2 text-right font-mono font-bold text-[11px] ${isPositive ? "text-green-600" : "text-red-600"}`}>
                           {isPositive ? "+" : ""}{formatCurrency(row.gainLoss)}
                         </td>
-                        <td className="py-3 px-4 text-right">
-                          <span className={`px-2 py-1 rounded text-[10px] font-bold font-mono ${isPositive ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
+                        <td className="py-3 px-2 text-right">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold font-mono ${isPositive ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
                             {isPositive ? "+" : ""}{row.gainLossPercent}%
                           </span>
                         </td>
-                        <td className="py-3 px-4 text-right">
-                          <span className={`px-2 py-1 rounded text-[10px] font-bold font-mono ${isAnnualPositive ? "bg-blue-50 text-blue-700" : "bg-orange-50 text-orange-700"}`}>
+                        <td className="py-3 px-2 text-right">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold font-mono ${isAnnualPositive ? "bg-blue-50 text-blue-700" : "bg-orange-50 text-orange-700"}`}>
                             {isAnnualPositive ? "+" : ""}{row.annualReturnPercent}%
                           </span>
                         </td>
