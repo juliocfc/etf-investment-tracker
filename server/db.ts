@@ -2,7 +2,7 @@ import { eq, and, gte, lte, desc, sql } from "drizzle-orm";
 export { eq, and, desc };
 import { drizzle } from "drizzle-orm/libsql";
 import { createClient } from "@libsql/client";
-import { InsertUser, users, portfolios, accounts, etfHoldings, purchases, priceHistory, balanceHistory, dividendHistory, cashBalance, cashBalanceHistory, assetPrices } from "../drizzle/schema";
+import { InsertUser, users, portfolios, accounts, etfHoldings, purchases, priceHistory, balanceHistory, dividendHistory, cashBalance, cashBalanceHistory, assetPrices, importedTransactions } from "../drizzle/schema";
 
 let _db: any = null;
 
@@ -623,4 +623,33 @@ export async function calculateAverageCost(holdingId: number) {
   }
 
   return avgCost;
+}
+
+// Import tracking queries
+export async function getImportedTransactionIds(userId: number, source: string) {
+  const db = await getDb();
+  return db.select({ externalId: importedTransactions.externalId })
+    .from(importedTransactions)
+    .where(and(
+      eq(importedTransactions.userId, userId),
+      eq(importedTransactions.source, source)
+    ))
+    .then((rows: any[]) => new Set(rows.map(r => r.externalId)));
+}
+
+export async function markTransactionsAsImported(userId: number, externalIds: string[], source: string) {
+  const db = await getDb();
+  if (externalIds.length === 0) return;
+  
+  for (const id of externalIds) {
+    try {
+      await db.insert(importedTransactions).values({
+        userId,
+        externalId: id,
+        source
+      });
+    } catch (e) {
+      // Ignore duplicates (unique index will trigger error)
+    }
+  }
 }

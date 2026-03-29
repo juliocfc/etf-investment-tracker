@@ -154,9 +154,16 @@ export default function BrokerageTransactions() {
   );
 
   const { data: portfolios } = trpc.portfolio.getDetailedAll.useQuery();
+  const { data: importedIds, refetch: refetchImported } = trpc.brokerage.getImportedTransactionIds.useQuery(
+    { source: "snaptrade" },
+    { enabled: !!config.userId }
+  );
+
+  const importedSet = useMemo(() => new Set(importedIds || []), [importedIds]);
 
   const addHoldingMutation = trpc.etf.addHolding.useMutation();
   const recordCashMutation = trpc.etf.recordCashTransaction.useMutation();
+  const markImportedMutation = trpc.brokerage.markTransactionsAsImported.useMutation();
 
   const filteredTransactions = useMemo(() => {
     if (!transactions) return [];
@@ -264,6 +271,7 @@ export default function BrokerageTransactions() {
     setIsImporting(true);
     let successCount = 0;
     let errorCount = 0;
+    const importedExternalIds: string[] = [];
 
     try {
       for (const mapping of importMappings) {
@@ -295,11 +303,20 @@ export default function BrokerageTransactions() {
               date: mapping.date
             });
           }
+          importedExternalIds.push(mapping.txId);
           successCount++;
         } catch (e) {
           console.error("Import error for mapping:", mapping, e);
           errorCount++;
         }
+      }
+
+      if (importedExternalIds.length > 0) {
+        await markImportedMutation.mutateAsync({
+          externalIds: importedExternalIds,
+          source: "snaptrade"
+        });
+        await refetchImported();
       }
 
       if (successCount > 0) {
@@ -563,48 +580,60 @@ export default function BrokerageTransactions() {
                     <th className="text-right py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Units</th>
                     <th className="text-right py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Price</th>
                     <th className="text-right py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Amount</th>
+                    <th className="text-center py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {isLoadingTx ? (
                     <tr>
-                      <td colSpan={9} className="py-20 text-center">
+                      <td colSpan={10} className="py-20 text-center">
                         <RefreshCw className="w-8 h-8 animate-spin text-primary mx-auto mb-4 opacity-50" />
                         <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Syncing with Broker...</p>
                       </td>
                     </tr>
                   ) : filteredTransactions && filteredTransactions.length > 0 ? (
-                    filteredTransactions.map((tx: any, idx: number) => (
-                      <tr key={idx} className={`transition-colors ${selectedTxIds.has(idx) ? "bg-blue-50/30" : "hover:bg-slate-50/50"}`}>
-                        <td className="py-4 px-6 bg-slate-50/30 border-r border-slate-100 text-center">
-                          <input 
-                            type="checkbox"
-                            checked={selectedTxIds.has(idx)}
-                            onChange={() => toggleSelection(idx)}
-                            className="w-4 h-4 rounded border-slate-400 text-primary focus:ring-primary cursor-pointer"
-                          />
-                        </td>
-                        <td className="py-4 px-6 font-mono text-xs text-slate-500">{formatUTCDate(tx.settlement_date || tx.trade_date)}</td>
-                        <td className="py-4 px-6">
-                          <div className="text-sm font-bold text-slate-700">{tx.account?.name}</div>
-                          <div className="text-[10px] text-slate-400 font-mono">{tx.account?.number}</div>
-                        </td>
-                        <td className="py-4 px-6">
-                          <Badge variant="outline" className="capitalize text-[10px] font-bold">
-                            {(typeof tx.type === "string" ? tx.type : (tx.type as any)?.name || "transaction").toLowerCase()}
-                          </Badge>
-                        </td>
-                        <td className="py-4 px-6 text-xs text-slate-600 max-w-[300px] truncate" title={tx.description}>
-                          {tx.description}
-                        </td>
-                        <td className="py-4 px-6 text-right font-bold text-primary">{renderSymbol(tx.symbol)}</td>
-                        <td className="py-4 px-6 text-right font-mono text-xs text-slate-600">{tx.units || "-"}</td>
-                        <td className="py-4 px-6 text-right font-mono text-xs text-slate-600">{tx.price ? formatCurrency(tx.price) : "-"}</td>
-                        <td className={`py-4 px-6 text-right font-mono font-bold ${tx.amount < 0 ? "text-red-600" : "text-green-600"}`}>
-                          {formatCurrency(tx.amount)}
-                        </td>
-                      </tr>
-                    ))
+                    filteredTransactions.map((tx: any, idx: number) => {
+                      const isAlreadyImported = importedSet.has(tx.id);
+                      return (
+                        <tr key={idx} className={`transition-colors ${selectedTxIds.has(idx) ? "bg-blue-50/30" : "hover:bg-slate-50/50"} ${isAlreadyImported ? "opacity-60" : ""}`}>
+                          <td className="py-4 px-6 bg-slate-50/30 border-r border-slate-100 text-center">
+                            <input 
+                              type="checkbox"
+                              checked={selectedTxIds.has(idx)}
+                              disabled={isAlreadyImported}
+                              onChange={() => toggleSelection(idx)}
+                              className="w-4 h-4 rounded border-slate-400 text-primary focus:ring-primary cursor-pointer disabled:cursor-not-allowed"
+                            />
+                          </td>
+                          <td className="py-4 px-6 font-mono text-xs text-slate-500">{formatUTCDate(tx.settlement_date || tx.trade_date)}</td>
+                          <td className="py-4 px-6">
+                            <div className="text-sm font-bold text-slate-700">{tx.account?.name}</div>
+                            <div className="text-[10px] text-slate-400 font-mono">{tx.account?.number}</div>
+                          </td>
+                          <td className="py-4 px-6">
+                            <Badge variant="outline" className="capitalize text-[10px] font-bold">
+                              {(typeof tx.type === "string" ? tx.type : (tx.type as any)?.name || "transaction").toLowerCase()}
+                            </Badge>
+                          </td>
+                          <td className="py-4 px-6 text-xs text-slate-600 max-w-[300px] truncate" title={tx.description}>
+                            {tx.description}
+                          </td>
+                          <td className="py-4 px-6 text-right font-bold text-primary">{renderSymbol(tx.symbol)}</td>
+                          <td className="py-4 px-6 text-right font-mono text-xs text-slate-600">{tx.units || "-"}</td>
+                          <td className="py-4 px-6 text-right font-mono text-xs text-slate-600">{tx.price ? formatCurrency(tx.price) : "-"}</td>
+                          <td className={`py-4 px-6 text-right font-mono font-bold ${tx.amount < 0 ? "text-red-600" : "text-green-600"}`}>
+                            {formatCurrency(tx.amount)}
+                          </td>
+                          <td className="py-4 px-6 text-center">
+                            {isAlreadyImported ? (
+                              <Badge className="bg-slate-100 text-slate-500 border-slate-200 text-[8px] font-bold uppercase">Imported</Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-green-600 border-green-200 text-[8px] font-bold uppercase bg-green-50/50">Ready</Badge>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })
                   ) : (
                     <tr>
                       <td colSpan={9} className="py-20 text-center text-slate-400 italic">

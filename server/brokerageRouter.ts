@@ -153,4 +153,23 @@ export const brokerageRouter = router({
         throw new Error("Failed to fetch brokerage holdings");
       }
     }),
+
+  getImportedTransactionIds: protectedProcedure
+    .input(z.object({ source: z.string().default("snaptrade") }))
+    .query(async ({ ctx, input }) => {
+      const { getImportedTransactionIds } = await import("./db");
+      const ids = await getImportedTransactionIds(ctx.user.id, input.source);
+      return Array.from(ids);
+    }),
+
+  markTransactionsAsImported: protectedProcedure
+    .input(z.object({
+      externalIds: z.array(z.string()),
+      source: z.string().default("snaptrade")
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const { markTransactionsAsImported } = await import("./db");
+      await markTransactionsAsImported(ctx.user.id, input.externalIds, input.source);
+      return { success: true };
+    }),
 });

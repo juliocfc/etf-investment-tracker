@@ -90,9 +90,7 @@ export const assetPrices = sqliteTable("assetPrices", {
   price: text("price").notNull(),
   date: integer("date", { mode: "timestamp" }).notNull(),
   createdAt: integer("createdAt", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
-}, (table) => [
-  uniqueIndex("symbol_date_idx").on(table.symbol, table.date),
-]);
+});
 
 export const cashBalance = sqliteTable("cashBalance", {
   id: integer("id").primaryKey({ autoIncrement: true }),
@@ -137,3 +135,13 @@ export const dividendHistory = sqliteTable("dividendHistory", {
   paymentDate: integer("paymentDate", { mode: "timestamp" }),
   createdAt: integer("createdAt", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
+
+export const importedTransactions = sqliteTable("importedTransactions", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("userId").notNull(),
+  externalId: text("externalId").notNull(), // The ID from SnapTrade/other source
+  source: text("source").notNull(), // e.g., "snaptrade"
+  importDate: integer("importDate", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+}, (table) => [
+  uniqueIndex("external_id_source_idx").on(table.externalId, table.source),
+]);
