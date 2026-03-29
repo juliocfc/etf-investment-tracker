@@ -386,6 +386,173 @@ export const portfolioRouter = router({
       };
     }),
 
+  // Get yearly performance summary for all portfolios (consolidated)
+  getYearlyPerformance: protectedProcedure
+    .input(z.object({ portfolioId: z.number().optional() }))
+    .query(async ({ ctx, input }) => {
+      const db = await getDb();
+      const { getUserEtfHoldings, getCashBalanceHistory } = await import("./db");
+      const { getSmartHistoricalPrices } = await import("./priceService");
+      const { purchases: purchasesTable } = await import("../drizzle/schema");
+
+      const holdings = await getUserEtfHoldings(ctx.user.id, input.portfolioId);
+      
+      const purchaseConditions = [
+        eq(purchasesTable.userId, ctx.user.id),
+      ];
+      if (input.portfolioId !== undefined) {
+        purchaseConditions.push(eq(purchasesTable.portfolioId, input.portfolioId));
+      }
+
+      const allPurchases = await db.select()
+        .from(purchasesTable)
+        .where(and(...purchaseConditions))
+        .orderBy(purchasesTable.purchaseDate);
+      
+      const cashHistory = await getCashBalanceHistory(ctx.user.id, input.portfolioId);
+
+      const now = new Date();
+      const currentYear = now.getFullYear();
+      
+      let oldestDate = now;
+      if (allPurchases.length > 0 && new Date(allPurchases[0].purchaseDate) < oldestDate) {
+        oldestDate = new Date(allPurchases[0].purchaseDate);
+      }
+      if (cashHistory.length > 0 && new Date(cashHistory[0].date) < oldestDate) {
+        oldestDate = new Date(cashHistory[0].date);
+      }
+
+      const startYear = Math.max(oldestDate.getFullYear(), currentYear - 4);
+      const years = [];
+      for (let y = currentYear; y >= startYear; y--) {
+        years.push(y);
+      }
+
+      // Pre-fetch all symbols price history once
+      const symbolsOwned: string[] = Array.from(new Set(allPurchases.map((p: any) => p.symbol.toUpperCase())));
+      const symbolPriceHistories = new Map<string, any[]>();
+      
+      const daysToFetch = Math.ceil((now.getTime() - new Date(startYear, 0, 1).getTime()) / (1000 * 60 * 60 * 24)) + 10;
+      for (const symbol of symbolsOwned) {
+        // Use '1mo' interval for performance tables
+        const history = await getSmartHistoricalPrices(symbol, daysToFetch, '1mo');
+        symbolPriceHistories.set(symbol, history);
+      }
+
+      // To calculate start value for the oldest year in our list, 
+      // we need to know the investment value at the end of the year PRIOR to our startYear
+      const preStartYear = startYear - 1;
+      const preEndDate = new Date(preStartYear, 11, 31, 23, 59, 59);
+      
+      let previousYearEndInvValue = 0;
+      allPurchases.forEach((p: any) => {
+        const pDate = new Date(p.purchaseDate);
+        const sDate = p.soldDate ? new Date(p.soldDate) : null;
+        if (pDate <= preEndDate && (!p.isSold || (sDate && sDate > preEndDate))) {
+          // Find price at year end
+          const history = symbolPriceHistories.get(p.symbol.toUpperCase()) || [];
+          const pricePoint = history.filter(h => new Date(h.timestamp) <= preEndDate).pop();
+          const price = pricePoint ? pricePoint.price : parseFloat(p.price);
+          previousYearEndInvValue += parseFloat(p.quantity) * price;
+        }
+      });
+
+      const processedYears = [];
+      const yearsAsc = [...years].reverse();
+
+      for (const year of yearsAsc) {
+        const isCurrentYear = year === currentYear;
+        const endDate = isCurrentYear ? now : new Date(year, 11, 31, 23, 59, 59);
+        const startDate = new Date(year, 0, 1, 0, 0, 0);
+
+        let invValue = 0;
+        let costBasis = 0;
+        let purchasesInYear = 0;
+
+        // Calculate purchases during this year
+        allPurchases.forEach((p: any) => {
+          const pDate = new Date(p.purchaseDate);
+          if (pDate >= startDate && pDate <= endDate) {
+            purchasesInYear += parseFloat(p.quantity) * parseFloat(p.price);
+          }
+        });
+
+        if (isCurrentYear) {
+          for (const h of holdings) {
+            const price = parseFloat(h.currentPrice || "0");
+            const qty = parseFloat(h.quantity || "0");
+            invValue += price * qty;
+            costBasis += parseFloat(h.purchasePrice || "0") * qty;
+          }
+        } else {
+          // Identify holdings at that year end
+          const yearEndHoldings = new Map<string, { qty: number, cost: number }>();
+          allPurchases.forEach((p: any) => {
+            const pDate = new Date(p.purchaseDate);
+            const sDate = p.soldDate ? new Date(p.soldDate) : null;
+            if (pDate <= endDate && (!p.isSold || (sDate && sDate > endDate))) {
+              const sym = p.symbol.toUpperCase();
+              const existing = yearEndHoldings.get(sym) || { qty: 0, cost: 0 };
+              const qty = parseFloat(p.quantity);
+              yearEndHoldings.set(sym, {
+                qty: existing.qty + qty,
+                cost: existing.cost + (qty * parseFloat(p.price))
+              });
+            }
+          });
+
+          // Using forEach to avoid Iterator issues with current TS config
+          yearEndHoldings.forEach((data, symbol) => {
+            const history = symbolPriceHistories.get(symbol) || [];
+            // Find price at or closest before endDate
+            let yearEndPrice = 0;
+            const pricePoint = history.filter(p => new Date(p.timestamp) <= endDate).pop();
+            if (pricePoint) {
+              yearEndPrice = pricePoint.price;
+            } else if (history.length > 0) {
+              yearEndPrice = history[0].price;
+            }
+
+            invValue += data.qty * yearEndPrice;
+            costBasis += data.cost;
+          });
+        }
+
+        const latestAccountCash = new Map<number, number>();
+        cashHistory.forEach((ch: any) => {
+          if (new Date(ch.date) <= endDate) {
+            latestAccountCash.set(ch.accountId, parseFloat(ch.amount));
+          }
+        });
+        const cashValue = Array.from(latestAccountCash.values()).reduce((sum, val) => sum + val, 0);
+        
+        const totalValue = invValue + cashValue;
+        const gainLoss = invValue - costBasis;
+        const gainLossPercent = costBasis > 0 ? (gainLoss / costBasis) * 100 : 0;
+
+        // Annual Return Formula: (End Inv Value) / (Start Inv Value + Purchases) - 1
+        const denominator = previousYearEndInvValue + purchasesInYear;
+        const annualReturnPercent = denominator > 0 ? ((invValue / denominator) - 1) * 100 : 0;
+
+        processedYears.push({
+          year,
+          startInvestment: previousYearEndInvValue.toFixed(2),
+          investment: invValue.toFixed(2),
+          costBasis: costBasis.toFixed(2),
+          purchasesInYear: purchasesInYear.toFixed(2),
+          cash: cashValue.toFixed(2),
+          total: totalValue.toFixed(2),
+          gainLoss: gainLoss.toFixed(2),
+          gainLossPercent: gainLossPercent.toFixed(2),
+          annualReturnPercent: annualReturnPercent.toFixed(2)
+        });
+
+        previousYearEndInvValue = invValue;
+      }
+
+      return processedYears.reverse();
+    }),
+
   // Get all holdings for the current user
   getAllHoldings: protectedProcedure.query(async ({ ctx }) => {
     const db = await getDb();

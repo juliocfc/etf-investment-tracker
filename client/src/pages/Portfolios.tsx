@@ -22,9 +22,13 @@ const Portfolios: React.FC = () => {
   const { data: portfolios, isLoading, refetch } = trpc.portfolio.getDetailedAll.useQuery();
   const { data: historyData } = trpc.portfolio.getHistory.useQuery({ days: 1825 });
   const { data: allHoldings } = trpc.portfolio.getAllHoldings.useQuery();
-
   const [expandedPortfolios, setExpandedPortfolios] = useState<Set<number>>(new Set());
   const [portfolioFilter, setPortfolioFilter] = useState<string>("all");
+
+  const { data: yearlyPerformance, isLoading: isLoadingYearly } = trpc.portfolio.getYearlyPerformance.useQuery({ 
+    portfolioId: portfolioFilter === "all" ? undefined : parseInt(portfolioFilter) 
+  });
+
 
   // Aggregate consolidated holdings by asset
   const consolidatedHoldings = useMemo(() => {
@@ -91,82 +95,7 @@ const Portfolios: React.FC = () => {
     }), { totalCost: 0, mktValue: 0, gainLoss: 0, projectedDividend: 0 });
   }, [consolidatedHoldings]);
 
-  // Aggregate yearly performance for the last 5 years
-  const yearlyData = useMemo(() => {
-    if (!historyData || !portfolios) return [];
-
-    const now = new Date();
-    const currentYear = now.getFullYear();
-    const years = Array.from({ length: 5 }, (_, i) => currentYear - i);
-    const result: any[] = [];
-    const filterId = portfolioFilter === "all" ? null : parseInt(portfolioFilter);
-
-    years.forEach((year) => {
-      const isCurrentYear = year === currentYear;
-      const endDate = isCurrentYear ? now : new Date(year, 11, 31, 23, 59, 59);
-
-      // Calculate Cash at year end
-      const latestAccountCash: Record<string, number> = {};
-      if (isCurrentYear) {
-        portfolios.forEach(p => {
-          if (filterId !== null && p.id !== filterId) return;
-          p.accounts.forEach((acc: any) => {
-            latestAccountCash[`${p.id}-${acc.id}`] = parseFloat(acc.cashValue);
-          });
-        });
-      } else {
-        historyData.cashHistory.forEach((record: any) => {
-          if (filterId !== null && record.portfolioId !== filterId) return;
-          const recordDate = new Date(record.date);
-          if (recordDate <= endDate) {
-            const key = `${record.portfolioId}-${record.accountId}`;
-            if (latestAccountCash[key] === undefined) {
-              latestAccountCash[key] = parseFloat(record.amount);
-            }
-          }
-        });
-      }
-      const totalCash = Object.values(latestAccountCash).reduce((sum, val) => sum + val, 0);
-
-      // Calculate Investment at year end
-      let totalInv = 0;
-      if (isCurrentYear) {
-        portfolios.forEach(p => {
-          if (filterId !== null && p.id !== filterId) return;
-          totalInv += parseFloat(p.investmentValue);
-        });
-      } else {
-        // Group by symbol to use historical prices efficiently
-        const symbolQty: Record<string, number> = {};
-        historyData.purchases.forEach((p: any) => {
-          if (filterId !== null && p.portfolioId !== filterId) return;
-          const purchaseDate = new Date(p.purchaseDate);
-          const soldDate = p.soldDate ? new Date(p.soldDate) : null;
-          if (purchaseDate <= endDate && (!p.isSold || (soldDate && soldDate > endDate))) {
-            symbolQty[p.symbol] = (symbolQty[p.symbol] || 0) + parseFloat(p.quantity);
-          }
-        });
-
-        Object.entries(symbolQty).forEach(([symbol, qty]) => {
-          const prices = (historyData as any).historicalPrices?.[symbol.toUpperCase()] || [];
-          const pricePoint = prices.filter((hp: any) => new Date(hp.timestamp) <= endDate).pop();
-          const price = pricePoint ? pricePoint.price : 0;
-          totalInv += qty * price;
-        });
-      }
-
-      const total = totalCash + totalInv;
-      if (total > 0) {
-        result.push({
-          year,
-          cash: totalCash,
-          investment: totalInv,
-          total
-        });
-      }
-    });
-    return result;
-  }, [historyData, portfolios, portfolioFilter]);
+  // Yearly performance data is now fetched via trpc.portfolio.getYearlyPerformance
 
   // Aggregate history data by month for the bar chart
   const monthlyChartData = useMemo(() => {
@@ -770,7 +699,7 @@ const Portfolios: React.FC = () => {
         </Card>
       )}
 
-      {yearlyData.length > 0 && (
+      {yearlyPerformance && yearlyPerformance.length > 0 && (
         <Card className="bg-white border-none shadow-sm shadow-slate-200/50">
           <CardHeader className="pb-4 flex flex-row items-center justify-between space-y-0">
             <div className="flex items-center gap-2">
@@ -796,24 +725,55 @@ const Portfolios: React.FC = () => {
           </CardHeader>
           <CardContent className="pt-0">
             <div className="overflow-x-auto rounded-lg border border-slate-100">
-              <table className="w-full">
+              <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-slate-50 border-b border-slate-200">
                     <th className="text-left py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Year</th>
-                    <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Investments</th>
-                    <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Cash</th>
-                    <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Total Value</th>
+                    <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Investment Cost Basis</th>
+                    <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Start Investment Value</th>
+                    <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Total Purchases</th>
+                    <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">End Investment Balance</th>
+                    <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Gain / Loss</th>
+                    <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Total % Gain</th>
+                    <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Annual % Return</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {yearlyData.map((row) => (
-                    <tr key={row.year} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/50 transition-colors">
-                      <td className="py-3 px-4 font-bold text-slate-800">{row.year}</td>
-                      <td className="py-3 px-4 text-right font-mono text-slate-600">{formatCurrency(row.investment)}</td>
-                      <td className="py-3 px-4 text-right font-mono text-slate-600">{formatCurrency(row.cash)}</td>
-                      <td className="py-3 px-4 text-right font-mono font-bold text-primary">{formatCurrency(row.total)}</td>
-                    </tr>
-                  ))}
+                  {yearlyPerformance.map((row: any) => {
+                    const gainNum = parseFloat(row.gainLoss);
+                    const isPositive = gainNum >= 0;
+                    const annualReturnNum = parseFloat(row.annualReturnPercent);
+                    const isAnnualPositive = annualReturnNum >= 0;
+                    const isCurrentYear = row.year === new Date().getFullYear();
+
+                    return (
+                      <tr key={row.year} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/50 transition-colors">
+                        <td className="py-3 px-4 font-bold text-slate-800">{row.year}</td>
+                        <td className="py-3 px-4 text-right font-mono text-slate-600">{formatCurrency(row.costBasis)}</td>
+                        <td className="py-3 px-4 text-right font-mono text-slate-600">{formatCurrency(row.startInvestment)}</td>
+                        <td className="py-3 px-4 text-right font-mono text-slate-600">{formatCurrency(row.purchasesInYear)}</td>
+                        <td className="py-3 px-4 text-right font-mono text-slate-600">
+                          <div className="flex flex-col items-end">
+                            <span>{formatCurrency(row.investment)}</span>
+                            {isCurrentYear && <span className="text-[9px] text-slate-400 uppercase font-bold tracking-tighter">Current Balance</span>}
+                          </div>
+                        </td>
+                        <td className={`py-3 px-4 text-right font-mono font-bold ${isPositive ? "text-green-600" : "text-red-600"}`}>
+                          {isPositive ? "+" : ""}{formatCurrency(row.gainLoss)}
+                        </td>
+                        <td className="py-3 px-4 text-right">
+                          <span className={`px-2 py-1 rounded text-[10px] font-bold font-mono ${isPositive ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
+                            {isPositive ? "+" : ""}{row.gainLossPercent}%
+                          </span>
+                        </td>
+                        <td className="py-3 px-4 text-right">
+                          <span className={`px-2 py-1 rounded text-[10px] font-bold font-mono ${isAnnualPositive ? "bg-blue-50 text-blue-700" : "bg-orange-50 text-orange-700"}`}>
+                            {isAnnualPositive ? "+" : ""}{row.annualReturnPercent}%
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
