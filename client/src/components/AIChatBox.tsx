@@ -10,7 +10,7 @@ import { Streamdown } from "streamdown";
  * Message type matching server-side LLM Message interface
  */
 export type Message = {
-  role: "system" | "user" | "assistant";
+  role: "system" | "user" | "assistant" | "admin" | "premium";
   content: string;
 };
 
