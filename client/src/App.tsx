@@ -17,7 +17,7 @@ import { toast } from "sonner";
 import { Route, Switch, useLocation, Link } from "wouter";
 
 function DashboardRouter() {
-  const [activeTab, setActiveTab] = useState("portfolio");
+  const [activeTab, setActiveTab] = useState("portfolios");
   const [location, setLocation] = useLocation();
   const [selectedPortfolioId, setSelectedPortfolioId] = useState<number | null>(null);
   const utils = trpc.useUtils();
