@@ -39,14 +39,12 @@ export const brokerageRouter = router({
     .query(async ({ input }) => {
       try {
         const snaptrade = getSnapTradeClient(input.clientId, input.consumerKey);
-        const response = await snaptrade.authentication.loginSnapTradeUser({
+        const response = await (snaptrade.authentication as any).loginSnapTradeUser({
           userId: input.userId,
           userSecret: input.userSecret,
-          snapTradeLoginUserRequestBody: {
-            broker: "FIDELITY",
-            immediateRedirect: true,
-            customRedirect: input.redirectURI || "",
-          }
+          broker: "FIDELITY",
+          immediateRedirect: true,
+          customRedirect: input.redirectURI || "",
         });
         return response.data;
       } catch (error: any) {

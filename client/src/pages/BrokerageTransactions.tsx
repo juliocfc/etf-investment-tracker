@@ -1,10 +1,25 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { 
   ArrowRightLeft, 
   ExternalLink, 
@@ -13,9 +28,27 @@ import {
   ShieldCheck, 
   AlertCircle,
   Calendar,
-  Wallet
+  Wallet,
+  Download,
+  CheckCircle2,
+  ChevronRight,
+  ChevronDown
 } from "lucide-react";
 import { toast } from "sonner";
+
+interface ImportMapping {
+  txId: string;
+  date: Date;
+  symbol: string;
+  quantity: string;
+  price: string;
+  amount: string;
+  type: "deposit" | "withdrawal" | "buy" | "sell";
+  portfolioId: number;
+  accountId: number;
+  originAccountName: string;
+  description: string;
+}
 
 export default function BrokerageTransactions() {
   // Helper to safely render symbol string from potential objects
@@ -53,9 +86,23 @@ export default function BrokerageTransactions() {
   const [selectedType, setSelectedType] = useState<string>("all");
 
   const [dateRange, setDateRange] = useState({
-    startDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
+    startDate: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
     endDate: new Date().toISOString().split("T")[0],
   });
+
+  // Selection & Import state
+  const [selectedTxIds, setSelectedTxIds] = useState<Set<number>>(new Set());
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [importMappings, setImportMappings] = useState<ImportMapping[]>([]);
+  const [isImporting, setIsImporting] = useState(false);
+  const [expandedAccounts, setExpandedAccounts] = useState<Set<string>>(new Set());
+
+  const toggleAccountExpand = (accountId: string) => {
+    const next = new Set(expandedAccounts);
+    if (next.has(accountId)) next.delete(accountId);
+    else next.add(accountId);
+    setExpandedAccounts(next);
+  };
 
   const saveConfig = () => {
     localStorage.setItem("snaptrade_client_id", config.clientId);
@@ -74,11 +121,11 @@ export default function BrokerageTransactions() {
     { enabled: !!config.clientId && !!config.consumerKey }
   );
 
-  const { data: accounts, isLoading: isLoadingAccounts } = trpc.brokerage.getAccounts.useQuery(
+  const { data: brokerageAccounts } = trpc.brokerage.getAccounts.useQuery(
     { 
       clientId: config.clientId,
       consumerKey: config.consumerKey,
-      userId: config.userId,
+      userId: config.userId, 
       userSecret: config.userSecret
     },
     { enabled: !!config.userId && !!config.userSecret }
@@ -106,6 +153,11 @@ export default function BrokerageTransactions() {
     { enabled: !!config.userId && !!config.userSecret }
   );
 
+  const { data: portfolios } = trpc.portfolio.getDetailedAll.useQuery();
+
+  const addHoldingMutation = trpc.etf.addHolding.useMutation();
+  const recordCashMutation = trpc.etf.recordCashTransaction.useMutation();
+
   const filteredTransactions = useMemo(() => {
     if (!transactions) return [];
     
@@ -119,15 +171,15 @@ export default function BrokerageTransactions() {
     // Filter by type if selected
     if (selectedType !== "all") {
       filtered = filtered.filter((tx: any) => {
-        const typeStr = (typeof tx.type === "string" ? tx.type : tx.type?.name || "transaction").toLowerCase();
+        const typeStr = (typeof tx.type === "string" ? tx.type : (tx.type as any)?.name || "transaction").toLowerCase();
         return typeStr === selectedType.toLowerCase();
       });
     }
     
     // Sort by date DESC
     return filtered.sort((a: any, b: any) => {
-      const dateA = new Date(a.settlement_date || a.trade_date).getTime();
-      const dateB = new Date(b.settlement_date || b.trade_date).getTime();
+      const dateA = new Date(a.settlement_date || a.trade_date || 0).getTime();
+      const dateB = new Date(b.settlement_date || b.trade_date || 0).getTime();
       return dateB - dateA;
     });
   }, [transactions, selectedAccountId, selectedType]);
@@ -136,28 +188,160 @@ export default function BrokerageTransactions() {
     if (!transactions) return [];
     const types = new Set<string>();
     transactions.forEach((tx: any) => {
-      const typeStr = (typeof tx.type === "string" ? tx.type : tx.type?.name || "transaction");
+      const typeStr = (typeof tx.type === "string" ? tx.type : (tx.type as any)?.name || "transaction");
       if (typeStr) types.add(typeStr);
     });
     return Array.from(types).sort();
   }, [transactions]);
 
-  const filteredHoldings = useMemo(() => {
+  const toggleSelection = (idx: number) => {
+    const next = new Set(selectedTxIds);
+    if (next.has(idx)) next.delete(idx);
+    else next.add(idx);
+    setSelectedTxIds(next);
+  };
+
+  const toggleAll = () => {
+    if (selectedTxIds.size === filteredTransactions.length && filteredTransactions.length > 0) {
+      setSelectedTxIds(new Set());
+    } else if (filteredTransactions.length > 0) {
+      setSelectedTxIds(new Set(filteredTransactions.map((_: any, i: number) => i)));
+    }
+  };
+
+  const openImportModal = () => {
+    const selectedTxs = Array.from(selectedTxIds).map(idx => filteredTransactions[idx]);
+    
+    const initialMappings: ImportMapping[] = selectedTxs.map(tx => {
+      const snapTradeType = (typeof tx.type === "string" ? tx.type : (tx.type as any)?.name || "transaction").toLowerCase();
+      
+      // Default type mapping
+      let mappedType: "buy" | "sell" | "deposit" | "withdrawal" = "deposit";
+      if (snapTradeType.includes("buy") || snapTradeType === "rei") mappedType = "buy";
+      else if (snapTradeType.includes("sell")) mappedType = "sell";
+      else if (snapTradeType.includes("withdrawal")) mappedType = "withdrawal";
+      else if (snapTradeType.includes("deposit")) mappedType = "deposit";
+
+      // Account matching
+      let matchedPortfolioId = 0;
+      let matchedAccountId = 0;
+      
+      if (portfolios && tx.account?.name) {
+        const snapAccountName = tx.account.name.toLowerCase();
+        for (const p of portfolios) {
+          const acc = p.accounts.find((a: any) => a.name.toLowerCase() === snapAccountName);
+          if (acc) {
+            matchedPortfolioId = p.id;
+            matchedAccountId = acc.id;
+            break;
+          }
+        }
+      }
+
+      const txAmount = tx.amount || 0;
+      const txUnits = tx.units || 0;
+
+      return {
+        txId: tx.id || String(Math.random()),
+        date: new Date(tx.settlement_date || tx.trade_date || Date.now()),
+        symbol: renderSymbol(tx.symbol),
+        quantity: txUnits.toString(),
+        price: tx.price?.toString() || (txUnits !== 0 ? Math.abs(txAmount / txUnits).toString() : "0"),
+        amount: Math.abs(txAmount).toString(),
+        type: mappedType,
+        portfolioId: matchedPortfolioId,
+        accountId: matchedAccountId,
+        originAccountName: tx.account?.name || "Unknown",
+        description: tx.description || ""
+      };
+    });
+
+    setImportMappings(initialMappings);
+    setIsImportModalOpen(true);
+  };
+
+  const executeImport = async () => {
+    setIsImporting(true);
+    let successCount = 0;
+    let errorCount = 0;
+
+    try {
+      for (const mapping of importMappings) {
+        if (!mapping.portfolioId || !mapping.accountId) {
+          errorCount++;
+          continue;
+        }
+
+        try {
+          if (mapping.type === "buy" || mapping.type === "sell") {
+            await addHoldingMutation.mutateAsync({
+              portfolioId: mapping.portfolioId,
+              accountId: mapping.accountId,
+              symbol: mapping.symbol,
+              name: mapping.symbol,
+              quantity: mapping.quantity,
+              purchasePrice: mapping.price,
+              purchaseDate: mapping.date,
+              type: mapping.type as "buy" | "sell",
+              fees: "0"
+            });
+          } else {
+            await recordCashMutation.mutateAsync({
+              portfolioId: mapping.portfolioId,
+              accountId: mapping.accountId,
+              type: mapping.type as "deposit" | "withdrawal",
+              amount: mapping.amount,
+              description: `Imported: ${mapping.description}`,
+              date: mapping.date
+            });
+          }
+          successCount++;
+        } catch (e) {
+          console.error("Import error for mapping:", mapping, e);
+          errorCount++;
+        }
+      }
+
+      if (successCount > 0) {
+        toast.success(`Successfully imported ${successCount} transactions`);
+      }
+      if (errorCount > 0) {
+        toast.error(`Failed to import ${errorCount} transactions`);
+      }
+
+      setIsImportModalOpen(false);
+      setSelectedTxIds(new Set());
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
+  const groupedHoldings = useMemo(() => {
     if (!holdings) return [];
     
-    let filtered = [...holdings];
+    const groups: Record<string, { account: any, holdings: any[], totalMarketValue: number }> = {};
     
-    // Filter by account if selected
-    if (selectedHoldingsAccountId !== "all") {
-      filtered = filtered.filter((h: any) => h.account?.id === selectedHoldingsAccountId);
-    }
-    
-    // Sort by market value DESC
-    return filtered.sort((a: any, b: any) => {
-      const valA = (a.units || 0) * (a.price || 0);
-      const valB = (b.units || 0) * (b.price || 0);
-      return valB - valA;
+    holdings.forEach((h: any) => {
+      // Filter by account if selected
+      if (selectedHoldingsAccountId !== "all" && h.account?.id !== selectedHoldingsAccountId) {
+        return;
+      }
+
+      const accId = h.account?.id || "unknown";
+      if (!groups[accId]) {
+        groups[accId] = {
+          account: h.account,
+          holdings: [],
+          totalMarketValue: 0
+        };
+      }
+      
+      groups[accId].holdings.push(h);
+      groups[accId].totalMarketValue += (h.units || 0) * (h.price || 0);
     });
+    
+    // Sort groups by total market value DESC
+    return Object.values(groups).sort((a, b) => b.totalMarketValue - a.totalMarketValue);
   }, [holdings, selectedHoldingsAccountId]);
 
   const getLoginUrl = trpc.brokerage.getLoginUrl.useQuery(
@@ -172,15 +356,16 @@ export default function BrokerageTransactions() {
   );
 
   const handleConnect = () => {
-    if (getLoginUrl.data?.redirectURI) {
-      window.open(getLoginUrl.data.redirectURI, "_blank");
+    const loginData = getLoginUrl.data as any;
+    if (loginData?.redirectURI) {
+      window.open(loginData.redirectURI, "_blank");
     } else {
       toast.error("Connect URL not available");
     }
   };
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 pb-20">
       {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-lg shadow-sm border border-border">
         <div className="flex items-center gap-4">
@@ -277,7 +462,7 @@ export default function BrokerageTransactions() {
                 <Wallet className="w-4 h-4 text-blue-600" />
                 <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Connected Accounts</h3>
               </div>
-              <div className="text-2xl font-bold text-slate-800">{accounts?.length || 0}</div>
+              <div className="text-2xl font-bold text-slate-800">{brokerageAccounts?.length || 0}</div>
             </Card>
             
             <Card className="p-6 bg-white shadow-sm border border-border md:col-span-2">
@@ -312,7 +497,18 @@ export default function BrokerageTransactions() {
           {/* Transactions Table */}
           <Card className="bg-white shadow-sm border border-border overflow-hidden">
             <div className="px-6 py-4 border-b border-border bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Transaction Ledger</h3>
+              <div className="flex items-center gap-4">
+                <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Transaction Ledger</h3>
+                <Button 
+                  size="sm" 
+                  onClick={openImportModal}
+                  disabled={selectedTxIds.size === 0}
+                  className={`h-7 text-[10px] uppercase font-bold ${selectedTxIds.size > 0 ? "bg-green-600 hover:bg-green-700 text-white" : "bg-slate-100 text-slate-400"}`}
+                >
+                  <Download className="w-3 h-3 mr-1.5" />
+                  Import Selected ({selectedTxIds.size})
+                </Button>
+              </div>
               
               <div className="flex flex-wrap items-center gap-4">
                 <div className="flex items-center gap-2">
@@ -323,7 +519,7 @@ export default function BrokerageTransactions() {
                     onChange={(e) => setSelectedAccountId(e.target.value)}
                   >
                     <option value="all">All Accounts</option>
-                    {accounts?.map((acc: any) => (
+                    {brokerageAccounts?.map((acc: any) => (
                       <option key={acc.id} value={acc.id}>{acc.name} ({acc.number})</option>
                     ))}
                   </select>
@@ -347,7 +543,18 @@ export default function BrokerageTransactions() {
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
-                  <tr className="bg-slate-50 border-b border-border">
+                  <tr className="bg-slate-100 border-b border-border">
+                    <th className="py-3 px-6 text-left w-12 bg-slate-200/50">
+                      <div className="flex flex-col items-center gap-1">
+                        <input 
+                          type="checkbox"
+                          checked={selectedTxIds.size === filteredTransactions.length && filteredTransactions.length > 0}
+                          onChange={toggleAll}
+                          className="w-4 h-4 rounded border-slate-400 text-primary focus:ring-primary cursor-pointer"
+                        />
+                        <span className="text-[8px] font-bold text-slate-500">ALL</span>
+                      </div>
+                    </th>
                     <th className="text-left py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Date</th>
                     <th className="text-left py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Account</th>
                     <th className="text-left py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Type</th>
@@ -358,17 +565,25 @@ export default function BrokerageTransactions() {
                     <th className="text-right py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Amount</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-50">
+                <tbody className="divide-y divide-slate-100">
                   {isLoadingTx ? (
                     <tr>
-                      <td colSpan={8} className="py-20 text-center">
+                      <td colSpan={9} className="py-20 text-center">
                         <RefreshCw className="w-8 h-8 animate-spin text-primary mx-auto mb-4 opacity-50" />
                         <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Syncing with Broker...</p>
                       </td>
                     </tr>
                   ) : filteredTransactions && filteredTransactions.length > 0 ? (
                     filteredTransactions.map((tx: any, idx: number) => (
-                      <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
+                      <tr key={idx} className={`transition-colors ${selectedTxIds.has(idx) ? "bg-blue-50/30" : "hover:bg-slate-50/50"}`}>
+                        <td className="py-4 px-6 bg-slate-50/30 border-r border-slate-100 text-center">
+                          <input 
+                            type="checkbox"
+                            checked={selectedTxIds.has(idx)}
+                            onChange={() => toggleSelection(idx)}
+                            className="w-4 h-4 rounded border-slate-400 text-primary focus:ring-primary cursor-pointer"
+                          />
+                        </td>
                         <td className="py-4 px-6 font-mono text-xs text-slate-500">{formatDate(tx.settlement_date || tx.trade_date)}</td>
                         <td className="py-4 px-6">
                           <div className="text-sm font-bold text-slate-700">{tx.account?.name}</div>
@@ -376,7 +591,7 @@ export default function BrokerageTransactions() {
                         </td>
                         <td className="py-4 px-6">
                           <Badge variant="outline" className="capitalize text-[10px] font-bold">
-                            {(typeof tx.type === "string" ? tx.type : tx.type?.name || "transaction").toLowerCase()}
+                            {(typeof tx.type === "string" ? tx.type : (tx.type as any)?.name || "transaction").toLowerCase()}
                           </Badge>
                         </td>
                         <td className="py-4 px-6 text-xs text-slate-600 max-w-[300px] truncate" title={tx.description}>
@@ -392,7 +607,7 @@ export default function BrokerageTransactions() {
                     ))
                   ) : (
                     <tr>
-                      <td colSpan={8} className="py-20 text-center text-slate-400 italic">
+                      <td colSpan={9} className="py-20 text-center text-slate-400 italic">
                         No transactions found for this period.
                       </td>
                     </tr>
@@ -401,6 +616,137 @@ export default function BrokerageTransactions() {
               </table>
             </div>
           </Card>
+
+          <Dialog open={isImportModalOpen} onOpenChange={setIsImportModalOpen}>
+            <DialogContent className="max-w-[95vw] md:max-w-[1200px] max-h-[90vh] overflow-hidden flex flex-col p-0 text-slate-900 bg-white">
+              <DialogHeader className="p-6 border-b">
+                <DialogTitle className="flex items-center gap-2 text-xl font-bold">
+                  <Download className="w-5 h-5 text-green-600" />
+                  Confirm Transaction Import
+                </DialogTitle>
+                <DialogDescription>
+                  Review and map your brokerage transactions to your internal portfolios and accounts.
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="flex-1 overflow-auto p-6">
+                <table className="w-full text-sm">
+                  <thead className="sticky top-0 bg-white z-10">
+                    <tr className="border-b border-slate-100 text-slate-400 uppercase text-[10px] font-bold tracking-widest">
+                      <th className="text-left py-2 px-3">Date/Desc</th>
+                      <th className="text-left py-2 px-3">Origin</th>
+                      <th className="text-left py-2 px-3">Type Mapping</th>
+                      <th className="text-left py-2 px-3">Target Account</th>
+                      <th className="text-right py-2 px-3">Asset</th>
+                      <th className="text-right py-2 px-3">Price</th>
+                      <th className="text-right py-2 px-3">Qty</th>
+                      <th className="text-right py-2 px-3">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50">
+                    {importMappings.map((mapping, idx) => (
+                      <tr key={idx} className="group hover:bg-slate-50/50">
+                        <td className="py-3 px-3">
+                          <div className="font-mono text-[10px] text-slate-400">{formatDate(mapping.date)}</div>
+                          <div className="text-xs font-medium truncate max-w-[150px]" title={mapping.description}>{mapping.description}</div>
+                        </td>
+                        <td className="py-3 px-3">
+                          <Badge variant="secondary" className="text-[9px] h-5">{mapping.originAccountName}</Badge>
+                        </td>
+                        <td className="py-3 px-3">
+                          <Select 
+                            value={mapping.type} 
+                            onValueChange={(val: any) => {
+                              const next = [...importMappings];
+                              next[idx].type = val;
+                              setImportMappings(next);
+                            }}
+                          >
+                            <SelectTrigger className="h-8 text-[10px] min-w-[100px] bg-white border border-input">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent className="bg-white">
+                              <SelectItem value="deposit">Deposit</SelectItem>
+                              <SelectItem value="withdrawal">Withdraw</SelectItem>
+                              <SelectItem value="buy">Purchase</SelectItem>
+                              <SelectItem value="sell">Sale</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </td>
+                        <td className="py-3 px-3">
+                          <Select 
+                            value={mapping.accountId ? `${mapping.portfolioId}-${mapping.accountId}` : "none"} 
+                            onValueChange={(val) => {
+                              const next = [...importMappings];
+                              if (val === "none") {
+                                next[idx].portfolioId = 0;
+                                next[idx].accountId = 0;
+                              } else {
+                                const [pid, aid] = val.split("-").map(Number);
+                                next[idx].portfolioId = pid;
+                                next[idx].accountId = aid;
+                              }
+                              setImportMappings(next);
+                            }}
+                          >
+                            <SelectTrigger className={`h-8 text-[10px] min-w-[180px] bg-white border ${!mapping.accountId ? "border-orange-200 bg-orange-50 text-orange-700" : "border-input"}`}>
+                              <SelectValue placeholder="Select Target Account" />
+                            </SelectTrigger>
+                            <SelectContent className="bg-white">
+                              <SelectItem value="none">-- Skip Transaction --</SelectItem>
+                              {portfolios?.map(p => (
+                                <React.Fragment key={p.id}>
+                                  <div className="px-2 py-1.5 text-[9px] font-bold text-slate-400 uppercase tracking-tighter bg-slate-50/50">{p.name}</div>
+                                  {p.accounts.map((acc: any) => (
+                                    <SelectItem key={`${p.id}-${acc.id}`} value={`${p.id}-${acc.id}`} className="pl-4">
+                                      {acc.name}
+                                    </SelectItem>
+                                  ))}
+                                </React.Fragment>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </td>
+                        <td className="py-3 px-3 text-right">
+                          <div className="font-bold text-primary">{mapping.symbol}</div>
+                        </td>
+                        <td className="py-3 px-3 text-right font-mono text-xs">
+                          {mapping.type === "buy" || mapping.type === "sell" ? formatCurrency(mapping.price) : "-"}
+                        </td>
+                        <td className="py-3 px-3 text-right font-mono text-xs">
+                          {mapping.type === "buy" || mapping.type === "sell" ? mapping.quantity : "-"}
+                        </td>
+                        <td className="py-3 px-3 text-right font-mono text-xs font-bold">
+                          {formatCurrency(mapping.amount)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <DialogFooter className="p-6 border-t bg-slate-50/50">
+                <Button variant="ghost" onClick={() => setIsImportModalOpen(false)}>Cancel</Button>
+                <Button 
+                  onClick={executeImport} 
+                  disabled={isImporting || importMappings.every(m => !m.accountId)}
+                  className="bg-green-600 hover:bg-green-700 text-xs font-bold uppercase min-w-[150px] text-white"
+                >
+                  {isImporting ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 mr-2 animate-spin" />
+                      Importing...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="w-3.5 h-3.5 mr-2" />
+                      Execute Import
+                    </>
+                  )}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
 
           {/* Holdings Table */}
           <Card className="bg-white shadow-sm border border-border overflow-hidden">
@@ -415,7 +761,7 @@ export default function BrokerageTransactions() {
                   onChange={(e) => setSelectedHoldingsAccountId(e.target.value)}
                 >
                   <option value="all">All Accounts</option>
-                  {accounts?.map((acc: any) => (
+                  {brokerageAccounts?.map((acc: any) => (
                     <option key={acc.id} value={acc.id}>{acc.name} ({acc.number})</option>
                   ))}
                 </select>
@@ -424,17 +770,17 @@ export default function BrokerageTransactions() {
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
-                  <tr className="bg-slate-50 border-b border-border">
-                    <th className="text-left py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Symbol</th>
-                    <th className="text-left py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Name</th>
-                    <th className="text-left py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Account</th>
-                    <th className="text-right py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Shares</th>
-                    <th className="text-right py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Avg Cost</th>
-                    <th className="text-right py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Price</th>
-                    <th className="text-right py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Market Value</th>
+                  <tr className="bg-slate-50 border-b border-border text-slate-600 font-bold uppercase text-[10px] tracking-wider">
+                    <th className="py-3 px-6 text-left w-10"></th>
+                    <th className="text-left py-3 px-6">Account / Asset</th>
+                    <th className="text-left py-3 px-6">Details</th>
+                    <th className="text-right py-3 px-6">Shares</th>
+                    <th className="text-right py-3 px-6">Avg Cost</th>
+                    <th className="text-right py-3 px-6">Price</th>
+                    <th className="text-right py-3 px-6">Market Value</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-50">
+                <tbody className="divide-y divide-slate-100">
                   {isLoadingHoldings ? (
                     <tr>
                       <td colSpan={7} className="py-20 text-center">
@@ -442,20 +788,65 @@ export default function BrokerageTransactions() {
                         <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Fetching Positions...</p>
                       </td>
                     </tr>
-                  ) : filteredHoldings && filteredHoldings.length > 0 ? (
-                    filteredHoldings.map((h: any, idx: number) => (
-                      <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
-                        <td className="py-4 px-6 font-bold text-primary">{renderSymbol(h.symbol)}</td>
-                        <td className="py-4 px-6 text-xs text-slate-600 max-w-[200px] truncate">{renderDescription(h.symbol)}</td>
-                        <td className="py-4 px-6 text-xs font-medium text-slate-700">{h.account?.name}</td>
-                        <td className="py-4 px-6 text-right font-mono text-xs font-medium">{h.units}</td>
-                        <td className="py-4 px-6 text-right font-mono text-xs text-slate-500">{formatCurrency(h.average_purchase_price)}</td>
-                        <td className="py-4 px-6 text-right font-mono text-xs text-slate-500">{formatCurrency(h.price)}</td>
-                        <td className="py-4 px-6 text-right font-mono font-bold text-slate-800">
-                          {formatCurrency((h.units || 0) * (h.price || 0))}
-                        </td>
-                      </tr>
-                    ))
+                  ) : groupedHoldings && groupedHoldings.length > 0 ? (
+                    groupedHoldings.map((group: any) => {
+                      const accId = group.account?.id || "unknown";
+                      const isExpanded = expandedAccounts.has(accId);
+                      
+                      return (
+                        <React.Fragment key={accId}>
+                          {/* Account Header Row */}
+                          <tr 
+                            className="bg-slate-50/80 cursor-pointer hover:bg-slate-100 transition-colors"
+                            onClick={() => toggleAccountExpand(accId)}
+                          >
+                            <td className="py-4 px-6 text-center">
+                              {isExpanded ? <ChevronDown className="w-4 h-4 text-slate-400" /> : <ChevronRight className="w-4 h-4 text-slate-400" />}
+                            </td>
+                            <td className="py-4 px-6" colSpan={2}>
+                              <div className="flex flex-col">
+                                <span className="font-bold text-slate-800">{group.account?.name || "Unknown Account"}</span>
+                                <span className="text-[10px] font-mono text-slate-400 uppercase tracking-tighter">{group.account?.number}</span>
+                              </div>
+                            </td>
+                            <td className="py-4 px-6 text-right font-mono text-xs text-slate-500">
+                              {group.holdings.length} Assets
+                            </td>
+                            <td className="py-4 px-6" colSpan={2}></td>
+                            <td className="py-4 px-6 text-right font-mono font-bold text-slate-900">
+                              {formatCurrency(group.totalMarketValue)}
+                            </td>
+                          </tr>
+                          
+                          {/* Individual Holdings (Visible if expanded) */}
+                          {isExpanded && group.holdings.map((h: any, hIdx: number) => (
+                            <tr key={`${accId}-${hIdx}`} className="bg-white hover:bg-slate-50/30 border-l-4 border-l-primary/20">
+                              <td></td>
+                              <td className="py-3 px-6 pl-10">
+                                <div className="font-bold text-primary text-sm">{renderSymbol(h.symbol)}</div>
+                              </td>
+                              <td className="py-3 px-6">
+                                <div className="text-[10px] text-slate-500 truncate max-w-[200px]" title={renderDescription(h.symbol)}>
+                                  {renderDescription(h.symbol)}
+                                </div>
+                              </td>
+                              <td className="py-3 px-6 text-right font-mono text-xs font-medium">
+                                {h.units}
+                              </td>
+                              <td className="py-3 px-6 text-right font-mono text-xs text-slate-500">
+                                {formatCurrency(h.average_purchase_price)}
+                              </td>
+                              <td className="py-3 px-6 text-right font-mono text-xs text-slate-500">
+                                {formatCurrency(h.price)}
+                              </td>
+                              <td className="py-3 px-6 text-right font-mono font-bold text-slate-700">
+                                {formatCurrency((h.units || 0) * (h.price || 0))}
+                              </td>
+                            </tr>
+                          ))}
+                        </React.Fragment>
+                      );
+                    })
                   ) : (
                     <tr>
                       <td colSpan={7} className="py-20 text-center text-slate-400 italic">
@@ -464,6 +855,23 @@ export default function BrokerageTransactions() {
                     </tr>
                   )}
                 </tbody>
+                {groupedHoldings && groupedHoldings.length > 0 && (
+                  <tfoot className="bg-slate-50 border-t-2 border-slate-200">
+                    <tr className="font-bold text-slate-800">
+                      <td className="py-4 px-6"></td>
+                      <td className="py-4 px-6 uppercase text-[10px] tracking-widest text-slate-500" colSpan={2}>
+                        Overall Total Market Value
+                      </td>
+                      <td className="py-4 px-6 text-right font-mono text-xs text-slate-500">
+                        {groupedHoldings.reduce((sum: number, group: any) => sum + group.holdings.length, 0)} Assets
+                      </td>
+                      <td className="py-4 px-6" colSpan={2}></td>
+                      <td className="py-4 px-6 text-right font-mono text-lg text-primary">
+                        {formatCurrency(groupedHoldings.reduce((sum: number, group: any) => sum + group.totalMarketValue, 0))}
+                      </td>
+                    </tr>
+                  </tfoot>
+                )}
               </table>
             </div>
           </Card>
