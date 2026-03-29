@@ -116,60 +116,32 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
       <div className="flex flex-1 overflow-hidden">
         {/* Sidebar */}
         <aside
-          className={`${
-            sidebarOpen ? "w-64" : "w-0"
-          } bg-white border-r border-slate-200 transition-all duration-300 overflow-hidden lg:static absolute z-30 h-full shadow-lg lg:shadow-none flex flex-col`}
+          className={`${sidebarOpen ? "w-64" : "w-0"
+            } bg-white border-r border-slate-200 transition-all duration-300 overflow-hidden lg:static absolute z-30 h-full shadow-lg lg:shadow-none flex flex-col`}
         >
           <div className="p-4 flex-1 overflow-y-auto space-y-1 custom-scrollbar">
             <div className="px-4 py-2 mb-1">
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Navigation</span>
             </div>
-            
+
             {/* All Portfolios Link */}
             <button
               onClick={() => {
                 onTabChange?.("portfolios");
                 if (window.innerWidth < 1024) setSidebarOpen(false);
               }}
-              className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-md transition-all duration-200 font-medium ${
-                activeTab === "portfolios"
-                  ? "bg-slate-100 text-[#004a99]"
-                  : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
-              }`}
+              className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-md transition-all duration-200 font-medium ${activeTab === "portfolios"
+                ? "bg-slate-100 text-[#004a99]"
+                : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+                }`}
             >
               <Briefcase className="w-4 h-4" />
-              <span className="text-sm font-bold uppercase tracking-wider">All Portfolios</span>
+              <span className="text-sm font-bold uppercase tracking-wider">My Portfolios</span>
               {activeTab === "portfolios" && (
                 <div className="ml-auto w-1.5 h-1.5 rounded-full bg-[#004a99]" />
               )}
             </button>
 
-            {/* Brokerage Link */}
-            <button
-              onClick={() => {
-                onTabChange?.("brokerage");
-                if (window.innerWidth < 1024) setSidebarOpen(false);
-              }}
-              className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-md transition-all duration-200 font-medium ${
-                activeTab === "brokerage"
-                  ? "bg-slate-100 text-[#004a99]"
-                  : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
-              }`}
-            >
-              <ArrowRightLeft className="w-4 h-4" />
-              <span className="text-sm font-bold uppercase tracking-wider">Brokerage</span>
-              {activeTab === "brokerage" && (
-                <div className="ml-auto w-1.5 h-1.5 rounded-full bg-[#004a99]" />
-              )}
-            </button>
-
-            <div className="pt-2 pb-1 px-4">
-              <div className="h-px bg-slate-100 w-full" />
-            </div>
-
-            <div className="px-4 py-2 mb-1">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">My Portfolios</span>
-            </div>
 
             {/* Individual Portfolios */}
             {portfolios.map((p) => (
@@ -180,11 +152,10 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
                   onTabChange?.("portfolio");
                   if (window.innerWidth < 1024) setSidebarOpen(false);
                 }}
-                className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-md transition-all duration-200 font-medium ${
-                  activeTab === "portfolio" && selectedPortfolioId === p.id
-                    ? "bg-primary/10 text-primary shadow-sm"
-                    : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
-                }`}
+                className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-md transition-all duration-200 font-medium ${activeTab === "portfolio" && selectedPortfolioId === p.id
+                  ? "bg-primary/10 text-primary shadow-sm"
+                  : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+                  }`}
               >
                 <Wallet className={`w-4 h-4 ${activeTab === "portfolio" && selectedPortfolioId === p.id ? "text-primary" : "text-slate-400"}`} />
                 <span className="text-sm truncate">{p.name}</span>
@@ -193,7 +164,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
                 )}
               </button>
             ))}
-            
+
             {/* New Portfolio Dialog */}
             <Dialog open={isAddPortfolioOpen} onOpenChange={setIsAddPortfolioOpen}>
               <DialogTrigger asChild>
@@ -216,7 +187,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
                       autoFocus
                     />
                   </div>
-                  <Button 
+                  <Button
                     onClick={() => {
                       onCreatePortfolio(newPortfolioName);
                       setIsAddPortfolioOpen(false);
@@ -230,6 +201,24 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
                 </div>
               </DialogContent>
             </Dialog>
+            {/* Brokerage Link */}
+            <button
+              onClick={() => {
+                onTabChange?.("brokerage");
+                if (window.innerWidth < 1024) setSidebarOpen(false);
+              }}
+              className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-md transition-all duration-200 font-medium ${activeTab === "brokerage"
+                ? "bg-slate-100 text-[#004a99]"
+                : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+                }`}
+            >
+              <ArrowRightLeft className="w-4 h-4" />
+              <span className="text-sm font-bold uppercase tracking-wider">Brokerage</span>
+              {activeTab === "brokerage" && (
+                <div className="ml-auto w-1.5 h-1.5 rounded-full bg-[#004a99]" />
+              )}
+            </button>
+
           </div>
 
           {/* Contact Us at the bottom */}
@@ -239,11 +228,10 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
                 onTabChange?.("contact");
                 if (window.innerWidth < 1024) setSidebarOpen(false);
               }}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-md transition-all duration-200 font-medium ${
-                activeTab === "contact"
-                  ? "bg-slate-100 text-[#004a99]"
-                  : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
-              }`}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-md transition-all duration-200 font-medium ${activeTab === "contact"
+                ? "bg-slate-100 text-[#004a99]"
+                : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+                }`}
             >
               <Mail className="w-4 h-4" />
               <span className="text-sm">Contact Us</span>
@@ -256,7 +244,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
 
         {/* Overlay for mobile sidebar */}
         {sidebarOpen && (
-          <div 
+          <div
             className="lg:hidden fixed inset-0 bg-slate-900/20 backdrop-blur-sm z-20"
             onClick={() => setSidebarOpen(false)}
           />
@@ -267,7 +255,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
           <div className="p-6 lg:p-10 max-w-[1800px] mx-auto w-full flex-1">
             {children}
           </div>
-          
+
           {/* Page Footer */}
           <footer className="mt-auto py-6 px-10 border-t border-slate-200 bg-white">
             <div className="max-w-[1800px] mx-auto flex flex-col sm:flex-row justify-between items-center gap-4">
@@ -281,11 +269,11 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Market Link: Connected</span>
                 </div>
               </div>
-              
+
               <div className="text-[10px] text-slate-400 font-medium uppercase tracking-wider flex items-center gap-4">
                 <span>&copy; 2026 Investment Portfolio Insights &bull; Professional Grade Asset Tracking</span>
                 <span className="text-slate-200">|</span>
-                <button 
+                <button
                   onClick={() => onTabChange?.("privacy")}
                   className="hover:text-primary transition-colors hover:underline"
                 >
