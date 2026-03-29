@@ -179,9 +179,44 @@ export const brokerageRouter = router({
       userId: z.string(),
       userSecret: z.string(),
     }))
-    .query(async ({ input }) => {
+    .query(async ({ ctx, input }) => {
+      const { 
+        getLastBrokerageSync, 
+        updateLastHoldingsSync, 
+        upsertBrokerageHoldings, 
+        getBrokerageHoldings 
+      } = await import("./db");
+
       try {
+        // 1. Check last sync time
+        const lastSync = await getLastBrokerageSync(ctx.user.id);
+        const now = new Date();
+        const isToday = lastSync && lastSync.lastHoldingsSyncAt && 
+          new Date(lastSync.lastHoldingsSyncAt).toDateString() === now.toDateString();
+
+        // If synced today, return from DB
+        if (isToday) {
+          const dbHoldings = await getBrokerageHoldings(ctx.user.id);
+          if (dbHoldings.length > 0) {
+            console.log(`[Brokerage] Holdings cache HIT for user ${ctx.user.id} (${dbHoldings.length} items)`);
+            return {
+              holdings: dbHoldings.map(h => ({
+                ...JSON.parse(h.rawResponse),
+                account: {
+                  id: h.accountId,
+                  name: h.accountName,
+                  number: h.accountNumber,
+                }
+              })),
+              lastSyncAt: lastSync.lastHoldingsSyncAt
+            };
+          }
+        }
+
+        // 2. Cache miss: Fetch from SnapTrade
+        console.log(`[Brokerage] Holdings cache MISS for user ${ctx.user.id}. Fetching from SnapTrade...`);
         const snaptrade = getSnapTradeClient(input.clientId, input.consumerKey);
+        
         // listUserAccounts returns an array of accounts, but we need the positions for EACH
         const accountsResponse = await snaptrade.accountInformation.listUserAccounts({
           userId: input.userId,
@@ -214,8 +249,22 @@ export const brokerageRouter = router({
             console.error(`Failed to fetch positions for account ${account.id}:`, err);
           }
         }));
+
+        // 3. Trigger background update
+        (async () => {
+          try {
+            await upsertBrokerageHoldings(ctx.user.id, allPositions);
+            await updateLastHoldingsSync(ctx.user.id);
+            console.log(`[Brokerage] Background holdings sync completed for user ${ctx.user.id}`);
+          } catch (err) {
+            console.error(`[Brokerage] Background holdings sync failed:`, err);
+          }
+        })();
         
-        return allPositions;
+        return {
+          holdings: allPositions,
+          lastSyncAt: lastSync?.lastHoldingsSyncAt
+        };
       } catch (error: any) {
         console.error("SnapTrade getHoldings error:", error.response?.data || error.message);
         throw new Error("Failed to fetch brokerage holdings");

@@ -21,6 +21,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { 
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Checkbox } from "@/components/ui/checkbox";
+import { 
   ArrowRightLeft, 
   ExternalLink, 
   RefreshCw, 
@@ -84,6 +90,7 @@ export default function BrokerageTransactions() {
   const [selectedAccountId, setSelectedAccountId] = useState<string>("all");
   const [selectedHoldingsAccountId, setSelectedHoldingsAccountId] = useState<string>("all");
   const [selectedType, setSelectedType] = useState<string>("all");
+  const [selectedSymbols, setSelectedSymbols] = useState<Set<string>>(new Set());
 
   const [dateRange, setDateRange] = useState({
     startDate: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
@@ -146,7 +153,7 @@ export default function BrokerageTransactions() {
   const transactions = transactionsData?.transactions;
   const lastSyncAt = transactionsData?.lastSyncAt;
 
-  const { data: holdings, isLoading: isLoadingHoldings } = trpc.brokerage.getHoldings.useQuery(
+  const { data: holdingsData, isLoading: isLoadingHoldings } = trpc.brokerage.getHoldings.useQuery(
     { 
       clientId: config.clientId,
       consumerKey: config.consumerKey,
@@ -155,6 +162,9 @@ export default function BrokerageTransactions() {
     },
     { enabled: !!config.userId && !!config.userSecret }
   );
+
+  const holdings = holdingsData?.holdings;
+  const lastHoldingsSyncAt = holdingsData?.lastSyncAt;
 
   const { data: portfolios } = trpc.portfolio.getDetailedAll.useQuery();
   // We keep this for now but will also use importDate from the cache
@@ -186,6 +196,14 @@ export default function BrokerageTransactions() {
         return typeStr === selectedType.toLowerCase();
       });
     }
+
+    // Filter by symbols if any selected
+    if (selectedSymbols.size > 0) {
+      filtered = filtered.filter((tx: any) => {
+        const sym = renderSymbol(tx.symbol);
+        return selectedSymbols.has(sym);
+      });
+    }
     
     // Sort by date DESC
     return filtered.sort((a: any, b: any) => {
@@ -193,7 +211,7 @@ export default function BrokerageTransactions() {
       const dateB = new Date(b.settlement_date || b.trade_date || 0).getTime();
       return dateB - dateA;
     });
-  }, [transactions, selectedAccountId, selectedType]);
+  }, [transactions, selectedAccountId, selectedType, selectedSymbols]);
 
   const transactionTypes = useMemo(() => {
     if (!transactions) return [];
@@ -203,6 +221,16 @@ export default function BrokerageTransactions() {
       if (typeStr) types.add(typeStr);
     });
     return Array.from(types).sort();
+  }, [transactions]);
+
+  const transactionSymbols = useMemo(() => {
+    if (!transactions) return [];
+    const symbols = new Set<string>();
+    transactions.forEach((tx: any) => {
+      const sym = renderSymbol(tx.symbol);
+      if (sym) symbols.add(sym);
+    });
+    return Array.from(symbols).sort();
   }, [transactions]);
 
   const toggleSelection = (idx: number) => {
@@ -562,9 +590,55 @@ export default function BrokerageTransactions() {
                   >
                     <option value="all">All Types</option>
                     {transactionTypes.map((type: string) => (
-                      <option key={type} value={type}>{type}</option>
+                      <option key={type} value={type}>
+                        {type.toLowerCase() === "rei" ? "REINVESTMENT" : type}
+                      </option>
                     ))}
                   </select>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Filter Symbol:</span>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" size="sm" className="h-8 text-xs font-bold text-slate-600 min-w-[140px] justify-between">
+                        {selectedSymbols.size === 0 ? "All Symbols" : `${selectedSymbols.size} Selected`}
+                        <ChevronDown className="ml-2 h-3 w-3 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[200px] p-0 bg-white" align="start">
+                      <div className="p-2 border-b border-slate-100">
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          className="w-full justify-start text-[10px] font-bold uppercase h-7"
+                          onClick={() => setSelectedSymbols(new Set())}
+                        >
+                          Clear All
+                        </Button>
+                      </div>
+                      <div className="max-h-[300px] overflow-y-auto p-1 custom-scrollbar">
+                        {transactionSymbols.map((symbol) => (
+                          <div 
+                            key={symbol} 
+                            className="flex items-center space-x-2 px-2 py-1.5 hover:bg-slate-50 rounded cursor-pointer"
+                            onClick={() => {
+                              const next = new Set(selectedSymbols);
+                              if (next.has(symbol)) next.delete(symbol);
+                              else next.add(symbol);
+                              setSelectedSymbols(next);
+                            }}
+                          >
+                            <Checkbox 
+                              checked={selectedSymbols.has(symbol)} 
+                              onCheckedChange={() => {}} // Handled by div onClick
+                            />
+                            <span className="text-xs font-bold text-slate-700">{symbol}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
                 </div>
               </div>
             </div>
@@ -624,7 +698,10 @@ export default function BrokerageTransactions() {
                           </td>
                           <td className="py-4 px-6">
                             <Badge variant="outline" className="capitalize text-[10px] font-bold">
-                              {(typeof tx.type === "string" ? tx.type : (tx.type as any)?.name || "transaction").toLowerCase()}
+                              {(() => {
+                                const rawType = (typeof tx.type === "string" ? tx.type : (tx.type as any)?.name || "transaction").toLowerCase();
+                                return rawType === "rei" ? "reinvestment" : rawType;
+                              })()}
                             </Badge>
                           </td>
                           <td className="py-4 px-6 text-xs text-slate-600 max-w-[300px] truncate" title={tx.description}>
@@ -795,7 +872,14 @@ export default function BrokerageTransactions() {
           {/* Holdings Table */}
           <Card className="bg-white shadow-sm border border-border overflow-hidden">
             <div className="px-6 py-4 border-b border-border bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Account Holdings</h3>
+              <div className="flex flex-col">
+                <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Account Holdings</h3>
+                {lastHoldingsSyncAt && (
+                  <span className="text-[10px] text-primary font-bold">
+                    Last Sync: {new Date(lastHoldingsSyncAt).toLocaleString()}
+                  </span>
+                )}
+              </div>
               
               <div className="flex items-center gap-2">
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Filter Account:</span>

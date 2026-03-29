@@ -2,9 +2,80 @@ import { eq, and, gte, lte, desc, sql } from "drizzle-orm";
 export { eq, and, desc };
 import { drizzle } from "drizzle-orm/libsql";
 import { createClient } from "@libsql/client";
-import { InsertUser, users, portfolios, accounts, etfHoldings, purchases, priceHistory, balanceHistory, dividendHistory, cashBalance, cashBalanceHistory, assetPrices, importedTransactions, brokerageTransactions, brokerageSyncs } from "../drizzle/schema";
+import { InsertUser, users, portfolios, accounts, etfHoldings, purchases, priceHistory, balanceHistory, dividendHistory, cashBalance, cashBalanceHistory, assetPrices, importedTransactions, brokerageTransactions, brokerageSyncs, brokerageHoldings } from "../drizzle/schema";
 
 let _db: any = null;
+
+export async function upsertBrokerageHoldings(userId: number, positions: any[]) {
+  const db = await getDb();
+
+  return db.transaction(async (tx: any) => {
+    // First, we might want to clear old holdings for these accounts to ensure 
+    // that positions no longer held are removed.
+    const accountIds = Array.from(new Set(positions.map(p => p.account?.id).filter(Boolean)));
+
+    if (accountIds.length > 0) {
+      for (const accId of accountIds) {
+        await tx.delete(brokerageHoldings)
+          .where(and(
+            eq(brokerageHoldings.userId, userId),
+            eq(brokerageHoldings.accountId, accId)
+          ));
+      }
+    }
+
+    for (const pos of positions) {
+      const symbolStr = JSON.stringify(pos.symbol);
+      const accountId = pos.account?.id || "unknown";
+
+      await tx.insert(brokerageHoldings).values({
+        userId,
+        accountId,
+        accountName: pos.account?.name,
+        accountNumber: pos.account?.number,
+        symbol: symbolStr,
+        units: pos.units?.toString(),
+        price: pos.price?.toString(),
+        averagePurchasePrice: pos.average_purchase_price?.toString(),
+        currency: pos.symbol?.currency?.code,
+        rawResponse: JSON.stringify(pos),
+        updatedAt: new Date(),
+        createdAt: new Date(),
+      });
+    }
+  });
+}
+
+export async function getBrokerageHoldings(userId: number, accountId?: string) {
+  const db = await getDb();
+  let conditions = [eq(brokerageHoldings.userId, userId)];
+  if (accountId && accountId !== "all") {
+    conditions.push(eq(brokerageHoldings.accountId, accountId));
+  }
+
+  return db.select()
+    .from(brokerageHoldings)
+    .where(and(...conditions))
+    .orderBy(brokerageHoldings.accountId);
+}
+
+export async function updateLastHoldingsSync(userId: number) {
+  const db = await getDb();
+  const existing = await getLastBrokerageSync(userId);
+
+  if (existing) {
+    return db.update(brokerageSyncs)
+      .set({ lastHoldingsSyncAt: new Date() })
+      .where(eq(brokerageSyncs.id, existing.id));
+  } else {
+    return db.insert(brokerageSyncs).values({
+      userId,
+      lastSyncAt: new Date(0), // Transaction sync never happened
+      lastHoldingsSyncAt: new Date(),
+    });
+  }
+}
+
 
 export async function upsertBrokerageTransactions(userId: number, activities: any[]) {
   const db = await getDb();

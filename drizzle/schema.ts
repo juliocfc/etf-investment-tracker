@@ -170,6 +170,25 @@ export const brokerageSyncs = sqliteTable("brokerageSyncs", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   userId: integer("userId").notNull(),
   lastSyncAt: integer("lastSyncAt", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+  lastHoldingsSyncAt: integer("lastHoldingsSyncAt", { mode: "timestamp" }),
 }, (table) => [
   uniqueIndex("user_sync_idx").on(table.userId),
+]);
+
+export const brokerageHoldings = sqliteTable("brokerageHoldings", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("userId").notNull(),
+  accountId: text("accountId").notNull(), // SnapTrade Account ID
+  accountName: text("accountName"),
+  accountNumber: text("accountNumber"),
+  symbol: text("symbol"), // JSON string of the symbol object
+  units: text("units"),
+  price: text("price"),
+  averagePurchasePrice: text("averagePurchasePrice"),
+  currency: text("currency"),
+  rawResponse: text("rawResponse").notNull(),
+  createdAt: integer("createdAt", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+  updatedAt: integer("updatedAt", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+}, (table) => [
+  uniqueIndex("holdings_user_acc_sym_idx").on(table.userId, table.accountId, table.symbol),
 ]);
