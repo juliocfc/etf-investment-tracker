@@ -17,6 +17,7 @@ import { toast } from "sonner";
 import { Route, Switch, useLocation, Link } from "wouter";
 
 function DashboardRouter() {
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState("portfolios");
   const [location, setLocation] = useLocation();
   const [selectedPortfolioId, setSelectedPortfolioId] = useState<number | null>(null);
