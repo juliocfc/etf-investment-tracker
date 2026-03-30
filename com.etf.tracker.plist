@@ -6,8 +6,8 @@
     <string>com.etf.tracker</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/opt/homebrew/bin/pnpm</string>
-        <string>start</string>
+        <string>/opt/homebrew/bin/node</string>
+        <string>dist/index.js</string>
     </array>
     <key>WorkingDirectory</key>
     <string>$HOME/projects/etf-investment-tracker</string>

@@ -4,31 +4,56 @@
 APP_DIR="$HOME/projects/etf-investment-tracker"
 PLIST_NAME="com.etf.tracker.plist"
 PLIST_PATH="$HOME/Library/LaunchAgents/$PLIST_NAME"
+REAL_HOME=$HOME
 
 echo "🚀 Starting background service setup..."
 
 # 1. Build the application
 echo "📦 Building application for production..."
 cd "$APP_DIR"
-pnpm build
+# Use absolute path for pnpm
+/opt/homebrew/bin/pnpm build
 
 if [ $? -ne 0 ]; then
     echo "❌ Build failed. Please check errors above."
     exit 1
 fi
 
+if [ ! -f "dist/index.js" ]; then
+    echo "❌ Build succeeded but dist/index.js was not found. Please check build output."
+    exit 1
+fi
+
 # 2. Create logs directory
 mkdir -p "$APP_DIR/logs"
 
-# 3. Copy plist to LaunchAgents
-echo "📄 Installing Launch Agent..."
-cp "$APP_DIR/$PLIST_NAME" "$PLIST_PATH"
+# 3. Process and Copy plist to LaunchAgents
+echo "📄 Preparing and Installing Launch Agent..."
+# Create a version of the plist with absolute paths
+# Also ensures the WorkingDirectory is correct
+sed "s|\$HOME|$REAL_HOME|g" "$APP_DIR/$PLIST_NAME" > "$PLIST_PATH"
 
 # 4. Load the service
 echo "🔄 Loading service..."
-launchctl unload "$PLIST_PATH" 2>/dev/null
-launchctl load "$PLIST_PATH"
+# Unload if exists
+launchctl bootout gui/$(id -u)/com.etf.tracker 2>/dev/null || launchctl unload "$PLIST_PATH" 2>/dev/null
 
-echo "✅ Setup complete! The app is now running in the background."
-echo "📈 You can check logs at: $APP_DIR/logs/out.log"
-echo "♻️ It will automatically start when you restart your computer."
+# Load using the modern bootstrap command
+echo "🚀 Bootstrapping service..."
+launchctl bootstrap gui/$(id -u) "$PLIST_PATH"
+
+if [ $? -eq 0 ]; then
+    echo "✅ Setup complete! The app is now running in the background."
+    echo "📈 You can check logs at: $APP_DIR/logs/out.log"
+    echo "♻️ It will automatically start when you restart your computer."
+    echo "🔗 Try accessing: http://localhost:3000"
+else
+    echo "❌ Failed to bootstrap service. Falling back to old load command..."
+    launchctl load "$PLIST_PATH"
+    if [ $? -eq 0 ]; then
+        echo "✅ Setup complete (via fallback)! The app should be running."
+    else
+        echo "❌ Critical error: Failed to load service."
+        exit 1
+    fi
+fi
