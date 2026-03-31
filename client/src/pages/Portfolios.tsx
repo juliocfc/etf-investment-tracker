@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
-import { Briefcase, ChevronDown, ChevronRight, Edit2, Trash2, PieChart, Wallet, DollarSign, Plus, BarChart3, CalendarPlus, List } from "lucide-react";
+import { Briefcase, ChevronDown, ChevronRight, Edit2, Trash2, PieChart, Wallet, DollarSign, Plus, BarChart3, CalendarPlus, List, RefreshCw } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import { motion, AnimatePresence } from "framer-motion";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, Legend } from "recharts";
@@ -242,6 +242,19 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
     },
     onError: (error) => {
       toast.error(error.message || "Failed to delete portfolio");
+    }
+  });
+
+  const updatePricesMutation = trpc.etf.updatePrices.useMutation({
+    onSuccess: () => {
+      toast.success("Prices updated successfully!");
+      utils.portfolio.getDetailedAll.invalidate();
+      utils.portfolio.getHistory.invalidate();
+      utils.portfolio.getAllHoldings.invalidate();
+      utils.portfolio.getConsolidatedSummary.invalidate();
+    },
+    onError: (error) => {
+      toast.error(error.message || "Failed to update prices");
     }
   });
 
@@ -586,9 +599,21 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
 
       <Card className="bg-white border-none shadow-sm shadow-slate-200/50">
         <CardHeader className="pb-4 flex flex-row items-center justify-between space-y-0">
-          <div className="flex items-center gap-2">
-            <List className="w-4 h-4 text-primary" />
-            <CardTitle className="text-sm font-bold text-slate-800 uppercase tracking-widest">All Investment Assets</CardTitle>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <List className="w-4 h-4 text-primary" />
+              <CardTitle className="text-sm font-bold text-slate-800 uppercase tracking-widest">All Investment Assets</CardTitle>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => updatePricesMutation.mutate({ portfolioId: portfolioFilter === "all" ? undefined : parseInt(portfolioFilter) })}
+              disabled={updatePricesMutation.isPending}
+              className="h-7 border-slate-200 hover:bg-slate-50 text-[10px] font-bold uppercase tracking-wider px-3"
+            >
+              <RefreshCw className={`mr-1.5 h-3 w-3 ${updatePricesMutation.isPending ? "animate-spin" : ""}`} />
+              {updatePricesMutation.isPending ? "Updating..." : "Update Prices"}
+            </Button>
           </div>
           <div className="flex items-center gap-2">
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Filter:</span>
