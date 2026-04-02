@@ -179,6 +179,18 @@ export default function BrokerageTransactions() {
   const recordCashMutation = trpc.etf.recordCashTransaction.useMutation();
   const markImportedMutation = trpc.brokerage.markTransactionsAsImported.useMutation();
 
+  const refreshConnectionMutation = trpc.brokerage.refreshConnection.useMutation({
+    onSuccess: () => {
+      toast.success("Brokerage connection refresh triggered!");
+      // Invalidate queries to show new data
+      refetch();
+      refetchHoldings();
+    },
+    onError: (error) => {
+      toast.error(error.message || "Failed to refresh connection");
+    }
+  });
+
   const filteredTransactions = useMemo(() => {
     if (!transactions) return [];
     
@@ -434,6 +446,21 @@ export default function BrokerageTransactions() {
           </div>
         </div>
         <div className="flex items-center gap-3">
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => refreshConnectionMutation.mutate({
+              clientId: config.clientId,
+              consumerKey: config.consumerKey,
+              userId: config.userId,
+              userSecret: config.userSecret
+            })}
+            disabled={!config.userId || refreshConnectionMutation.isPending}
+            className="text-xs font-bold uppercase"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 mr-2 ${refreshConnectionMutation.isPending ? "animate-spin" : ""}`} />
+            Refresh Connection
+          </Button>
           <Button 
             variant="outline" 
             size="sm" 

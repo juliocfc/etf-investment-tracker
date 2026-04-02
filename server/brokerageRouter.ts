@@ -289,4 +289,57 @@ export const brokerageRouter = router({
       await markTransactionsAsImported(ctx.user.id, input.externalIds, input.source);
       return { success: true };
     }),
+
+  // Force a connection and holdings refresh on SnapTrade
+  refreshConnection: protectedProcedure
+    .input(z.object({
+      clientId: z.string().optional(),
+      consumerKey: z.string().optional(),
+      userId: z.string(),
+      userSecret: z.string(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const { brokerageSyncs, getDb, eq } = await import("./db");
+      
+      try {
+        const snaptrade = getSnapTradeClient(input.clientId, input.consumerKey);
+        
+        // 1. Get user authorizations to find what to refresh
+        const authsResponse = await snaptrade.connections.listBrokerageAuthorizations({
+          userId: input.userId,
+          userSecret: input.userSecret,
+        });
+
+        const results = [];
+        
+        // 2. Refresh each authorization
+        for (const auth of authsResponse.data) {
+          try {
+            const refreshResponse = await snaptrade.connections.refreshBrokerageAuthorization({
+              userId: input.userId,
+              userSecret: input.userSecret,
+              authorizationId: auth.id,
+            });
+            results.push({ id: auth.id, success: true, data: refreshResponse.data });
+          } catch (err: any) {
+            console.error(`Failed to refresh auth ${auth.id}:`, err.response?.data || err.message);
+            results.push({ id: auth.id, success: false, error: err.message });
+          }
+        }
+
+        // 3. Invalidate local sync times to force a fresh fetch on next load
+        const db = await getDb();
+        await db.update(brokerageSyncs)
+          .set({ 
+            lastSyncAt: new Date(0), 
+            lastHoldingsSyncAt: new Date(0) 
+          })
+          .where(eq(brokerageSyncs.userId, ctx.user.id));
+
+        return { success: true, results };
+      } catch (error: any) {
+        console.error("SnapTrade refreshConnection error:", error.response?.data || error.message);
+        throw new Error("Failed to trigger brokerage refresh");
+      }
+    }),
 });
