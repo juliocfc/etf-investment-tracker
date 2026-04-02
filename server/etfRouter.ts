@@ -590,7 +590,7 @@ export const etfRouter = router({
     }),
 
   getDetailedDividendReport: protectedProcedure
-    .input(z.object({ portfolioId: z.number() }))
+    .input(z.object({ portfolioId: z.number().optional() }))
     .query(async ({ ctx, input }) => {
       const holdings = await getUserEtfHoldings(ctx.user.id, input.portfolioId);
       const windowStart = new Date();
