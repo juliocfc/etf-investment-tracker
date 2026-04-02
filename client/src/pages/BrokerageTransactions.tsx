@@ -57,6 +57,17 @@ interface ImportMapping {
 }
 
 export default function BrokerageTransactions() {
+  // Helper to ensure dates from SnapTrade (YYYY-MM-DD) are treated as UTC midnight
+  const getUTCDate = (dateStr: string | null | undefined) => {
+    if (!dateStr) return new Date();
+    // If it's already an ISO-like string or Date, parse it
+    // But if it's YYYY-MM-DD, we MUST append T00:00:00Z to force UTC
+    if (typeof dateStr === "string" && /^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+      return new Date(dateStr + "T00:00:00Z");
+    }
+    return new Date(dateStr);
+  };
+
   // Helper to safely render symbol string from potential objects
   const renderSymbol = (symbolWrapper: any) => {
     if (!symbolWrapper) return "N/A";
@@ -294,7 +305,7 @@ export default function BrokerageTransactions() {
 
       return {
         txId: tx.id || String(Math.random()),
-        date: new Date(tx.settlement_date || tx.trade_date || Date.now()),
+        date: getUTCDate(tx.settlement_date || tx.trade_date),
         symbol: renderSymbol(tx.symbol),
         quantity: txUnits.toString(),
         price: tx.price?.toString() || (txUnits !== 0 ? Math.abs(txAmount / txUnits).toString() : "0"),
