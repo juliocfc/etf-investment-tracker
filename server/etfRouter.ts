@@ -738,6 +738,7 @@ export const etfRouter = router({
           name: item.name,
           totalLastYear: item.totalLastYearNum.toFixed(2),
           totalPriorYear: item.totalPriorYearNum.toFixed(2),
+          totalAllTime: item.totalAllTimeNum.toFixed(2),
           yearlyGrowthPercent: yearlyGrowth.toFixed(2),
           latestAmount: item.latestAmountNum.toFixed(2),
           latestDate: item.latestDate,
