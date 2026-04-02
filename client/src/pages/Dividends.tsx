@@ -396,9 +396,10 @@ export default function Dividends({ selectedPortfolioId }: { selectedPortfolioId
                 <th className="text-left py-3 px-6">Asset</th>
                 <th className="text-right py-3 px-6">Last Dividend</th>
                 <th className="text-right py-3 px-6">Same Q (Prior Year)</th>
+                <th className="text-center py-3 px-6">QoQ Growth %</th>
                 <th className="text-right py-3 px-6">L12M Total</th>
                 <th className="text-right py-3 px-6">P12M Total</th>
-                <th className="text-right py-3 px-6">Yearly Growth %</th>
+                <th className="text-center py-3 px-6">YoY Growth %</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
@@ -427,13 +428,18 @@ export default function Dividends({ selectedPortfolioId }: { selectedPortfolioId
                         </div>
                       )}
                     </td>
+                    <td className={`py-4 px-6 text-center`}>
+                      <span className={`px-2 py-1 rounded text-[10px] font-bold font-mono ${isGrowthPositive ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
+                        {isGrowthPositive ? "+" : ""}{asset.growthPercent}%
+                      </span>
+                    </td>
                     <td className="py-4 px-6 text-right font-mono text-slate-700 font-bold">
                       {formatCurrency(asset.totalLastYear)}
                     </td>
                     <td className="py-4 px-6 text-right font-mono text-slate-500">
                       {formatCurrency(asset.totalPriorYear)}
                     </td>
-                    <td className="py-4 px-6 text-right">
+                    <td className={`py-4 px-6 text-center`}>
                       <span className={`px-2 py-1 rounded text-[10px] font-bold font-mono ${isYearlyGrowthPositive ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
                         {isYearlyGrowthPositive ? "+" : ""}{asset.yearlyGrowthPercent}%
                       </span>
@@ -452,13 +458,19 @@ export default function Dividends({ selectedPortfolioId }: { selectedPortfolioId
                   <td className="text-right py-4 px-6 font-mono text-sm text-slate-600">
                     {formatCurrency(report.consolidatedComparative.priorAmount)}
                   </td>
+                  <td className="text-center py-4 px-6">
+                    <span className={`px-3 py-1 rounded text-xs font-bold font-mono ${parseFloat(report.consolidatedComparative.growthPercent) >= 0 ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}`}>
+                      {parseFloat(report.consolidatedComparative.growthPercent) >= 0 ? "+" : ""}
+                      {report.consolidatedComparative.growthPercent}%
+                    </span>
+                  </td>
                   <td className="text-right py-4 px-6 font-mono text-sm text-slate-800">
                     {formatCurrency(report.consolidatedComparative.totalLastYear)}
                   </td>
                   <td className="text-right py-4 px-6 font-mono text-sm text-slate-500">
                     {formatCurrency(report.consolidatedComparative.totalPriorYear)}
                   </td>
-                  <td className="text-right py-4 px-6">
+                  <td className="text-center py-4 px-6">
                     <span className={`px-3 py-1 rounded text-xs font-bold font-mono ${parseFloat(report.consolidatedComparative.yearlyGrowthPercent) >= 0 ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}`}>
                       {parseFloat(report.consolidatedComparative.yearlyGrowthPercent) >= 0 ? "+" : ""}
                       {report.consolidatedComparative.yearlyGrowthPercent}%
