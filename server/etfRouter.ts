@@ -596,6 +596,9 @@ export const etfRouter = router({
       const windowStart = new Date();
       windowStart.setFullYear(windowStart.getFullYear() - 1);
 
+      const priorWindowStart = new Date(windowStart);
+      priorWindowStart.setFullYear(priorWindowStart.getFullYear() - 1);
+
       const allDividends = [];
       const etfBreakdownMap = new Map<string, any>();
 
@@ -615,8 +618,9 @@ export const etfRouter = router({
       for (const holding of holdings) {
         const dividendData = await fetchDividendData(holding.symbol as string);
         const purchases = await getPurchases(holding.id);
-        
+
         let etfTotalWindow = 0;
+        let etfTotalPriorWindow = 0;
         let etfTotalAllTime = 0;
         const etfQuarterly: Record<string, number> = {};
         lastQuarters.forEach((q: string) => etfQuarterly[q] = 0);
@@ -625,7 +629,7 @@ export const etfRouter = router({
           const exDate = new Date(div.exDate);
           // Set to midnight of the ex-date
           exDate.setHours(0, 0, 0, 0);
-          
+
           // Calculate quantity owned BEFORE the ex-date
           let quantityOwned = 0;
           for (const purchase of purchases) {
@@ -639,6 +643,7 @@ export const etfRouter = router({
           if (quantityOwned > 0) {
             const totalAmount = quantityOwned * div.dividendPerShare;
             const isInWindow = exDate >= windowStart;
+            const isInPriorWindow = exDate >= priorWindowStart && exDate < windowStart;
 
             const dividendRecord = {
               symbol: holding.symbol,
@@ -658,46 +663,111 @@ export const etfRouter = router({
               if (etfQuarterly[qKey] !== undefined) {
                 etfQuarterly[qKey] += totalAmount;
               }
+            } else if (isInPriorWindow) {
+              etfTotalPriorWindow += totalAmount;
             }
           }
         }
 
         const symbol = holding.symbol.toUpperCase();
         const existing = etfBreakdownMap.get(symbol);
-        
+
+        // Find latest dividend and corresponding prior year dividend
+        const etfDividends = allDividends
+          .filter(d => d.symbol === symbol && d.accountId === (holding as any).accountId)
+          .sort((a, b) => new Date(b.exDate).getTime() - new Date(a.exDate).getTime());
+
+        let latestDiv = null;
+        let priorDiv = null;
+
+        if (etfDividends.length > 0) {
+          latestDiv = etfDividends[0];
+          const latestDate = new Date(latestDiv.exDate);
+          const latestQuarter = Math.floor(latestDate.getMonth() / 3) + 1;
+          const targetYear = latestDate.getFullYear() - 1;
+
+          priorDiv = etfDividends.find(d => {
+            const dDate = new Date(d.exDate);
+            const dQuarter = Math.floor(dDate.getMonth() / 3) + 1;
+            return dDate.getFullYear() === targetYear && dQuarter === latestQuarter;
+          });
+        }
+
         if (existing) {
           existing.totalLastYearNum += etfTotalWindow;
+          existing.totalPriorYearNum += etfTotalPriorWindow;
           existing.totalAllTimeNum += etfTotalAllTime;
           lastQuarters.forEach((q: string) => {
             existing.quarterlyValues[q] = (existing.quarterlyValues[q] || 0) + (etfQuarterly[q] || 0);
           });
+          if (latestDiv) {
+            existing.latestAmountNum = (existing.latestAmountNum || 0) + latestDiv.totalAmount;
+            existing.latestDate = latestDiv.exDate;
+          }
+          if (priorDiv) {
+            existing.priorAmountNum = (existing.priorAmountNum || 0) + priorDiv.totalAmount;
+            existing.priorDate = priorDiv.exDate;
+          }
         } else {
           etfBreakdownMap.set(symbol, {
             symbol: symbol,
             name: holding.name,
             totalLastYearNum: etfTotalWindow,
+            totalPriorYearNum: etfTotalPriorWindow,
             totalAllTimeNum: etfTotalAllTime,
-            quarterlyValues: { ...etfQuarterly }
+            quarterlyValues: { ...etfQuarterly },
+            latestAmountNum: latestDiv?.totalAmount || 0,
+            latestDate: latestDiv?.exDate || null,
+            priorAmountNum: priorDiv?.totalAmount || 0,
+            priorDate: priorDiv?.exDate || null,
           });
         }
       }
 
-      const etfBreakdown = Array.from(etfBreakdownMap.values()).map((item: any) => ({
-        symbol: item.symbol,
-        name: item.name,
-        totalLastYear: item.totalLastYearNum.toFixed(2),
-        totalAllTime: item.totalAllTimeNum.toFixed(2),
-        quarterlyBreakdown: lastQuarters.map((q: string) => ({
-          quarter: q,
-          amount: (item.quarterlyValues[q] || 0).toFixed(2),
-        })),
-      }));
+      const etfBreakdown = Array.from(etfBreakdownMap.values()).map((item: any) => {
+        const growth = item.priorAmountNum > 0 
+          ? ((item.latestAmountNum - item.priorAmountNum) / item.priorAmountNum) * 100 
+          : 0;
+
+        const yearlyGrowth = item.totalPriorYearNum > 0
+          ? ((item.totalLastYearNum - item.totalPriorYearNum) / item.totalPriorYearNum) * 100
+          : 0;
+
+        return {
+          symbol: item.symbol,
+          name: item.name,
+          totalLastYear: item.totalLastYearNum.toFixed(2),
+          totalPriorYear: item.totalPriorYearNum.toFixed(2),
+          yearlyGrowthPercent: yearlyGrowth.toFixed(2),
+          latestAmount: item.latestAmountNum.toFixed(2),
+          latestDate: item.latestDate,
+          priorAmount: item.priorAmountNum.toFixed(2),
+          priorDate: item.priorDate,
+          growthPercent: growth.toFixed(2),
+          quarterlyBreakdown: lastQuarters.map((q: string) => ({
+            quarter: q,
+            amount: (item.quarterlyValues[q] || 0).toFixed(2),
+          })),
+        };
+      });
 
       const totalLastYear = etfBreakdown.reduce((sum: number, item: any) => sum + parseFloat(item.totalLastYear), 0);
+      const totalPriorYear = etfBreakdown.reduce((sum: number, item: any) => sum + parseFloat(item.totalPriorYear), 0);
       const totalAllTime = etfBreakdown.reduce((sum: number, item: any) => sum + parseFloat(item.totalAllTime), 0);
+
+      const consolidatedLatest = etfBreakdown.reduce((sum: number, item: any) => sum + parseFloat(item.latestAmount), 0);
+      const consolidatedPrior = etfBreakdown.reduce((sum: number, item: any) => sum + parseFloat(item.priorAmount), 0);
+      const consolidatedGrowth = consolidatedPrior > 0 
+        ? ((consolidatedLatest - consolidatedPrior) / consolidatedPrior) * 100 
+        : 0;
+
+      const consolidatedYearlyGrowth = totalPriorYear > 0
+        ? ((totalLastYear - totalPriorYear) / totalPriorYear) * 100
+        : 0;
+
       const combinedQuarterly: Record<string, number> = {};
       lastQuarters.forEach((q: string) => combinedQuarterly[q] = 0);
-      
+
       etfBreakdown.forEach((item: any) => {
         item.quarterlyBreakdown.forEach((q: any) => {
           if (combinedQuarterly[q.quarter] !== undefined) {
@@ -708,15 +778,23 @@ export const etfRouter = router({
 
       return {
         totalLastYear: totalLastYear.toFixed(2),
+        totalPriorYear: totalPriorYear.toFixed(2),
         totalAllTime: totalAllTime.toFixed(2),
+        consolidatedComparative: {
+          latestAmount: consolidatedLatest.toFixed(2),
+          priorAmount: consolidatedPrior.toFixed(2),
+          growthPercent: consolidatedGrowth.toFixed(2),
+          totalLastYear: totalLastYear.toFixed(2),
+          totalPriorYear: totalPriorYear.toFixed(2),
+          yearlyGrowthPercent: consolidatedYearlyGrowth.toFixed(2)
+        },
         quarterlyBreakdown: lastQuarters.map((q: string) => ({
           quarter: q,
           amount: (combinedQuarterly[q] || 0).toFixed(2),
         })),
         etfBreakdown,
         history: allDividends.sort((a, b) => new Date(b.exDate).getTime() - new Date(a.exDate).getTime()),
-      };
-    }),
+      };    }),
 
   calculateTotalDividends: protectedProcedure
     .input(z.object({ portfolioId: z.number() }))

@@ -3,6 +3,7 @@ export { eq, and, desc };
 import { drizzle } from "drizzle-orm/libsql";
 import { createClient } from "@libsql/client";
 import { InsertUser, users, portfolios, accounts, etfHoldings, purchases, priceHistory, balanceHistory, dividendHistory, cashBalance, cashBalanceHistory, assetPrices, importedTransactions, brokerageTransactions, brokerageSyncs, brokerageHoldings } from "../drizzle/schema";
+export { brokerageSyncs };
 
 let _db: any = null;
 

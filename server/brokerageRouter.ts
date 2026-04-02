@@ -314,6 +314,7 @@ export const brokerageRouter = router({
         
         // 2. Refresh each authorization
         for (const auth of authsResponse.data) {
+          if (!auth.id) continue;
           try {
             const refreshResponse = await snaptrade.connections.refreshBrokerageAuthorization({
               userId: input.userId,

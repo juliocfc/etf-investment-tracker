@@ -164,7 +164,7 @@ export default function BrokerageTransactions() {
   const transactions = transactionsData?.transactions;
   const lastSyncAt = transactionsData?.lastSyncAt;
 
-  const { data: holdingsData, isLoading: isLoadingHoldings } = trpc.brokerage.getHoldings.useQuery(
+  const { data: holdingsData, isLoading: isLoadingHoldings, refetch: refetchHoldings } = trpc.brokerage.getHoldings.useQuery(
     { 
       clientId: config.clientId,
       consumerKey: config.consumerKey,

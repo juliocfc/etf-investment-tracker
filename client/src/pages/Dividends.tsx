@@ -383,6 +383,94 @@ export default function Dividends({ selectedPortfolioId }: { selectedPortfolioId
         )}
       </div>
 
+      {/* Comparative Dividend Analysis */}
+      <Card className="bg-white shadow-sm border border-border overflow-hidden">
+        <div className="px-6 py-4 border-b border-border bg-slate-50/50 flex items-center gap-2">
+          <TrendingUp className="w-5 h-5 text-primary" />
+          <h2 className="text-lg font-bold text-slate-800 uppercase tracking-widest">Year-over-Year Comparative Analysis</h2>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50">
+              <tr className="border-b border-border text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                <th className="text-left py-3 px-6">Asset</th>
+                <th className="text-right py-3 px-6">Last Dividend</th>
+                <th className="text-right py-3 px-6">Same Q (Prior Year)</th>
+                <th className="text-right py-3 px-6">L12M Total</th>
+                <th className="text-right py-3 px-6">P12M Total</th>
+                <th className="text-right py-3 px-6">Yearly Growth %</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-50">
+              {report?.etfBreakdown.map((asset: any) => {
+                const growthNum = parseFloat(asset.growthPercent);
+                const isGrowthPositive = growthNum >= 0;
+                const yearlyGrowthNum = parseFloat(asset.yearlyGrowthPercent);
+                const isYearlyGrowthPositive = yearlyGrowthNum >= 0;
+                
+                return (
+                  <tr key={asset.symbol} className="hover:bg-slate-50/50 transition-colors">
+                    <td className="py-4 px-6 font-bold text-slate-700">{asset.symbol}</td>
+                    <td className="py-4 px-6 text-right">
+                      <div className="font-mono font-bold text-slate-800">{formatCurrency(asset.latestAmount)}</div>
+                      {asset.latestDate && (
+                        <div className="text-[10px] text-slate-400 uppercase">
+                          {new Date(asset.latestDate).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}
+                        </div>
+                      )}
+                    </td>
+                    <td className="py-4 px-6 text-right">
+                      <div className="font-mono text-slate-600">{formatCurrency(asset.priorAmount)}</div>
+                      {asset.priorDate && (
+                        <div className="text-[10px] text-slate-400 uppercase">
+                          {new Date(asset.priorDate).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}
+                        </div>
+                      )}
+                    </td>
+                    <td className="py-4 px-6 text-right font-mono text-slate-700 font-bold">
+                      {formatCurrency(asset.totalLastYear)}
+                    </td>
+                    <td className="py-4 px-6 text-right font-mono text-slate-500">
+                      {formatCurrency(asset.totalPriorYear)}
+                    </td>
+                    <td className="py-4 px-6 text-right">
+                      <span className={`px-2 py-1 rounded text-[10px] font-bold font-mono ${isYearlyGrowthPositive ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
+                        {isYearlyGrowthPositive ? "+" : ""}{asset.yearlyGrowthPercent}%
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            {report?.consolidatedComparative && (
+              <tfoot className="bg-slate-50 border-t-2 border-slate-200">
+                <tr className="font-bold text-slate-800">
+                  <td className="py-4 px-6 uppercase text-[10px] tracking-widest text-slate-500">Portfolio Totals</td>
+                  <td className="text-right py-4 px-6 font-mono text-sm text-primary">
+                    {formatCurrency(report.consolidatedComparative.latestAmount)}
+                  </td>
+                  <td className="text-right py-4 px-6 font-mono text-sm text-slate-600">
+                    {formatCurrency(report.consolidatedComparative.priorAmount)}
+                  </td>
+                  <td className="text-right py-4 px-6 font-mono text-sm text-slate-800">
+                    {formatCurrency(report.consolidatedComparative.totalLastYear)}
+                  </td>
+                  <td className="text-right py-4 px-6 font-mono text-sm text-slate-500">
+                    {formatCurrency(report.consolidatedComparative.totalPriorYear)}
+                  </td>
+                  <td className="text-right py-4 px-6">
+                    <span className={`px-3 py-1 rounded text-xs font-bold font-mono ${parseFloat(report.consolidatedComparative.yearlyGrowthPercent) >= 0 ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}`}>
+                      {parseFloat(report.consolidatedComparative.yearlyGrowthPercent) >= 0 ? "+" : ""}
+                      {report.consolidatedComparative.yearlyGrowthPercent}%
+                    </span>
+                  </td>
+                </tr>
+              </tfoot>
+            )}
+          </table>
+        </div>
+      </Card>
+
       {/* Dividend History Table */}
       <Card className="bg-white shadow-sm border border-border overflow-hidden">
         <div className="px-6 py-4 border-b border-border bg-slate-50/50 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
