@@ -290,6 +290,24 @@ export const brokerageRouter = router({
       return { success: true };
     }),
 
+  // Clear local sync cache to force a fresh fetch from SnapTrade
+  clearCache: protectedProcedure.mutation(async ({ ctx }) => {
+    const { brokerageSyncs, getDb, eq } = await import("./db");
+    try {
+      const db = await getDb();
+      await db.update(brokerageSyncs)
+        .set({ 
+          lastSyncAt: new Date(0), 
+          lastHoldingsSyncAt: new Date(0) 
+        })
+        .where(eq(brokerageSyncs.userId, ctx.user.id));
+      return { success: true };
+    } catch (error: any) {
+      console.error("SnapTrade clearCache error:", error);
+      throw new Error("Failed to clear brokerage cache");
+    }
+  }),
+
   // Force a connection and holdings refresh on SnapTrade
   refreshConnection: protectedProcedure
     .input(z.object({

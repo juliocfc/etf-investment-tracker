@@ -190,9 +190,32 @@ export default function BrokerageTransactions() {
   const recordCashMutation = trpc.etf.recordCashTransaction.useMutation();
   const markImportedMutation = trpc.brokerage.markTransactionsAsImported.useMutation();
 
-  const refreshConnectionMutation = trpc.brokerage.refreshConnection.useMutation({
+  const clearCacheMutation = trpc.brokerage.clearCache.useMutation({
     onSuccess: () => {
-      toast.success("Brokerage connection refresh triggered!");
+      toast.info("Cache cleared. Fetching fresh data from broker...");
+      refetch();
+      refetchHoldings();
+    },
+    onError: (error) => {
+      toast.error(error.message || "Failed to refresh data");
+    }
+  });
+
+  const refreshConnectionMutation = trpc.brokerage.refreshConnection.useMutation({
+    onMutate: () => {
+      toast.info("Triggering SnapTrade refresh...");
+    },
+    onSuccess: (data) => {
+      const successCount = data.results?.filter(r => r.success).length || 0;
+      const totalCount = data.results?.length || 0;
+      
+      if (successCount > 0) {
+        toast.success(`Successfully triggered refresh for ${successCount}/${totalCount} brokerage connections!`);
+        toast.info("The system is now updating your cache in the background. Please wait a moment and refresh the data.");
+      } else {
+        toast.error("No active brokerage connections found to refresh.");
+      }
+      
       // Invalidate queries to show new data
       refetch();
       refetchHoldings();
@@ -565,8 +588,8 @@ export default function BrokerageTransactions() {
                   <Calendar className="w-4 h-4 text-orange-500" />
                   <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Timeframe</h3>
                 </div>
-                <Button variant="ghost" size="sm" onClick={() => refetch()} className="h-6 text-[10px] uppercase font-bold">
-                  <RefreshCw className={`w-3 h-3 mr-1 ${isLoadingTx ? "animate-spin" : ""}`} />
+                <Button variant="ghost" size="sm" onClick={() => clearCacheMutation.mutate()} className="h-6 text-[10px] uppercase font-bold">
+                  <RefreshCw className={`w-3 h-3 mr-1 ${isLoadingTx || clearCacheMutation.isPending ? "animate-spin" : ""}`} />
                   Refresh
                 </Button>
               </div>

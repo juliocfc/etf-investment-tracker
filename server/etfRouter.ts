@@ -593,9 +593,28 @@ export const etfRouter = router({
     .input(z.object({ portfolioId: z.number().optional() }))
     .query(async ({ ctx, input }) => {
       const holdings = await getUserEtfHoldings(ctx.user.id, input.portfolioId);
+      const now = new Date();
+      const currentQuarter = Math.floor(now.getMonth() / 3) + 1;
+      const currentYear = now.getFullYear();
+
+      // Determine the target comparison quarter (the previous full quarter)
+      let targetQuarter: number;
+      let targetYear: number;
+      if (currentQuarter === 1) {
+        targetQuarter = 4;
+        targetYear = currentYear - 1;
+      } else {
+        targetQuarter = currentQuarter - 1;
+        targetYear = currentYear;
+      }
+
+      const priorYearTargetYear = targetYear - 1;
+      const targetQuarterKey = `${targetYear} Q${targetQuarter}`;
+      const priorYearQuarterKey = `${priorYearTargetYear} Q${targetQuarter}`;
+
       const windowStart = new Date();
       windowStart.setFullYear(windowStart.getFullYear() - 1);
-
+      
       const priorWindowStart = new Date(windowStart);
       priorWindowStart.setFullYear(priorWindowStart.getFullYear() - 1);
 
@@ -622,19 +641,19 @@ export const etfRouter = router({
         let etfTotalWindow = 0;
         let etfTotalPriorWindow = 0;
         let etfTotalAllTime = 0;
+        let etfTargetQuarterAmount = 0;
+        let etfPriorYearQuarterAmount = 0;
+        
         const etfQuarterly: Record<string, number> = {};
         lastQuarters.forEach((q: string) => etfQuarterly[q] = 0);
 
         for (const div of dividendData) {
           const exDate = new Date(div.exDate);
-          // Set to midnight of the ex-date
           exDate.setHours(0, 0, 0, 0);
 
-          // Calculate quantity owned BEFORE the ex-date
           let quantityOwned = 0;
           for (const purchase of purchases) {
             const purchaseDate = new Date(purchase.purchaseDate);
-            // Must have purchased before the ex-dividend date to be eligible
             if (purchaseDate < exDate) {
               quantityOwned += parseFloat(purchase.quantity.toString());
             }
@@ -642,6 +661,16 @@ export const etfRouter = router({
 
           if (quantityOwned > 0) {
             const totalAmount = quantityOwned * div.dividendPerShare;
+            const exYear = exDate.getFullYear();
+            const exQuarter = Math.floor(exDate.getMonth() / 3) + 1;
+            
+            // Check if this dividend belongs to our comparison quarters
+            if (exYear === targetYear && exQuarter === targetQuarter) {
+              etfTargetQuarterAmount += totalAmount;
+            } else if (exYear === priorYearTargetYear && exQuarter === targetQuarter) {
+              etfPriorYearQuarterAmount += totalAmount;
+            }
+
             const isInWindow = exDate >= windowStart;
             const isInPriorWindow = exDate >= priorWindowStart && exDate < windowStart;
 
@@ -672,42 +701,15 @@ export const etfRouter = router({
         const symbol = holding.symbol.toUpperCase();
         const existing = etfBreakdownMap.get(symbol);
 
-        // Find latest dividend and corresponding prior year dividend
-        const etfDividends = allDividends
-          .filter(d => d.symbol === symbol && d.accountId === (holding as any).accountId)
-          .sort((a, b) => new Date(b.exDate).getTime() - new Date(a.exDate).getTime());
-
-        let latestDiv = null;
-        let priorDiv = null;
-
-        if (etfDividends.length > 0) {
-          latestDiv = etfDividends[0];
-          const latestDate = new Date(latestDiv.exDate);
-          const latestQuarter = Math.floor(latestDate.getMonth() / 3) + 1;
-          const targetYear = latestDate.getFullYear() - 1;
-
-          priorDiv = etfDividends.find(d => {
-            const dDate = new Date(d.exDate);
-            const dQuarter = Math.floor(dDate.getMonth() / 3) + 1;
-            return dDate.getFullYear() === targetYear && dQuarter === latestQuarter;
-          });
-        }
-
         if (existing) {
           existing.totalLastYearNum += etfTotalWindow;
           existing.totalPriorYearNum += etfTotalPriorWindow;
           existing.totalAllTimeNum += etfTotalAllTime;
+          existing.latestAmountNum += etfTargetQuarterAmount;
+          existing.priorAmountNum += etfPriorYearQuarterAmount;
           lastQuarters.forEach((q: string) => {
             existing.quarterlyValues[q] = (existing.quarterlyValues[q] || 0) + (etfQuarterly[q] || 0);
           });
-          if (latestDiv) {
-            existing.latestAmountNum = (existing.latestAmountNum || 0) + latestDiv.totalAmount;
-            existing.latestDate = latestDiv.exDate;
-          }
-          if (priorDiv) {
-            existing.priorAmountNum = (existing.priorAmountNum || 0) + priorDiv.totalAmount;
-            existing.priorDate = priorDiv.exDate;
-          }
         } else {
           etfBreakdownMap.set(symbol, {
             symbol: symbol,
@@ -716,10 +718,10 @@ export const etfRouter = router({
             totalPriorYearNum: etfTotalPriorWindow,
             totalAllTimeNum: etfTotalAllTime,
             quarterlyValues: { ...etfQuarterly },
-            latestAmountNum: latestDiv?.totalAmount || 0,
-            latestDate: latestDiv?.exDate || null,
-            priorAmountNum: priorDiv?.totalAmount || 0,
-            priorDate: priorDiv?.exDate || null,
+            latestAmountNum: etfTargetQuarterAmount,
+            latestDate: `${targetYear} Q${targetQuarter}`,
+            priorAmountNum: etfPriorYearQuarterAmount,
+            priorDate: `${priorYearTargetYear} Q${targetQuarter}`,
           });
         }
       }
@@ -781,6 +783,8 @@ export const etfRouter = router({
         totalLastYear: totalLastYear.toFixed(2),
         totalPriorYear: totalPriorYear.toFixed(2),
         totalAllTime: totalAllTime.toFixed(2),
+        targetQuarterKey,
+        priorYearQuarterKey,
         consolidatedComparative: {
           latestAmount: consolidatedLatest.toFixed(2),
           priorAmount: consolidatedPrior.toFixed(2),

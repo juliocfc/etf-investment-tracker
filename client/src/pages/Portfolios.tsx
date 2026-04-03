@@ -915,8 +915,8 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
               <thead className="bg-slate-50">
                 <tr className="border-b border-border text-[10px] font-bold text-slate-400 uppercase tracking-widest">
                   <th className="text-left py-3 px-6">Asset</th>
-                  <th className="text-right py-3 px-6">Last Dividend</th>
-                  <th className="text-right py-3 px-6">Same Q (Prior Year)</th>
+                  <th className="text-right py-3 px-6">{dividendReport?.targetQuarterKey || "Last Quarter"}</th>
+                  <th className="text-right py-3 px-6">{dividendReport?.priorYearQuarterKey || "Prior Year"}</th>
                   <th className="text-center py-3 px-6">QoQ Growth %</th>
                   <th className="text-right py-3 px-6">L12M Total</th>
                   <th className="text-right py-3 px-6">P12M Total</th>
@@ -935,19 +935,9 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
                       <td className="py-4 px-6 font-bold text-slate-700">{asset.symbol}</td>
                       <td className="py-4 px-6 text-right">
                         <div className="font-mono font-bold text-slate-800">{formatCurrency(asset.latestAmount)}</div>
-                        {asset.latestDate && (
-                          <div className="text-[10px] text-slate-400 uppercase">
-                            {new Date(asset.latestDate).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}
-                          </div>
-                        )}
                       </td>
                       <td className="py-4 px-6 text-right">
                         <div className="font-mono text-slate-600">{formatCurrency(asset.priorAmount)}</div>
-                        {asset.priorDate && (
-                          <div className="text-[10px] text-slate-400 uppercase">
-                            {new Date(asset.priorDate).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}
-                          </div>
-                        )}
                       </td>
                       <td className={`py-4 px-6 text-center`}>
                         <span className={`px-2 py-1 rounded text-[10px] font-bold font-mono ${isGrowthPositive ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
