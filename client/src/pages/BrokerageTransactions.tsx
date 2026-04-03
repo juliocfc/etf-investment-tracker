@@ -57,15 +57,26 @@ interface ImportMapping {
 }
 
 export default function BrokerageTransactions() {
-  // Helper to ensure dates from SnapTrade (YYYY-MM-DD) are treated as UTC midnight
-  const getUTCDate = (dateStr: string | null | undefined) => {
+  // Helper to ensure dates from SnapTrade (YYYY-MM-DD) are treated as UTC Noon
+  // We use Noon instead of Midnight to be absolutely safe against any rounding or slight shift
+  const getUTCDate = (dateStr: string | Date | null | undefined) => {
     if (!dateStr) return new Date();
-    // If it's already an ISO-like string or Date, parse it
-    // But if it's YYYY-MM-DD, we MUST append T00:00:00Z to force UTC
-    if (typeof dateStr === "string" && /^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
-      return new Date(dateStr + "T00:00:00Z");
+    
+    let d: Date;
+    if (typeof dateStr === "string") {
+      // If it's YYYY-MM-DD, parse manually to avoid local TZ interference
+      if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+        const [year, month, day] = dateStr.split('-').map(Number);
+        d = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+      } else {
+        d = new Date(dateStr);
+      }
+    } else {
+      d = new Date(dateStr);
     }
-    return new Date(dateStr);
+
+    // Return a new Date at UTC noon for that same year/month/day
+    return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 12, 0, 0));
   };
 
   // Helper to safely render symbol string from potential objects
@@ -104,7 +115,7 @@ export default function BrokerageTransactions() {
   const [selectedSymbols, setSelectedSymbols] = useState<Set<string>>(new Set());
 
   const [dateRange, setDateRange] = useState({
-    startDate: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
+    startDate: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
     endDate: new Date().toISOString().split("T")[0],
   });
 
@@ -328,7 +339,7 @@ export default function BrokerageTransactions() {
 
       return {
         txId: tx.id || String(Math.random()),
-        date: getUTCDate(tx.settlement_date || tx.trade_date),
+        date: getUTCDate(tx.trade_date || tx.settlement_date),
         symbol: renderSymbol(tx.symbol),
         quantity: txUnits.toString(),
         price: tx.price?.toString() || (txUnits !== 0 ? Math.abs(txAmount / txUnits).toString() : "0"),

@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Plus, Trash2, RefreshCw, ShoppingCart, History, FolderPlus, FileUp, Wallet, TrendingUp, Info, ArrowUpCircle, ArrowDownCircle, CheckCircle2, MoreVertical, CalendarPlus, Download, List, Activity, DollarSign, LayoutDashboard, Edit2, ArrowUpDown, ChevronUp, ChevronDown, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
-import { formatCurrency, formatNumber, formatDate } from "@/lib/utils";
+import { formatCurrency, formatNumber, formatDate, formatUTCDate } from "@/lib/utils";
 import React, { useEffect, useRef, useState, useMemo } from "react";
 import Activities from "./Activities";
 import Performance from "./Performance";
@@ -59,12 +59,20 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
   const [historicalCashData, setHistoricalCashData] = useState({ accountId: "", amount: "", date: formatDate(new Date()) });
 
   const [expandedHoldings, setExpandedHoldings] = useState<Set<string>>(new Set());
+  const [expandedAccounts, setExpandedAccounts] = useState<Set<number>>(new Set());
 
   const toggleHoldingExpand = (symbol: string) => {
     const next = new Set(expandedHoldings);
     if (next.has(symbol)) next.delete(symbol);
     else next.add(symbol);
     setExpandedHoldings(next);
+  };
+
+  const toggleAccountExpand = (accountId: number) => {
+    const next = new Set(expandedAccounts);
+    if (next.has(accountId)) next.delete(accountId);
+    else next.add(accountId);
+    setExpandedAccounts(next);
   };
 
   const defaultDate = useMemo(() => getLastTradingDay(), []);
@@ -493,9 +501,12 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
   };
 
   const mergeDateWithCurrentTime = (dateStr: string) => {
-    const selected = new Date(dateStr + "T00:00:00");
+    // Treat the input YYYY-MM-DD as UTC Noon
+    const [year, month, day] = dateStr.split('-').map(Number);
+    const selected = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
     const now = new Date();
-    selected.setHours(now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds());
+    // Preserve the current time components but keep it at the specified UTC date
+    selected.setUTCHours(now.getUTCHours(), now.getUTCMinutes(), now.getUTCSeconds(), now.getUTCMilliseconds());
     return selected;
   };
 
@@ -825,101 +836,169 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="bg-slate-50/50 border-b border-border">
+                      <th className="w-10"></th>
                       <th className="text-left py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Account</th>
-                      <th className="text-right py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Total</th>
-                      <th className="text-right py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Cash</th>
+                      <th className="text-right py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Total Value</th>
+                      <th className="text-right py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Cash Balance</th>
                       <th className="text-right py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Investments</th>
+                      <th className="text-right py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider"></th>
                       <th className="text-center py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     {(selectedAccountId ? accounts?.filter((a: any) => a.id === selectedAccountId) : accounts)?.map((account: any) => {
-                      const accDetails = (summary as any)?.accountSummaries?.[account.id] || { investmentValue: "0.00", cashValue: "0.00", totalValue: "0.00" };
+                      const accDetails = (summary as any)?.accountSummaries?.[account.id] || { investmentValue: "0.00", cashValue: "0.00", totalValue: "0.00", assets: [] };
                       const totalVal = parseFloat(accDetails.totalValue);
                       const invPercent = totalVal > 0 ? ((parseFloat(accDetails.investmentValue) / totalVal) * 100).toFixed(1) : "0";
                       const cashPercent = totalVal > 0 ? ((parseFloat(accDetails.cashValue) / totalVal) * 100).toFixed(1) : "0";
+                      const isExpanded = expandedAccounts.has(account.id);
 
                       return (
-                        <tr key={account.id} className="border-b border-border hover:bg-slate-50 transition-colors">
-                          <td className="py-4 px-6">
-                            <div className="font-bold text-slate-800">{account.name}</div>
-                            {account.number && <div className="text-[10px] text-slate-500 font-mono mt-0.5">{account.number}</div>}
-                          </td>
-                          <td className="py-4 px-6 text-right font-mono font-bold text-primary">
-                            {formatCurrency(accDetails.totalValue)}
-                          </td>
-                          <td className="py-4 px-6 text-right">
-                            <div className="font-mono font-medium text-slate-600">{formatCurrency(accDetails.cashValue)}</div>
-                            <div className="text-[9px] font-bold text-slate-400 uppercase">{cashPercent}%</div>
-                          </td>
-                          <td className="py-4 px-6 text-right">
-                            <div className="font-mono font-medium text-green-600">{formatCurrency(accDetails.investmentValue)}</div>
-                            <div className="text-[9px] font-bold text-slate-400 uppercase">{invPercent}%</div>
-                          </td>
-                          <td className="py-4 px-6">
-                            <div className="flex items-center justify-center">
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-primary">
-                                    <MoreVertical className="h-4 w-4" />
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end" className="w-56">
-                                  <DropdownMenuLabel>Manage Account</DropdownMenuLabel>
-                                  <DropdownMenuSeparator />
-                                  <DropdownMenuItem onClick={() => setEditingAccount({ id: account.id, name: account.name, number: account.number || "" })}>
-                                    <Edit2 className="mr-2 h-4 w-4 text-slate-500" />
-                                    <span>Rename Account</span>
-                                  </DropdownMenuItem>
-                                  <DropdownMenuSeparator />
-                                  <DropdownMenuItem onClick={() => {
-                                    setAdjustCashData({
-                                      accountId: account.id.toString(),
-                                      amount: "",
-                                      type: "deposit",
-                                      description: "",
-                                      date: formatDate(new Date())
-                                    });
-                                    setIsAdjustCashDialogOpen(true);
-                                  }}>
-                                    <ArrowUpCircle className="mr-2 h-4 w-4 text-green-600" />
-                                    <span>Deposit Cash</span>
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem onClick={() => {
-                                    setAdjustCashData({
-                                      accountId: account.id.toString(),
-                                      amount: "",
-                                      type: "withdrawal",
-                                      description: "",
-                                      date: formatDate(new Date())
-                                    });
-                                    setIsAdjustCashDialogOpen(true);
-                                  }}>
-                                    <ArrowDownCircle className="mr-2 h-4 w-4 text-red-600" />
-                                    <span>Withdraw Cash</span>
-                                  </DropdownMenuItem>
-                                  <DropdownMenuSeparator />
-                                  <DropdownMenuItem onClick={() => setCashHistoryOpen({ id: account.id, name: account.name })}>
-                                    <History className="mr-2 h-4 w-4 text-slate-500" />
-                                    <span>View Cash History</span>
-                                  </DropdownMenuItem>
-                                  <DropdownMenuSeparator />
-                                  <DropdownMenuItem
-                                    onClick={() => {
-                                      if (confirm("Delete this account? Associated holdings will remain but lose their account link.")) {
-                                        deleteAccountMutation.mutate({ id: account.id });
-                                      }
-                                    }}
-                                    className="text-red-600 focus:text-red-600 focus:bg-red-50"
-                                  >
-                                    <Trash2 className="mr-2 h-4 w-4" />
-                                    <span>Delete Account</span>
-                                  </DropdownMenuItem>
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                            </div>
-                          </td>
-                        </tr>
+                        <React.Fragment key={account.id}>
+                          <tr className="border-b border-border hover:bg-slate-50 transition-colors">
+                            <td className="text-center">
+                              <button 
+                                onClick={() => toggleAccountExpand(account.id)}
+                                className="p-1 hover:bg-slate-200 rounded transition-colors text-slate-400 hover:text-slate-600"
+                              >
+                                {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                              </button>
+                            </td>
+                            <td className="py-4 px-6">
+                              <div className="font-bold text-slate-800">{account.name}</div>
+                              {account.number && <div className="text-[10px] text-slate-500 font-mono mt-0.5">{account.number}</div>}
+                            </td>
+                            <td className="py-4 px-6 text-right font-mono font-bold text-primary">
+                              {formatCurrency(accDetails.totalValue)}
+                            </td>
+                            <td className="py-4 px-6 text-right">
+                              <div className="font-mono font-medium text-slate-600">{formatCurrency(accDetails.cashValue)}</div>
+                              <div className="text-[9px] font-bold text-slate-400 uppercase">{cashPercent}%</div>
+                            </td>
+                            <td className="py-4 px-6 text-right">
+                              <div className="font-mono font-medium text-green-600">{formatCurrency(accDetails.investmentValue)}</div>
+                              <div className="text-[9px] font-bold text-slate-400 uppercase">{invPercent}%</div>
+                            </td>
+                            <td className="py-4 px-6 text-right font-mono text-xs text-slate-400">—</td>
+                            <td className="py-4 px-6">
+                              <div className="flex items-center justify-center">
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-primary">
+                                      <MoreVertical className="h-4 w-4" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end" className="w-56">
+                                    <DropdownMenuLabel>Manage Account</DropdownMenuLabel>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem onClick={() => setEditingAccount({ id: account.id, name: account.name, number: account.number || "" })}>
+                                      <Edit2 className="mr-2 h-4 w-4 text-slate-500" />
+                                      <span>Rename Account</span>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem onClick={() => {
+                                      setAdjustCashData({
+                                        accountId: account.id.toString(),
+                                        amount: "",
+                                        type: "deposit",
+                                        description: "",
+                                        date: formatDate(new Date())
+                                      });
+                                      setIsAdjustCashDialogOpen(true);
+                                    }}>
+                                      <ArrowUpCircle className="mr-2 h-4 w-4 text-green-600" />
+                                      <span>Deposit Cash</span>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => {
+                                      setAdjustCashData({
+                                        accountId: account.id.toString(),
+                                        amount: "",
+                                        type: "withdrawal",
+                                        description: "",
+                                        date: formatDate(new Date())
+                                      });
+                                      setIsAdjustCashDialogOpen(true);
+                                    }}>
+                                      <ArrowDownCircle className="mr-2 h-4 w-4 text-red-600" />
+                                      <span>Withdraw Cash</span>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem onClick={() => setCashHistoryOpen({ id: account.id, name: account.name })}>
+                                      <History className="mr-2 h-4 w-4 text-slate-500" />
+                                      <span>View Cash History</span>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem
+                                      onClick={() => {
+                                        if (confirm("Delete this account? Associated holdings will remain but lose their account link.")) {
+                                          deleteAccountMutation.mutate({ id: account.id });
+                                        }
+                                      }}
+                                      className="text-red-600 focus:text-red-600 focus:bg-red-50"
+                                    >
+                                      <Trash2 className="mr-2 h-4 w-4" />
+                                      <span>Delete Account</span>
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </div>
+                            </td>
+                          </tr>
+
+                          {/* Account Assets Breakdown Rows */}
+                          {isExpanded && (
+                            <tr className="bg-slate-50/50">
+                              <td colSpan={7} className="p-0">
+                                <div className="p-4 pl-12 bg-slate-100/10">
+                                  <table className="w-full text-[11px]">
+                                    <thead>
+                                      <tr className="border-b border-slate-200">
+                                        <th className="text-left py-2 px-3 text-slate-500 font-bold uppercase text-[9px] tracking-widest">Asset</th>
+                                        <th className="text-right py-2 px-3 text-slate-500 font-bold uppercase text-[9px] tracking-widest">Qty</th>
+                                        <th className="text-right py-2 px-3 text-slate-500 font-bold uppercase text-[9px] tracking-widest">Avg Cost</th>
+                                        <th className="text-right py-2 px-3 text-slate-500 font-bold uppercase text-[9px] tracking-widest">Total Cost</th>
+                                        <th className="text-right py-2 px-3 text-slate-500 font-bold uppercase text-[9px] tracking-widest">Mkt Price</th>
+                                        <th className="text-right py-2 px-3 text-slate-500 font-bold uppercase text-[9px] tracking-widest">Mkt Value</th>
+                                        <th className="text-right py-2 px-3 text-slate-500 font-bold uppercase text-[9px] tracking-widest">Gain/Loss</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100">
+                                      {accDetails.assets?.map((asset: any) => {
+                                        const isGain = parseFloat(asset.gain) >= 0;
+                                        return (
+                                          <tr key={`${account.id}-${asset.symbol}`} className="hover:bg-slate-50 transition-colors">
+                                            <td className="py-2.5 px-3">
+                                              <div className="flex flex-col">
+                                                <span className="font-bold text-primary">{asset.symbol}</span>
+                                                <span className="text-[9px] text-slate-400 truncate max-w-[150px]">{asset.name}</span>
+                                              </div>
+                                            </td>
+                                            <td className="text-right py-2.5 px-3 font-mono">{formatNumber(asset.quantity, 3)}</td>
+                                            <td className="text-right py-2.5 px-3 font-mono text-slate-500">{formatCurrency(asset.averageCost)}</td>
+                                            <td className="text-right py-2.5 px-3 font-mono text-slate-500">{formatCurrency(asset.totalCost)}</td>
+                                            <td className="text-right py-2.5 px-3 font-mono text-slate-500">{formatCurrency(asset.currentPrice)}</td>
+                                            <td className="text-right py-2.5 px-3 font-mono font-bold text-slate-700">{formatCurrency(asset.currentValue)}</td>
+                                            <td className={`text-right py-2.5 px-3 font-mono font-bold ${isGain ? "text-green-600/80" : "text-red-600/80"}`}>
+                                              <div>{isGain ? "+" : ""}{formatCurrency(asset.gain)}</div>
+                                              <div className="text-[9px]">{isGain ? "+" : ""}{asset.gainPercent}%</div>
+                                            </td>
+                                          </tr>
+                                        );
+                                      })}
+                                      {(!accDetails.assets || accDetails.assets.length === 0) && (
+                                        <tr>
+                                          <td colSpan={7} className="py-6 text-center text-slate-400 italic bg-white/50">
+                                            No assets tracked in this account.
+                                          </td>
+                                        </tr>
+                                      )}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
                       );
                     })}
                     {(!accounts || accounts.length === 0) && (
@@ -1930,8 +2009,7 @@ function PurchaseHistoryTable({
           </thead>
           <tbody>
             {filteredPurchases?.map((purchase: any) => {
-              const date = new Date(purchase.purchaseDate);
-              const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+              const dateStr = formatUTCDate(purchase.purchaseDate);
               const accountName = accounts?.find((a: any) => a.id === purchase.accountId)?.name || "Default";
               const quantity = parseFloat(purchase.quantity);
               const price = parseFloat(purchase.price);
@@ -1939,7 +2017,7 @@ function PurchaseHistoryTable({
 
               return (
                 <tr key={purchase.id} className="border-b border-border hover:bg-white transition-colors">
-                  <td className="py-3 px-4 font-mono whitespace-nowrap">{dateStr}</td>
+                  <td className="py-3 px-4 font-mono whitespace-nowrap text-xs text-slate-500">{dateStr}</td>
                   <td className="py-3 px-4 whitespace-nowrap">
                     <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200">
                       {accountName}
@@ -2157,9 +2235,8 @@ function CashHistoryTable({
             {filteredHistory.map((activity: any, idx: number) => (
               <tr key={idx} className="border-b border-border hover:bg-slate-50 transition-colors">
                 <td className="py-3 px-4 font-mono text-xs text-slate-500">
-                  {formatDate(activity.date)}
-                </td>
-                <td className="py-3 px-4">
+                  {formatUTCDate(activity.date)}
+                </td>                <td className="py-3 px-4">
                   <Badge variant="outline" className="capitalize text-[10px] h-5">
                     {activity.transactionType || "Adjustment"}
                   </Badge>

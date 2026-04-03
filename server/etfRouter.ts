@@ -1418,7 +1418,12 @@ export const etfRouter = router({
       const totalValue = totalInvestmentValue + cashAmount;
 
       // Calculate per-account summaries
-      const accountSummaries: Record<number, { investmentValue: string, cashValue: string, totalValue: string }> = {};
+      const accountSummaries: Record<number, { 
+        investmentValue: string, 
+        cashValue: string, 
+        totalValue: string,
+        assets: any[]
+      }> = {};
       
       // Initialize with cash balances
       allCashBalances.forEach((cb: any) => {
@@ -1427,21 +1432,40 @@ export const etfRouter = router({
           accountSummaries[cb.accountId] = {
             investmentValue: "0.00",
             cashValue: cash.toFixed(2),
-            totalValue: cash.toFixed(2)
+            totalValue: cash.toFixed(2),
+            assets: []
           };
         }
       });
 
-      // Add investment values
+      // Add investment values and assets
       holdingsWithValues.forEach((h: any) => {
         if (h.accountId) {
-          const existing = accountSummaries[h.accountId] || { investmentValue: "0.00", cashValue: "0.00", totalValue: "0.00" };
+          const existing = accountSummaries[h.accountId] || { 
+            investmentValue: "0.00", 
+            cashValue: "0.00", 
+            totalValue: "0.00",
+            assets: []
+          };
           const inv = parseFloat(existing.investmentValue) + h.currentValueNum;
           const cash = parseFloat(existing.cashValue);
+          
           accountSummaries[h.accountId] = {
             investmentValue: inv.toFixed(2),
             cashValue: cash.toFixed(2),
-            totalValue: (inv + cash).toFixed(2)
+            totalValue: (inv + cash).toFixed(2),
+            assets: [
+              ...existing.assets,
+              {
+                ...h,
+                averageCost: h.averageCost,
+                currentPrice: h.currentPrice,
+                totalCost: h.totalCostNum.toFixed(2),
+                currentValue: h.currentValueNum.toFixed(2),
+                gain: h.gainNum.toFixed(2),
+                gainPercent: h.totalCostNum > 0 ? ((h.gainNum / h.totalCostNum) * 100).toFixed(2) : "0",
+              }
+            ]
           };
         }
       });
@@ -2173,7 +2197,9 @@ function calculateDateRange(range: string) {
   let endDate = new Date();
   endDate.setHours(23, 59, 59, 999);
 
-  if (range === "10d") {
+  if (range === "3d") {
+    startDate.setDate(now.getDate() - 3);
+  } else if (range === "10d") {
     startDate.setDate(now.getDate() - 10);
   } else if (range === "30d" || range === "1m") {
     startDate.setDate(now.getDate() - 30);
