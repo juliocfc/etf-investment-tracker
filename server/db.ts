@@ -844,11 +844,17 @@ export async function markTransactionsAsImported(userId: number, externalIds: st
 }
 
 /**
- * Truncates a number to a fixed number of decimal places without rounding
+ * Truncates a number to a fixed number of decimal places without rounding up.
+ * Handles floating-point precision issues (e.g., 1070 * 30.56) by normalizing
+ * the value first.
  */
 export function truncateNumber(value: number, decimals: number = 2): number {
+  // 1. Fix floating point noise (e.g. 32699.199999999997 -> 32699.2)
+  const normalized = Math.round(value * 1e10) / 1e10;
+  
+  // 2. Truncate towards zero
   const factor = Math.pow(10, decimals);
-  return value < 0 
-    ? Math.ceil(value * factor) / factor 
-    : Math.floor(value * factor) / factor;
+  return normalized < 0 
+    ? Math.ceil(normalized * factor) / factor 
+    : Math.floor(normalized * factor) / factor;
 }
