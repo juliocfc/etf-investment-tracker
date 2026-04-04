@@ -60,36 +60,6 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
                 Investment Insights
               </h1>
             </div>
-
-            {/* Consolidated Totals */}
-            {consolidated && (
-              <div className="ml-6 pl-6 border-l border-slate-200 hidden lg:flex items-center gap-8">
-                <div className="flex flex-col">
-                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-tight">Consolidated Total</span>
-                  <span className="text-sm font-bold text-slate-800 font-mono leading-none">
-                    {formatCurrency(consolidated.totalValue)}
-                  </span>
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-tight">Investments</span>
-                  <div className="flex items-baseline gap-1.5 leading-none">
-                    <span className="text-xs font-bold text-green-600 font-mono">
-                      {formatCurrency(consolidated.investmentValue)}
-                    </span>
-                    <span className="text-[9px] font-bold text-slate-400">({consolidated.investmentPercent}%)</span>
-                  </div>
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-tight">Total Cash</span>
-                  <div className="flex items-baseline gap-1.5 leading-none">
-                    <span className="text-xs font-bold text-slate-600 font-mono">
-                      {formatCurrency(consolidated.cashBalance)}
-                    </span>
-                    <span className="text-[9px] font-bold text-slate-400">({consolidated.cashPercent}%)</span>
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
 
           <div className="flex items-center gap-2 sm:gap-6">
