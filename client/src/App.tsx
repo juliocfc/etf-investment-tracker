@@ -67,6 +67,32 @@ function DashboardRouter() {
   };
 
   const renderContent = () => {
+    // 1. If portfolios list is loaded but empty, show a big central call-to-action
+    if (portfolios && portfolios.length === 0 && activeTab !== "privacy" && activeTab !== "contact") {
+      return (
+        <div className="flex flex-col items-center justify-center h-[70vh] text-center px-4">
+          <div className="w-24 h-24 bg-blue-50 rounded-full flex items-center justify-center mb-8">
+            <LayoutDashboard className="w-12 h-12 text-[#004a99]" />
+          </div>
+          <h2 className="text-3xl font-bold text-slate-800 mb-4 tracking-tight">Your Investment Terminal is Ready</h2>
+          <p className="text-slate-500 max-w-md mb-10 text-lg leading-relaxed">
+            Create your first portfolio to start tracking your assets, analyzing performance, and managing your dividend income.
+          </p>
+          <Button 
+            onClick={() => {
+              const name = prompt("Enter a name for your new portfolio:");
+              if (name) createPortfolioMutation.mutate({ name });
+            }}
+            size="lg"
+            className="h-14 px-10 text-lg font-bold rounded-2xl bg-[#004a99] hover:bg-[#003d7a] shadow-xl shadow-blue-900/20 transition-all hover:scale-[1.02] active:scale-[0.98]"
+          >
+            <Plus className="w-6 h-6 mr-3 stroke-[3px]" />
+            Create Your First Portfolio
+          </Button>
+        </div>
+      );
+    }
+
     // Show portfolio selector requirement only for investment-specific tabs
     const portfolioRequiredTabs = ["portfolio", "activities", "performance", "dividends"];
     
@@ -97,13 +123,10 @@ function DashboardRouter() {
           }} 
         />;
       case "brokerage":
-        if (user?.role === "admin" || user?.role === "premium") {
-          return <BrokerageTransactions />;
-        }
-        return <Holdings selectedPortfolioId={selectedPortfolioId!} />;
+        return <BrokerageTransactions />;
       case "privacy":
         return <Privacy onBack={() => {
-          setActiveTab("portfolio");
+          setActiveTab("portfolios");
           if (location === "/privacy") setLocation("/");
         }} />;
       default:

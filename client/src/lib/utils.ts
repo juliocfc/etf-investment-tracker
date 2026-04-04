@@ -6,6 +6,16 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 /**
+ * Truncates a number to a fixed number of decimal places without rounding
+ */
+export function truncateNumber(value: number, decimals: number = 2): number {
+  const factor = Math.pow(10, decimals);
+  return value < 0 
+    ? Math.ceil(value * factor) / factor 
+    : Math.floor(value * factor) / factor;
+}
+
+/**
  * Formats a number as a currency string with comma separators
  */
 export function formatCurrency(value: number | string | undefined | null, decimals: number = 2): string {

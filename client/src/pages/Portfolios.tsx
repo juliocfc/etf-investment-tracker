@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from "react";
 import { trpc } from "@/lib/trpc";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, truncateNumber } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -93,7 +93,7 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
     });
 
     return Object.values(assetMap).map(asset => {
-      const mktValue = asset.quantity * asset.currentPrice;
+      const mktValue = truncateNumber(asset.quantity * asset.currentPrice);
       const gainLoss = mktValue - asset.totalCost;
       const gainLossPercent = asset.totalCost > 0 ? (gainLoss / asset.totalCost) * 100 : 0;
       const avgCost = asset.quantity > 0 ? asset.totalCost / asset.quantity : 0;
@@ -113,12 +113,19 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
   }, [allHoldings, portfolioFilter]);
 
   const tableTotals = useMemo(() => {
-    return consolidatedHoldings.reduce((acc, curr) => ({
+    const totals = consolidatedHoldings.reduce((acc, curr) => ({
       totalCost: acc.totalCost + curr.totalCost,
       mktValue: acc.mktValue + curr.mktValue,
       gainLoss: acc.gainLoss + curr.gainLoss,
       projectedDividend: acc.projectedDividend + curr.projectedDividend
     }), { totalCost: 0, mktValue: 0, gainLoss: 0, projectedDividend: 0 });
+
+    return {
+      totalCost: truncateNumber(totals.totalCost),
+      mktValue: truncateNumber(totals.mktValue),
+      gainLoss: truncateNumber(totals.gainLoss),
+      projectedDividend: truncateNumber(totals.projectedDividend)
+    };
   }, [consolidatedHoldings]);
 
   // Yearly performance data is now fetched via trpc.portfolio.getYearlyPerformance

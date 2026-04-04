@@ -1,6 +1,6 @@
 import { router, protectedProcedure } from "./_core/trpc";
 import { z } from "zod";
-import { getDb, eq, and, desc } from "./db";
+import { getDb, eq, and, desc, truncateNumber } from "./db";
 import { portfolios, cashBalance, InsertPortfolio } from "../drizzle/schema";
 import { TRPCError } from "@trpc/server";
 
@@ -57,8 +57,8 @@ export const portfolioRouter = router({
           const purchasePrice = holding.purchasePrice ? parseFloat(holding.purchasePrice.toString()) : 0;
           const quantity = parseFloat(holding.quantity.toString());
           
-          accountInvestmentValue += currentPrice * quantity;
-          accountTotalCost += purchasePrice * quantity;
+          accountInvestmentValue += truncateNumber(currentPrice * quantity);
+          accountTotalCost += truncateNumber(purchasePrice * quantity);
         }
 
         // Calculate cash value for this account
@@ -133,7 +133,7 @@ export const portfolioRouter = router({
         gain: portfolioGain.toFixed(2),
         gainPercent: portfolioGainPercent.toFixed(2),
         cashValue: portfolioCashValue.toFixed(2),
-        totalValue: (portfolioInvestmentValue + portfolioCashValue).toFixed(2),
+        totalValue: truncateNumber(portfolioInvestmentValue + portfolioCashValue).toFixed(2),
         accounts: accountDetails,
       });
     }
@@ -167,7 +167,7 @@ export const portfolioRouter = router({
       for (const holding of holdings) {
         const currentPrice = holding.currentPrice ? parseFloat(holding.currentPrice.toString()) : 0;
         const quantity = parseFloat(holding.quantity.toString());
-        totalInvestmentValue += currentPrice * quantity;
+        totalInvestmentValue += truncateNumber(currentPrice * quantity);
       }
     }
 
@@ -176,7 +176,7 @@ export const portfolioRouter = router({
       totalCashBalance += parseFloat(cash.amount.toString());
     }
 
-    const totalValue = totalInvestmentValue + totalCashBalance;
+    const totalValue = truncateNumber(totalInvestmentValue + totalCashBalance);
 
     return {
       totalValue: totalValue.toFixed(2),

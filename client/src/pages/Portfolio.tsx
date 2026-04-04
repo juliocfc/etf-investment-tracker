@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Plus, Trash2, RefreshCw, ShoppingCart, History, FolderPlus, FileUp, Wallet, TrendingUp, Info, ArrowUpCircle, ArrowDownCircle, CheckCircle2, MoreVertical, CalendarPlus, Download, List, Activity, DollarSign, LayoutDashboard, Edit2, ArrowUpDown, ChevronUp, ChevronDown, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
-import { formatCurrency, formatNumber, formatDate, formatUTCDate } from "@/lib/utils";
+import { formatCurrency, formatNumber, formatDate, formatUTCDate, truncateNumber } from "@/lib/utils";
 import React, { useEffect, useRef, useState, useMemo } from "react";
 import Activities from "./Activities";
 import Performance from "./Performance";
@@ -2013,8 +2013,7 @@ function PurchaseHistoryTable({
               const accountName = accounts?.find((a: any) => a.id === purchase.accountId)?.name || "Default";
               const quantity = parseFloat(purchase.quantity);
               const price = parseFloat(purchase.price);
-              const totalAmount = quantity * price;
-
+              const totalAmount = truncateNumber(quantity * price);
               return (
                 <tr key={purchase.id} className="border-b border-border hover:bg-white transition-colors">
                   <td className="py-3 px-4 font-mono whitespace-nowrap text-xs text-slate-500">{dateStr}</td>

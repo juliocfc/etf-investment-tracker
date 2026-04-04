@@ -842,3 +842,13 @@ export async function markTransactionsAsImported(userId: number, externalIds: st
     }
   }
 }
+
+/**
+ * Truncates a number to a fixed number of decimal places without rounding
+ */
+export function truncateNumber(value: number, decimals: number = 2): number {
+  const factor = Math.pow(10, decimals);
+  return value < 0 
+    ? Math.ceil(value * factor) / factor 
+    : Math.floor(value * factor) / factor;
+}

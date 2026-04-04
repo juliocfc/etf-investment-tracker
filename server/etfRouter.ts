@@ -25,6 +25,7 @@ import {
   parseCSVContent,
   bulkImportPurchases,
   getDb,
+  truncateNumber,
 } from "./db";
 import { gte, lte, sql, and, eq, desc, asc } from "drizzle-orm";
 import {
@@ -1359,14 +1360,14 @@ export const etfRouter = router({
             ? parseFloat(holding.currentPrice.toString())
             : 0;
           const quantity = parseFloat(holding.quantity.toString());
-          const value = currentPrice * quantity;
+          const value = truncateNumber(currentPrice * quantity);
 
           // Calculate average cost from purchases
           const avgCost = await calculateAverageCost(holding.id);
           const avgCostValue = avgCost
             ? parseFloat(avgCost.toString())
             : parseFloat(holding.purchasePrice.toString());
-          const purchaseValue = avgCostValue * quantity;
+          const purchaseValue = truncateNumber(avgCostValue * quantity);
           const gain = value - purchaseValue;
 
           totalInvestmentValue += value;
@@ -1441,7 +1442,7 @@ export const etfRouter = router({
       }
 
       const cashAmount = currentCashBalance ? parseFloat(currentCashBalance.amount.toString()) : 0;
-      const totalValue = totalInvestmentValue + cashAmount;
+      const totalValue = truncateNumber(totalInvestmentValue + cashAmount);
 
       // Calculate per-account summaries
       const accountSummaries: Record<number, { 
@@ -1866,7 +1867,7 @@ export const etfRouter = router({
       }
 
       return Array.from(activitiesMap.values()).map(activity => {
-        const currentValue = activity.totalQuantityNum * activity.currentPrice;
+        const currentValue = truncateNumber(activity.totalQuantityNum * activity.currentPrice);
         const gain = currentValue - activity.totalCostNum;
         const gainPercent = activity.totalCostNum > 0 ? (gain / activity.totalCostNum) * 100 : 0;
 
@@ -2020,7 +2021,7 @@ export const etfRouter = router({
           const history = symbolPriceHistories.get(p.symbol.toUpperCase()) || [];
           const pricePoint = history.filter(h => new Date(h.timestamp) <= preEndDate).pop();
           const price = pricePoint ? pricePoint.price : parseFloat(p.price);
-          previousYearEndInvValue += parseFloat(p.quantity) * price;
+          previousYearEndInvValue += truncateNumber(parseFloat(p.quantity) * price);
         }
       });
 
@@ -2040,7 +2041,7 @@ export const etfRouter = router({
         allPurchases.forEach((p: any) => {
           const pDate = new Date(p.purchaseDate);
           if (pDate >= startDate && pDate <= endDate) {
-            purchasesInYear += parseFloat(p.quantity) * parseFloat(p.price);
+            purchasesInYear += truncateNumber(parseFloat(p.quantity) * parseFloat(p.price));
           }
         });
 
@@ -2048,8 +2049,8 @@ export const etfRouter = router({
           for (const h of holdings) {
             const price = parseFloat(h.currentPrice || "0");
             const qty = parseFloat(h.quantity || "0");
-            invValue += price * qty;
-            costBasis += parseFloat(h.purchasePrice || "0") * qty;
+            invValue += truncateNumber(price * qty);
+            costBasis += truncateNumber(parseFloat(h.purchasePrice || "0") * qty);
           }
         } else {
           const yearEndHoldings = new Map<string, { qty: number, cost: number }>();
@@ -2062,7 +2063,7 @@ export const etfRouter = router({
               const qty = parseFloat(p.quantity);
               yearEndHoldings.set(sym, {
                 qty: existing.qty + qty,
-                cost: existing.cost + (qty * parseFloat(p.price))
+                cost: existing.cost + truncateNumber(qty * parseFloat(p.price))
               });
             }
           });
@@ -2076,7 +2077,7 @@ export const etfRouter = router({
             } else if (history.length > 0) {
               yearEndPrice = history[0].price;
             }
-            invValue += data.qty * yearEndPrice;
+            invValue += truncateNumber(data.qty * yearEndPrice);
             costBasis += data.cost;
           });
         }
@@ -2171,7 +2172,7 @@ export const etfRouter = router({
           const history = symbolPriceHistories.get(p.symbol.toUpperCase()) || [];
           const pricePoint = history.filter(h => new Date(h.timestamp) <= preFirstMonthEnd).pop();
           const price = pricePoint ? pricePoint.price : parseFloat(p.price);
-          previousMonthEndValue += parseFloat(p.quantity) * price;
+          previousMonthEndValue += truncateNumber(parseFloat(p.quantity) * price);
         }
       });
 
@@ -2186,14 +2187,14 @@ export const etfRouter = router({
         allPurchases.forEach((p: any) => {
           const pDate = new Date(p.purchaseDate);
           if (pDate >= monthStart && pDate <= actualEnd) {
-            purchasesInMonth += parseFloat(p.quantity) * parseFloat(p.price);
+            purchasesInMonth += truncateNumber(parseFloat(p.quantity) * parseFloat(p.price));
           }
           
           if (pDate <= actualEnd && (!p.isSold || (p.soldDate && new Date(p.soldDate) > actualEnd))) {
             const history = symbolPriceHistories.get(p.symbol.toUpperCase()) || [];
             const pricePoint = history.filter(h => new Date(h.timestamp) <= actualEnd).pop();
             const price = pricePoint ? pricePoint.price : parseFloat(p.price);
-            monthEndValue += parseFloat(p.quantity) * price;
+            monthEndValue += truncateNumber(parseFloat(p.quantity) * price);
           }
         });
 
