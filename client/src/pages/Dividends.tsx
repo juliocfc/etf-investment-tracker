@@ -394,31 +394,33 @@ export default function Dividends({ selectedPortfolioId }: { selectedPortfolioId
             <thead className="bg-slate-50">
               <tr className="border-b border-border text-[10px] font-bold text-slate-400 uppercase tracking-widest">
                 <th className="text-left py-3 px-6">Asset</th>
+                <th className="text-right py-3 px-6 text-blue-600">{report?.currentQuarterKey || "Current Qtr"} (Est)</th>
                 <th className="text-right py-3 px-6">{report?.targetQuarterKey || "Last Quarter"}</th>
                 <th className="text-right py-3 px-6">{report?.priorYearQuarterKey || "Prior Year"}</th>
                 <th className="text-center py-3 px-6">QoQ Growth %</th>
                 <th className="text-right py-3 px-6">L12M Total</th>
                 <th className="text-right py-3 px-6">P12M Total</th>
                 <th className="text-center py-3 px-6">YoY Growth %</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-50">
+              </tr>              </thead>
+              <tbody className="divide-y divide-slate-50">
               {report?.etfBreakdown.map((asset: any) => {
                 const growthNum = parseFloat(asset.growthPercent);
                 const isGrowthPositive = growthNum >= 0;
                 const yearlyGrowthNum = parseFloat(asset.yearlyGrowthPercent);
                 const isYearlyGrowthPositive = yearlyGrowthNum >= 0;
-                
+
                 return (
                   <tr key={asset.symbol} className="hover:bg-slate-50/50 transition-colors">
                     <td className="py-4 px-6 font-bold text-slate-700">{asset.symbol}</td>
+                    <td className="py-4 px-6 text-right">
+                      <div className="font-mono font-bold text-blue-600">{formatCurrency(asset.currentEstimatedQuarterly)}</div>
+                    </td>
                     <td className="py-4 px-6 text-right">
                       <div className="font-mono font-bold text-slate-800">{formatCurrency(asset.latestAmount)}</div>
                     </td>
                     <td className="py-4 px-6 text-right">
                       <div className="font-mono text-slate-600">{formatCurrency(asset.priorAmount)}</div>
-                    </td>
-                    <td className={`py-4 px-6 text-center`}>
+                    </td>                    <td className={`py-4 px-6 text-center`}>
                       <span className={`px-2 py-1 rounded text-[10px] font-bold font-mono ${isGrowthPositive ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
                         {isGrowthPositive ? "+" : ""}{asset.growthPercent}%
                       </span>
@@ -442,6 +444,9 @@ export default function Dividends({ selectedPortfolioId }: { selectedPortfolioId
               <tfoot className="bg-slate-50 border-t-2 border-slate-200">
                 <tr className="font-bold text-slate-800">
                   <td className="py-4 px-6 uppercase text-[10px] tracking-widest text-slate-500">Portfolio Totals</td>
+                  <td className="text-right py-4 px-6 font-mono text-sm text-blue-600">
+                    {formatCurrency(report.consolidatedComparative.currentEstimatedQuarterly)}
+                  </td>
                   <td className="text-right py-4 px-6 font-mono text-sm text-primary">
                     {formatCurrency(report.consolidatedComparative.latestAmount)}
                   </td>

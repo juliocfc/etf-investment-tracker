@@ -446,7 +446,14 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
                           {expandedPortfolios.has(portfolio.id) ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                         </button>
                       </td>
-                      <td className="py-4 px-4 font-bold text-slate-800">{portfolio.name}</td>
+                      <td className="py-4 px-4 font-bold text-slate-800">
+                        <button
+                          onClick={() => onPortfolioSelect?.(portfolio.id)}
+                          className="hover:text-primary hover:underline transition-colors text-left"
+                        >
+                          {portfolio.name}
+                        </button>
+                      </td>
                       <td className="py-4 px-4 text-right font-mono font-bold text-primary">{formatCurrency(portfolio.totalValue)}</td>
                       <td className="py-4 px-4 text-right">
                         <div className="font-mono font-medium text-slate-600">{formatCurrency(portfolio.cashValue)}</div>
@@ -915,6 +922,7 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
               <thead className="bg-slate-50">
                 <tr className="border-b border-border text-[10px] font-bold text-slate-400 uppercase tracking-widest">
                   <th className="text-left py-3 px-6">Asset</th>
+                  <th className="text-right py-3 px-6 text-blue-600">{dividendReport?.currentQuarterKey || "Current Qtr"} (Est)</th>
                   <th className="text-right py-3 px-6">{dividendReport?.targetQuarterKey || "Last Quarter"}</th>
                   <th className="text-right py-3 px-6">{dividendReport?.priorYearQuarterKey || "Prior Year"}</th>
                   <th className="text-center py-3 px-6">QoQ Growth %</th>
@@ -933,6 +941,9 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
                   return (
                     <tr key={asset.symbol} className="hover:bg-slate-50/50 transition-colors">
                       <td className="py-4 px-6 font-bold text-slate-700">{asset.symbol}</td>
+                      <td className="py-4 px-6 text-right">
+                        <div className="font-mono font-bold text-blue-600">{formatCurrency(asset.currentEstimatedQuarterly)}</div>
+                      </td>
                       <td className="py-4 px-6 text-right">
                         <div className="font-mono font-bold text-slate-800">{formatCurrency(asset.latestAmount)}</div>
                       </td>
@@ -963,6 +974,9 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
                 <tfoot className="bg-slate-50 border-t-2 border-slate-200">
                   <tr className="font-bold text-slate-800">
                     <td className="py-4 px-6 uppercase text-[10px] tracking-widest text-slate-500">Portfolio Totals</td>
+                    <td className="text-right py-4 px-6 font-mono text-sm text-blue-600">
+                      {formatCurrency(dividendReport.consolidatedComparative.currentEstimatedQuarterly)}
+                    </td>
                     <td className="text-right py-4 px-6 font-mono text-sm text-primary">
                       {formatCurrency(dividendReport.consolidatedComparative.latestAmount)}
                     </td>

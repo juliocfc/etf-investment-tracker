@@ -611,6 +611,7 @@ export const etfRouter = router({
       const priorYearTargetYear = targetYear - 1;
       const targetQuarterKey = `${targetYear} Q${targetQuarter}`;
       const priorYearQuarterKey = `${priorYearTargetYear} Q${targetQuarter}`;
+      const currentQuarterKey = `${currentYear} Q${currentQuarter}`;
 
       const windowStart = new Date();
       windowStart.setFullYear(windowStart.getFullYear() - 1);
@@ -637,6 +638,25 @@ export const etfRouter = router({
       for (const holding of holdings) {
         const dividendData = await fetchDividendData(holding.symbol as string);
         const purchases = await getPurchases(holding.id);
+
+        // Calculate current estimated quarterly dividend for this holding
+        const currentQty = parseFloat(holding.quantity.toString());
+        const sortedDivs = [...dividendData].sort((a, b) => new Date(b.exDate).getTime() - new Date(a.exDate).getTime());
+        const lastDivPerShare = sortedDivs.length > 0 ? sortedDivs[0].dividendPerShare : 0;
+        
+        // Simple logic to estimate quarterly amount based on frequency
+        const nowTime = new Date().getTime();
+        const twelveMonthsAgo = nowTime - (365 * 24 * 60 * 60 * 1000);
+        const lastYearPayments = dividendData.filter((d: any) => new Date(d.exDate).getTime() >= twelveMonthsAgo).length;
+        
+        let estimatedQuarterlyAmount = 0;
+        if (lastYearPayments >= 10) {
+          // Monthly payer -> 3 payments per quarter
+          estimatedQuarterlyAmount = currentQty * lastDivPerShare * 3;
+        } else {
+          // Quarterly or other -> 1 payment per quarter
+          estimatedQuarterlyAmount = currentQty * lastDivPerShare;
+        }
 
         let etfTotalWindow = 0;
         let etfTotalPriorWindow = 0;
@@ -707,6 +727,7 @@ export const etfRouter = router({
           existing.totalAllTimeNum += etfTotalAllTime;
           existing.latestAmountNum += etfTargetQuarterAmount;
           existing.priorAmountNum += etfPriorYearQuarterAmount;
+          existing.currentEstimatedQuarterlyNum += estimatedQuarterlyAmount;
           lastQuarters.forEach((q: string) => {
             existing.quarterlyValues[q] = (existing.quarterlyValues[q] || 0) + (etfQuarterly[q] || 0);
           });
@@ -722,6 +743,7 @@ export const etfRouter = router({
             latestDate: `${targetYear} Q${targetQuarter}`,
             priorAmountNum: etfPriorYearQuarterAmount,
             priorDate: `${priorYearTargetYear} Q${targetQuarter}`,
+            currentEstimatedQuarterlyNum: estimatedQuarterlyAmount,
           });
         }
       }
@@ -747,6 +769,7 @@ export const etfRouter = router({
           priorAmount: item.priorAmountNum.toFixed(2),
           priorDate: item.priorDate,
           growthPercent: growth.toFixed(2),
+          currentEstimatedQuarterly: item.currentEstimatedQuarterlyNum.toFixed(2),
           quarterlyBreakdown: lastQuarters.map((q: string) => ({
             quarter: q,
             amount: (item.quarterlyValues[q] || 0).toFixed(2),
@@ -760,6 +783,7 @@ export const etfRouter = router({
 
       const consolidatedLatest = etfBreakdown.reduce((sum: number, item: any) => sum + parseFloat(item.latestAmount), 0);
       const consolidatedPrior = etfBreakdown.reduce((sum: number, item: any) => sum + parseFloat(item.priorAmount), 0);
+      const consolidatedEstimated = etfBreakdown.reduce((sum: number, item: any) => sum + parseFloat(item.currentEstimatedQuarterly), 0);
       const consolidatedGrowth = consolidatedPrior > 0 
         ? ((consolidatedLatest - consolidatedPrior) / consolidatedPrior) * 100 
         : 0;
@@ -785,13 +809,15 @@ export const etfRouter = router({
         totalAllTime: totalAllTime.toFixed(2),
         targetQuarterKey,
         priorYearQuarterKey,
+        currentQuarterKey,
         consolidatedComparative: {
           latestAmount: consolidatedLatest.toFixed(2),
           priorAmount: consolidatedPrior.toFixed(2),
           growthPercent: consolidatedGrowth.toFixed(2),
           totalLastYear: totalLastYear.toFixed(2),
           totalPriorYear: totalPriorYear.toFixed(2),
-          yearlyGrowthPercent: consolidatedYearlyGrowth.toFixed(2)
+          yearlyGrowthPercent: consolidatedYearlyGrowth.toFixed(2),
+          currentEstimatedQuarterly: consolidatedEstimated.toFixed(2)
         },
         quarterlyBreakdown: lastQuarters.map((q: string) => ({
           quarter: q,
