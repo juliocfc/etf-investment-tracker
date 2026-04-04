@@ -87,11 +87,17 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
         {/* Sidebar */}
         <aside
           className={`${sidebarOpen ? "w-64" : "w-0"
-            } bg-white border-r border-slate-200 transition-all duration-300 overflow-hidden lg:static absolute z-30 h-full shadow-lg lg:shadow-none flex flex-col`}
+            } bg-white border-r border-slate-200 transition-all duration-300 overflow-hidden lg:static fixed inset-y-0 left-0 z-50 shadow-lg lg:shadow-none flex flex-col`}
         >
           <div className="p-4 flex-1 overflow-y-auto space-y-1 custom-scrollbar">
-            <div className="px-4 py-2 mb-1">
+            <div className="px-4 py-2 mb-1 flex items-center justify-between">
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Navigation</span>
+              <button 
+                onClick={() => setSidebarOpen(false)} 
+                className="lg:hidden p-1 text-slate-400 hover:text-slate-600 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
 
             {/* All Portfolios Link */}
@@ -218,7 +224,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
         {/* Overlay for mobile sidebar */}
         {sidebarOpen && (
           <div
-            className="lg:hidden fixed inset-0 bg-slate-900/20 backdrop-blur-sm z-20"
+            className="lg:hidden fixed inset-0 bg-slate-900/20 backdrop-blur-sm z-40"
             onClick={() => setSidebarOpen(false)}
           />
         )}
