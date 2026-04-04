@@ -15,14 +15,15 @@ import {
 } from "@/components/ui/select";
 
 export default function Activities({ selectedPortfolioId }: { selectedPortfolioId: number }) {
-  const [investmentRange, setInvestmentRange] = useState<string>("10d");
-  const [cashRange, setCashRange] = useState<string>("10d");
+  const [investmentRange, setInvestmentRange] = useState<string>("3d");
+  const [cashRange, setCashRange] = useState<string>("3d");
   const [cashAccountId, setCashAccountId] = useState<string>("");
   const [viewingPurchases, setViewingPurchases] = useState<any | null>(null);
   const [filterAccountId, setFilterAccountId] = useState<string>("");
 
   const rangeOptions = useMemo(() => {
     const options = [
+      { label: "Past 3 Days", value: "3d" },
       { label: "Past 10 Days", value: "10d" },
       { label: "Past 30 Days", value: "30d" },
       { label: "Past 60 Days", value: "60d" },
