@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
-import { formatCurrency, formatDate, formatUTCDate } from "@/lib/utils";
+import { formatCurrency, formatDate, formatUTCDate, truncateNumber } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -336,14 +336,26 @@ export default function BrokerageTransactions() {
 
       const txAmount = tx.amount || 0;
       const txUnits = tx.units || 0;
+      const absAmount = Math.abs(txAmount);
+      
+      let initialPrice = tx.price?.toString() || (txUnits !== 0 ? (absAmount / txUnits).toString() : "0");
+      
+      // Auto-adjust price if it's a trade and (qty * price) != absAmount
+      if ((mappedType === "buy" || mappedType === "sell") && txUnits !== 0) {
+        const calculatedTotal = truncateNumber(txUnits * parseFloat(initialPrice));
+        if (Math.abs(calculatedTotal - absAmount) > 0.01) {
+          // Force price to be exactly amount / units to satisfy the truncation rule later
+          initialPrice = (absAmount / txUnits).toString();
+        }
+      }
 
       return {
         txId: tx.id || String(Math.random()),
         date: getUTCDate(tx.trade_date || tx.settlement_date),
         symbol: renderSymbol(tx.symbol),
         quantity: txUnits.toString(),
-        price: tx.price?.toString() || (txUnits !== 0 ? Math.abs(txAmount / txUnits).toString() : "0"),
-        amount: Math.abs(txAmount).toString(),
+        price: initialPrice,
+        amount: absAmount.toString(),
         type: mappedType,
         portfolioId: matchedPortfolioId,
         accountId: matchedAccountId,
@@ -829,7 +841,8 @@ export default function BrokerageTransactions() {
                       <th className="text-right py-2 px-3">Asset</th>
                       <th className="text-right py-2 px-3">Price</th>
                       <th className="text-right py-2 px-3">Qty</th>
-                      <th className="text-right py-2 px-3">Amount</th>
+                      <th className="text-right py-2 px-3">Orig. Amt</th>
+                      <th className="text-right py-2 px-3">Calc. Total</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-50">
@@ -905,8 +918,11 @@ export default function BrokerageTransactions() {
                         <td className="py-3 px-3 text-right font-mono text-xs">
                           {mapping.type === "buy" || mapping.type === "sell" ? mapping.quantity : "-"}
                         </td>
-                        <td className="py-3 px-3 text-right font-mono text-xs font-bold">
+                        <td className="py-3 px-3 text-right font-mono text-xs text-slate-400">
                           {formatCurrency(mapping.amount)}
+                        </td>
+                        <td className="py-3 px-3 text-right font-mono text-xs font-bold">
+                          {formatCurrency(truncateNumber(parseFloat(mapping.quantity || "0") * parseFloat(mapping.price || "0")))}
                         </td>
                       </tr>
                     ))}
