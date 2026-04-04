@@ -527,36 +527,13 @@ export async function getCashBalance(userId: number, portfolioId: number, accoun
   return db.select().from(cashBalance).where(and(...conditions)).then((rows: any[]) => rows[0]);
 }
 
-export async function updateCashBalance(
-  userId: number, 
-  portfolioId: number, 
-  amount: string, 
-  accountId: number, 
-  date: Date = new Date(),
-  transactionDetails?: {
-    type: string,
-    transactionAmount: string,
-    description?: string
-  }
-) {
+/**
+ * Recalculates all running balances for an account based on its transaction history.
+ * Maintains consistency across all historical records and updates the current cash balance.
+ */
+export async function recalculateCashBalances(userId: number, portfolioId: number, accountId: number) {
   const db = await getDb();
-  
-  // 1. Record history
-  const historyResult = await db.insert(cashBalanceHistory).values({ 
-    userId, 
-    portfolioId, 
-    accountId, 
-    amount, // This will be recalculated below anyway, but it's a good placeholder
-    transactionType: transactionDetails?.type || "adjustment",
-    transactionAmount: transactionDetails?.transactionAmount || amount,
-    description: transactionDetails?.description || "",
-    date: date 
-  }).returning({ id: cashBalanceHistory.id });
-  
-  const historyId = historyResult[0]?.id;
-  
-  // 2. Recalculate ALL balances for this account from the date of this transaction onwards
-  // to maintain consistency if a historical transaction was added
+
   const accountHistory = await db.select()
     .from(cashBalanceHistory)
     .where(and(
@@ -575,14 +552,14 @@ export async function updateCashBalance(
     } else if (record.transactionType === "adjustment") {
       currentRunningBalance = parseFloat(record.transactionAmount || "0");
     }
-    
+
     // Update the record with its new resulting balance
     await db.update(cashBalanceHistory)
       .set({ amount: currentRunningBalance.toString() })
       .where(eq(cashBalanceHistory.id, record.id));
   }
 
-  // 3. Update current cashBalance table with the final resulting balance
+  // Update current cashBalance table with the final resulting balance
   const existing = await getCashBalance(userId, portfolioId, accountId);
   if (existing && existing.accountId === accountId) {
     await db.update(cashBalance)
@@ -599,10 +576,43 @@ export async function updateCashBalance(
       accountId 
     });
   }
-  
-  return { success: true, historyId };
+
+  return currentRunningBalance;
 }
 
+export async function updateCashBalance(
+  userId: number, 
+  portfolioId: number, 
+  amount: string, 
+  accountId: number, 
+  date: Date = new Date(),
+  transactionDetails?: {
+    type: string,
+    transactionAmount: string,
+    description?: string
+  }
+) {
+  const db = await getDb();
+
+  // 1. Record history
+  const historyResult = await db.insert(cashBalanceHistory).values({ 
+    userId, 
+    portfolioId, 
+    accountId, 
+    amount, // Placeholder
+    transactionType: transactionDetails?.type || "adjustment",
+    transactionAmount: transactionDetails?.transactionAmount || amount,
+    description: transactionDetails?.description || "",
+    date: date 
+  }).returning({ id: cashBalanceHistory.id });
+
+  const historyId = historyResult[0]?.id;
+
+  // 2. Recalculate
+  await recalculateCashBalances(userId, portfolioId, accountId);
+
+  return { success: true, historyId };
+}
 export async function getCashBalanceHistory(userId: number, portfolioId?: number, accountId?: number) {
   const db = await getDb();
   const conditions = [

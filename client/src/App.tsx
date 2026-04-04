@@ -10,9 +10,10 @@ import Contact from "./pages/Contact";
 import Portfolios from "./pages/Portfolios";
 import BrokerageTransactions from "./pages/BrokerageTransactions";
 import Privacy from "./pages/Privacy";
+import { Button } from "./components/ui/button";
 import { trpc } from "@/lib/trpc";
 import { useState, useEffect } from "react";
-import { TrendingUp, ShieldCheck, Globe, Zap, BarChart3, Shield } from "lucide-react";
+import { TrendingUp, ShieldCheck, Globe, Zap, BarChart3, Shield, Plus, LayoutDashboard } from "lucide-react";
 import { toast } from "sonner";
 import { Route, Switch, useLocation, Link } from "wouter";
 

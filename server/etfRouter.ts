@@ -11,6 +11,7 @@ import {
   getPriceHistory,
   getCashBalance,
   updateCashBalance,
+  recalculateCashBalances,
   getCashBalanceHistory,
   deleteCashTransaction,
   addBalanceHistory,
@@ -177,7 +178,7 @@ export const etfRouter = router({
       const feesNum = parseFloat(input.fees || "0");
 
       if (input.type === "buy") {
-        const totalCost = (quantityNum * priceNum) + feesNum;
+        const totalCost = truncateNumber((quantityNum * priceNum) + feesNum);
         const description = `You bought ${input.quantity} ${input.symbol.toUpperCase()} at $${priceNum.toFixed(2)}${feesNum > 0 ? ` (Fees: $${feesNum.toFixed(2)})` : ""}`;
         
         const cashResult = await updateCashBalance(
@@ -212,7 +213,7 @@ export const etfRouter = router({
           throw new Error(`Insufficient shares to sell. Owned: ${totalOwned}, Requested: ${quantityNum}`);
         }
 
-        const totalProceeds = (quantityNum * priceNum) - feesNum;
+        const totalProceeds = truncateNumber((quantityNum * priceNum) - feesNum);
 
         // 1. Create cash transaction (deposit)
         const currentBalance = await getCashBalance(ctx.user.id, input.portfolioId, input.accountId);
@@ -1092,7 +1093,7 @@ export const etfRouter = router({
       const feesNum = parseFloat(input.fees || "0");
 
       if (input.type === "buy") {
-        const totalCost = (quantityNum * priceNum) + feesNum;
+        const totalCost = truncateNumber((quantityNum * priceNum) + feesNum);
         const description = `You bought ${input.quantity} ${input.symbol.toUpperCase()} at $${priceNum.toFixed(2)}${feesNum > 0 ? ` (Fees: $${feesNum.toFixed(2)})` : ""}`;
         
         const cashResult = await updateCashBalance(
@@ -1127,7 +1128,7 @@ export const etfRouter = router({
           throw new Error(`Insufficient shares to sell. Owned: ${totalOwned}, Requested: ${quantityNum}`);
         }
 
-        const totalProceeds = (quantityNum * priceNum) - feesNum;
+        const totalProceeds = truncateNumber((quantityNum * priceNum) - feesNum);
 
         // 1. Create cash transaction (deposit)
         const currentBalance = await getCashBalance(ctx.user.id, input.portfolioId, input.accountId);
@@ -1239,6 +1240,73 @@ export const etfRouter = router({
     .input(z.object({ holdingId: z.number() }))
     .query(async ({ input }) => {
       return calculateAverageCost(input.holdingId);
+    }),
+
+  editPurchase: protectedProcedure
+    .input(z.object({
+      purchaseId: z.number(),
+      holdingId: z.number(),
+      portfolioId: z.number(),
+      accountId: z.number(),
+      quantity: z.string(),
+      price: z.string(),
+      fees: z.string().optional(),
+      purchaseDate: z.date(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const db = await getDb();
+      
+      // 1. Get existing purchase to find linked cash transaction
+      const existingPurchase = await db.select()
+        .from(purchases)
+        .where(eq(purchases.id, input.purchaseId))
+        .then((rows: any[]) => rows[0]);
+      
+      if (!existingPurchase) {
+        throw new Error("Purchase not found");
+      }
+
+      const quantityNum = parseFloat(input.quantity);
+      const priceNum = parseFloat(input.price);
+      const feesNum = parseFloat(input.fees || "0");
+      const totalCost = truncateNumber((quantityNum * priceNum) + feesNum);
+
+      // 2. Update purchase record
+      await updatePurchase(input.purchaseId, {
+        quantity: input.quantity,
+        price: input.price,
+        fees: input.fees || "0",
+        purchaseDate: input.purchaseDate,
+      });
+
+      // 3. Update linked cash transaction if it exists
+      if (existingPurchase.cashTransactionId) {
+        const description = `You bought ${input.quantity} ${existingPurchase.symbol.toUpperCase()} at $${priceNum.toFixed(2)}${feesNum > 0 ? ` (Fees: $${feesNum.toFixed(2)})` : ""}`;
+        
+        // We need to update the cashBalanceHistory record
+        await db.update(cashBalanceHistory)
+          .set({
+            transactionAmount: totalCost.toString(),
+            description: description,
+            date: input.purchaseDate,
+          })
+          .where(eq(cashBalanceHistory.id, existingPurchase.cashTransactionId));
+        
+        // Recalculate cash balance for the account without creating a new record
+        await recalculateCashBalances(
+          ctx.user.id,
+          input.portfolioId,
+          input.accountId
+        );
+      }
+
+      // 4. Update the holding totals (average cost and total quantity)
+      const newAvgCost = await calculateAverageCost(input.holdingId);
+      
+      return {
+        success: true,
+        newAvgCost,
+      };
     }),
 
   deletePurchase: protectedProcedure

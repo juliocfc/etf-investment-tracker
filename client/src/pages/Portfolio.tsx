@@ -1930,14 +1930,43 @@ function PurchaseHistoryTable({
   onDelete: (purchaseId: number, holdingId: number, portfolioId: number, accountId: number, symbol?: string) => void,
   accounts: any[]
 }) {
-  const { data: purchases } = trpc.etf.getPurchases.useQuery({ holdingId, symbol, portfolioId });
+  const utils = trpc.useUtils();
+  const { data: purchases, refetch: refetchPurchases } = trpc.etf.getPurchases.useQuery({ holdingId, symbol, portfolioId });
   const [filterAccountId, setFilterAccountId] = useState<string>("");
+  const [editingPurchase, setEditingPurchase] = useState<any | null>(null);
+
+  const editPurchaseMutation = trpc.etf.editPurchase.useMutation({
+    onSuccess: () => {
+      toast.success("Purchase updated successfully!");
+      refetchPurchases();
+      utils.etf.getPortfolioSummary.invalidate({ portfolioId });
+      utils.etf.getHoldings.invalidate({ portfolioId });
+      utils.portfolio.getConsolidatedSummary.invalidate();
+      setEditingPurchase(null);
+    },
+    onError: (error) => {
+      toast.error(error.message || "Failed to update purchase");
+    },
+  });
 
   const filteredPurchases = useMemo(() => {
     if (!purchases) return [];
     if (!filterAccountId) return purchases;
     return purchases.filter((p: any) => p.accountId === Number(filterAccountId));
   }, [purchases, filterAccountId]);
+
+  const handleEditSubmit = (data: any) => {
+    editPurchaseMutation.mutate({
+      purchaseId: editingPurchase.id,
+      holdingId,
+      portfolioId,
+      accountId: editingPurchase.accountId,
+      quantity: data.quantity,
+      price: data.price,
+      fees: data.fees,
+      purchaseDate: new Date(data.purchaseDate + "T12:00:00"),
+    });
+  };
 
   const handleExportCSV = () => {
     if (!filteredPurchases || filteredPurchases.length === 0) {
@@ -2026,14 +2055,24 @@ function PurchaseHistoryTable({
                   <td className="text-right py-3 px-4 font-mono font-medium">{formatCurrency(purchase.price)}</td>
                   <td className="text-right py-3 px-4 font-mono font-bold text-slate-700">{formatCurrency(totalAmount)}</td>
                   <td className="text-center py-3 px-4">
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => onDelete(purchase.id, holdingId, portfolioId, purchase.accountId, symbol)}
-                      className="text-slate-400 hover:text-destructive"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    <div className="flex items-center justify-center gap-1">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setEditingPurchase(purchase)}
+                        className="text-slate-400 hover:text-primary"
+                      >
+                        <Edit2 className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => onDelete(purchase.id, holdingId, portfolioId, purchase.accountId, symbol)}
+                        className="text-slate-400 hover:text-destructive"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </td>
                 </tr>
               );
@@ -2047,6 +2086,85 @@ function PurchaseHistoryTable({
             )}
           </tbody>
         </table>
+      </div>
+
+      {editingPurchase && (
+        <Dialog open={!!editingPurchase} onOpenChange={() => setEditingPurchase(null)}>
+          <DialogContent className="sm:max-w-[425px]">
+            <DialogHeader>
+              <DialogTitle>Edit Purchase: {symbol}</DialogTitle>
+            </DialogHeader>
+            <PurchaseEditForm 
+              purchase={editingPurchase} 
+              onSubmit={handleEditSubmit} 
+              onCancel={() => setEditingPurchase(null)}
+              isLoading={editPurchaseMutation.isPending}
+            />
+          </DialogContent>
+        </Dialog>
+      )}
+    </div>
+  );
+}
+
+function PurchaseEditForm({ purchase, onSubmit, onCancel, isLoading }: { purchase: any, onSubmit: (data: any) => void, onCancel: () => void, isLoading: boolean }) {
+  const [formData, setFormData] = useState({
+    quantity: purchase.quantity,
+    price: purchase.price,
+    fees: purchase.fees || "0",
+    purchaseDate: formatUTCDate(purchase.purchaseDate),
+  });
+
+  return (
+    <div className="space-y-4 pt-4">
+      <div className="grid gap-2">
+        <label className="text-xs font-bold text-slate-500 uppercase">Quantity</label>
+        <Input 
+          type="number" 
+          step="0.001" 
+          value={formData.quantity} 
+          onChange={(e) => setFormData(prev => ({ ...prev, quantity: e.target.value }))} 
+        />
+      </div>
+      <div className="grid gap-2">
+        <label className="text-xs font-bold text-slate-500 uppercase">Price per Share</label>
+        <Input 
+          type="text" 
+          value={formData.price} 
+          onChange={(e) => setFormData(prev => ({ ...prev, price: e.target.value }))} 
+        />
+      </div>
+      <div className="grid gap-2">
+        <label className="text-xs font-bold text-slate-500 uppercase">Fees</label>
+        <Input 
+          type="text" 
+          value={formData.fees} 
+          onChange={(e) => setFormData(prev => ({ ...prev, fees: e.target.value }))} 
+        />
+      </div>
+      <div className="grid gap-2">
+        <label className="text-xs font-bold text-slate-500 uppercase">Trade Date</label>
+        <Input 
+          type="date" 
+          value={formData.purchaseDate} 
+          onChange={(e) => setFormData(prev => ({ ...prev, purchaseDate: e.target.value }))} 
+        />
+      </div>
+      <div className="grid gap-2 p-3 bg-slate-50 rounded-md border border-slate-100">
+        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total Transaction Value</label>
+        <div className="text-lg font-mono font-bold text-slate-700">
+          {formatCurrency(truncateNumber(
+            (parseFloat(formData.quantity || "0") * parseFloat(formData.price || "0")) + 
+            parseFloat(formData.fees || "0")
+          ))}
+        </div>
+      </div>
+      <div className="flex justify-end gap-3 pt-4">
+        <Button variant="outline" onClick={onCancel} disabled={isLoading}>Cancel</Button>
+        <Button onClick={() => onSubmit(formData)} disabled={isLoading}>
+          {isLoading ? <RefreshCw className="w-4 h-4 animate-spin mr-2" /> : null}
+          Save Changes
+        </Button>
       </div>
     </div>
   );
@@ -2245,10 +2363,10 @@ function CashHistoryTable({
                 </td>
                 <td className={`text-right py-3 px-4 font-mono font-bold text-xs ${activity.transactionType === 'withdrawal' ? 'text-red-600' : activity.transactionType === 'deposit' ? 'text-green-600' : 'text-slate-700'}`}>
                   {activity.transactionType === 'withdrawal' ? '-' : activity.transactionType === 'deposit' ? '+' : ''}
-                  {formatCurrency(activity.transactionAmount || activity.amount)}
+                  {formatCurrency(truncateNumber(parseFloat(activity.transactionAmount || activity.amount || "0")))}
                 </td>
                 <td className="text-right py-3 px-4 font-mono text-xs text-slate-500">
-                  {formatCurrency(activity.amount)}
+                  {formatCurrency(truncateNumber(parseFloat(activity.amount || "0")))}
                 </td>
                 <td className="py-3 px-4 text-center">
                   <Button
