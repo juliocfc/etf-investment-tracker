@@ -869,14 +869,14 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                               {account.number && <div className="text-[10px] text-slate-500 font-mono mt-0.5">{account.number}</div>}
                             </td>
                             <td className="py-4 px-6 text-right font-mono font-bold text-primary">
-                              {formatCurrency(accDetails.totalValue)}
+                              {formatCurrency(truncateNumber(parseFloat(accDetails.totalValue)))}
                             </td>
                             <td className="py-4 px-6 text-right">
-                              <div className="font-mono font-medium text-slate-600">{formatCurrency(accDetails.cashValue)}</div>
+                              <div className="font-mono font-medium text-slate-600">{formatCurrency(truncateNumber(parseFloat(accDetails.cashValue)))}</div>
                               <div className="text-[9px] font-bold text-slate-400 uppercase">{cashPercent}%</div>
                             </td>
                             <td className="py-4 px-6 text-right">
-                              <div className="font-mono font-medium text-green-600">{formatCurrency(accDetails.investmentValue)}</div>
+                              <div className="font-mono font-medium text-green-600">{formatCurrency(truncateNumber(parseFloat(accDetails.investmentValue)))}</div>
                               <div className="text-[9px] font-bold text-slate-400 uppercase">{invPercent}%</div>
                             </td>
                             <td className="py-4 px-6 text-right font-mono text-xs text-slate-400">—</td>
@@ -974,12 +974,12 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                                               </div>
                                             </td>
                                             <td className="text-right py-2.5 px-3 font-mono">{formatNumber(asset.quantity, 3)}</td>
-                                            <td className="text-right py-2.5 px-3 font-mono text-slate-500">{formatCurrency(asset.averageCost)}</td>
-                                            <td className="text-right py-2.5 px-3 font-mono text-slate-500">{formatCurrency(asset.totalCost)}</td>
-                                            <td className="text-right py-2.5 px-3 font-mono text-slate-500">{formatCurrency(asset.currentPrice)}</td>
-                                            <td className="text-right py-2.5 px-3 font-mono font-bold text-slate-700">{formatCurrency(asset.currentValue)}</td>
+                                            <td className="text-right py-2.5 px-3 font-mono text-slate-500">{formatCurrency(truncateNumber(parseFloat(asset.averageCost)))}</td>
+                                            <td className="text-right py-2.5 px-3 font-mono text-slate-500">{formatCurrency(truncateNumber(parseFloat(asset.totalCost)))}</td>
+                                            <td className="text-right py-2.5 px-3 font-mono text-slate-500">{formatCurrency(truncateNumber(parseFloat(asset.currentPrice)))}</td>
+                                            <td className="text-right py-2.5 px-3 font-mono font-bold text-slate-700">{formatCurrency(truncateNumber(parseFloat(asset.currentValue)))}</td>
                                             <td className={`text-right py-2.5 px-3 font-mono font-bold ${isGain ? "text-green-600/80" : "text-red-600/80"}`}>
-                                              <div>{isGain ? "+" : ""}{formatCurrency(asset.gain)}</div>
+                                              <div>{isGain ? "+" : ""}{formatCurrency(truncateNumber(parseFloat(asset.gain)))}</div>
                                               <div className="text-[9px]">{isGain ? "+" : ""}{asset.gainPercent}%</div>
                                             </td>
                                           </tr>
@@ -1014,16 +1014,16 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                       <tr className="font-bold text-slate-800">
                         <td className="py-4 px-6 uppercase text-[10px] tracking-widest text-slate-500">Portfolio Totals</td>
                         <td className="text-right py-4 px-6 font-mono text-sm text-primary">
-                          {formatCurrency(summary?.totalValue)}
+                          {formatCurrency(truncateNumber(parseFloat(summary?.totalValue || "0")))}
                         </td>
                         <td className="text-right py-4 px-6">
-                          <div className="font-mono text-sm text-slate-700">{formatCurrency(summary?.cashBalance)}</div>
+                          <div className="font-mono text-sm text-slate-700">{formatCurrency(truncateNumber(parseFloat(summary?.cashBalance || "0")))}</div>
                           <div className="text-[9px] font-bold text-slate-400 uppercase">
                             {summary?.totalValue && parseFloat(summary.totalValue) > 0 ? ((parseFloat(summary.cashBalance) / parseFloat(summary.totalValue)) * 100).toFixed(1) : "0"}%
                           </div>
                         </td>
                         <td className="text-right py-4 px-6">
-                          <div className="font-mono text-sm text-green-700">{formatCurrency(summary?.investmentValue)}</div>
+                          <div className="font-mono text-sm text-green-700">{formatCurrency(truncateNumber(parseFloat(summary?.investmentValue || "0")))}</div>
                           <div className="text-[9px] font-bold text-slate-400 uppercase">
                             {summary?.totalValue && parseFloat(summary.totalValue) > 0 ? ((parseFloat(summary.investmentValue) / parseFloat(summary.totalValue)) * 100).toFixed(1) : "0"}%
                           </div>

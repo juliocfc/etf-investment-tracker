@@ -1481,9 +1481,9 @@ export const etfRouter = router({
             accountName: account?.name || "Unknown Account",
             quantity: h.quantity.toString(),
             averageCost: h.averageCost,
-            totalCost: h.totalCostNum.toFixed(2),
-            currentValue: h.currentValueNum.toFixed(2),
-            gain: h.gainNum.toFixed(2),
+            totalCost: truncateNumber(h.totalCostNum).toFixed(2),
+            currentValue: truncateNumber(h.currentValueNum).toFixed(2),
+            gain: truncateNumber(h.gainNum).toFixed(2),
             gainPercent: h.totalCostNum > 0 ? ((h.gainNum / h.totalCostNum) * 100).toFixed(2) : "0",
             currentPrice: h.currentPrice,
           });
@@ -1492,18 +1492,18 @@ export const etfRouter = router({
           ...h,
           quantity: h.quantity.toString(),
           averageCost: h.quantity > 0 ? (h.totalCostNum / h.quantity).toString() : "0",
-          totalCost: h.totalCostNum.toFixed(2),
-          currentValue: h.currentValueNum.toFixed(2),
-          gain: h.gainNum.toFixed(2),
+          totalCost: truncateNumber(h.totalCostNum).toFixed(2),
+          currentValue: truncateNumber(h.currentValueNum).toFixed(2),
+          gain: truncateNumber(h.gainNum).toFixed(2),
           gainPercent:
             h.totalCostNum > 0 ? ((h.gainNum / h.totalCostNum) * 100).toFixed(2) : "0",
         }));
       } else {
         processedHoldings = holdingsWithValues.map((h) => ({
           ...h,
-          totalCost: h.totalCostNum.toFixed(2),
-          currentValue: h.currentValueNum.toFixed(2),
-          gain: h.gainNum.toFixed(2),
+          totalCost: truncateNumber(h.totalCostNum).toFixed(2),
+          currentValue: truncateNumber(h.currentValueNum).toFixed(2),
+          gain: truncateNumber(h.gainNum).toFixed(2),
           gainPercent:
             h.totalCostNum > 0 ? ((h.gainNum / h.totalCostNum) * 100).toFixed(2) : "0",
         }));
@@ -1526,8 +1526,8 @@ export const etfRouter = router({
           const cash = parseFloat(cb.amount);
           accountSummaries[cb.accountId] = {
             investmentValue: "0.00",
-            cashValue: cash.toFixed(2),
-            totalValue: cash.toFixed(2),
+            cashValue: truncateNumber(cash).toFixed(2),
+            totalValue: truncateNumber(cash).toFixed(2),
             assets: []
           };
         }
@@ -1546,18 +1546,18 @@ export const etfRouter = router({
           const cash = parseFloat(existing.cashValue);
           
           accountSummaries[h.accountId] = {
-            investmentValue: inv.toFixed(2),
-            cashValue: cash.toFixed(2),
-            totalValue: (inv + cash).toFixed(2),
+            investmentValue: truncateNumber(inv).toFixed(2),
+            cashValue: truncateNumber(cash).toFixed(2),
+            totalValue: truncateNumber(inv + cash).toFixed(2),
             assets: [
               ...existing.assets,
               {
                 ...h,
                 averageCost: h.averageCost,
                 currentPrice: h.currentPrice,
-                totalCost: h.totalCostNum.toFixed(2),
-                currentValue: h.currentValueNum.toFixed(2),
-                gain: h.gainNum.toFixed(2),
+                totalCost: truncateNumber(h.totalCostNum).toFixed(2),
+                currentValue: truncateNumber(h.currentValueNum).toFixed(2),
+                gain: truncateNumber(h.gainNum).toFixed(2),
                 gainPercent: h.totalCostNum > 0 ? ((h.gainNum / h.totalCostNum) * 100).toFixed(2) : "0",
               }
             ]
@@ -1567,10 +1567,10 @@ export const etfRouter = router({
 
       return {
         holdings: processedHoldings,
-        cashBalance: cashAmount.toFixed(2),
+        cashBalance: truncateNumber(cashAmount).toFixed(2),
         cashBalances: cashBalancesMap,
         accountSummaries,
-        investmentValue: totalInvestmentValue.toFixed(2),
+        investmentValue: truncateNumber(totalInvestmentValue).toFixed(2),
         totalValue: totalValue.toFixed(2),
         allocationBreakdown: processedHoldings.map((h: any) => ({
           symbol: h.symbol,
