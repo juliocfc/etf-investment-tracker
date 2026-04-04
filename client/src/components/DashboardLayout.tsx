@@ -32,15 +32,11 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
   const [newPortfolioName, setNewPortfolioName] = useState("");
   const { user, logout } = useAuth();
 
-  const { data: consolidated } = trpc.portfolio.getConsolidatedSummary.useQuery(undefined, {
-    staleTime: 30000,
-  });
-
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col">
+    <div className="h-screen bg-slate-50 text-slate-900 flex flex-col overflow-hidden">
       {/* Header */}
-      <header className="border-b border-slate-200 bg-white sticky top-0 z-40 shadow-sm">
-        <div className="flex items-center justify-between px-6 py-3">
+      <header className="h-14 border-b border-slate-200 bg-white sticky top-0 z-[60] shadow-sm">
+        <div className="flex items-center justify-between px-6 h-full">
           <div className="flex items-center gap-4">
             <button
               onClick={() => setSidebarOpen(!sidebarOpen)}
@@ -87,7 +83,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
         {/* Sidebar */}
         <aside
           className={`${sidebarOpen ? "w-64" : "w-0"
-            } bg-white border-r border-slate-200 transition-all duration-300 overflow-hidden lg:static fixed inset-y-0 left-0 z-50 shadow-lg lg:shadow-none flex flex-col`}
+            } bg-white border-r border-slate-200 transition-all duration-300 overflow-hidden lg:static fixed top-14 bottom-0 left-0 z-50 shadow-lg lg:shadow-none flex flex-col`}
         >
           <div className="p-4 flex-1 overflow-y-auto space-y-1 custom-scrollbar">
             <div className="px-4 py-2 mb-1 flex items-center justify-between">
@@ -224,7 +220,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
         {/* Overlay for mobile sidebar */}
         {sidebarOpen && (
           <div
-            className="lg:hidden fixed inset-0 bg-slate-900/20 backdrop-blur-sm z-40"
+            className="lg:hidden fixed inset-0 bg-slate-900/20 backdrop-blur-sm z-40 top-14"
             onClick={() => setSidebarOpen(false)}
           />
         )}
