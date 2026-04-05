@@ -80,6 +80,7 @@ export const portfolioRouter = router({
           id: account.id,
           name: account.name,
           number: account.number,
+          accountType: account.accountType,
           investmentValue: accountInvestmentValue.toFixed(2),
           totalCost: accountTotalCost.toFixed(2),
           gain: accountGain.toFixed(2),

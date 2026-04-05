@@ -15,6 +15,7 @@ export const accountRouter = router({
         portfolioId: z.number(),
         name: z.string().min(1).max(255),
         number: z.string().optional(),
+        accountType: z.enum(["Retirement", "Brokerage", "Savings", "Checking", "Other"]).default("Brokerage"),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -23,6 +24,7 @@ export const accountRouter = router({
         portfolioId: input.portfolioId,
         name: input.name,
         number: input.number,
+        accountType: input.accountType,
       });
       return { id: Number(accountId) };
     }),
@@ -40,6 +42,7 @@ export const accountRouter = router({
         id: z.number(),
         name: z.string().min(1).max(255),
         number: z.string().optional(),
+        accountType: z.enum(["Retirement", "Brokerage", "Savings", "Checking", "Other"]).optional(),
       })
     )
     .mutation(async ({ input }) => {
@@ -47,6 +50,7 @@ export const accountRouter = router({
       await updateAccount(input.id, {
         name: input.name,
         number: input.number,
+        accountType: input.accountType,
       });
       return { success: true };
     }),

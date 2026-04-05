@@ -537,7 +537,14 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
                                       return (
                                         <tr key={acc.id} className="border-b border-slate-100 last:border-0">
                                           <td className="py-2.5">
-                                            <div className="font-semibold text-slate-700">{acc.name}</div>
+                                            <div className="flex items-center gap-2">
+                                              <div className="font-semibold text-slate-700">{acc.name}</div>
+                                              {acc.accountType && (
+                                                <span className="text-[8px] font-bold uppercase px-1 py-0.5 rounded bg-slate-100 text-slate-400 border border-slate-100">
+                                                  {acc.accountType}
+                                                </span>
+                                              )}
+                                            </div>
                                             {acc.number && <div className="text-[10px] font-mono text-slate-400">{acc.number}</div>}
                                           </td>
                                           <td className="py-2.5 text-right font-mono font-bold text-slate-700">{formatCurrency(acc.totalValue)}</td>

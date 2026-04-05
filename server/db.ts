@@ -337,6 +337,7 @@ export async function createAccount(data: any) {
     portfolioId: data.portfolioId,
     name: data.name,
     number: data.number || null,
+    accountType: data.accountType || "Brokerage",
   };
   
   const result = await db.insert(accounts).values(values);

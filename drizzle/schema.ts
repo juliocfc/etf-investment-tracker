@@ -34,6 +34,7 @@ export const accounts = sqliteTable("accounts", {
   portfolioId: integer("portfolioId").notNull(),
   name: text("name").notNull(),
   number: text("number"),
+  accountType: text("accountType").default("Brokerage").notNull(), // "Retirement", "Brokerage", "Savings", "Checking", "Other"
   createdAt: integer("createdAt", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
   updatedAt: integer("updatedAt", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
 });

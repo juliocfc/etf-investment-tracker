@@ -13,6 +13,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Plus, Trash2, RefreshCw, ShoppingCart, History, FolderPlus, FileUp, Wallet, TrendingUp, Info, ArrowUpCircle, ArrowDownCircle, CheckCircle2, MoreVertical, CalendarPlus, Download, List, Activity, DollarSign, LayoutDashboard, Edit2, ArrowUpDown, ChevronUp, ChevronDown, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import { formatCurrency, formatNumber, formatDate, formatUTCDate, truncateNumber } from "@/lib/utils";
@@ -91,6 +98,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
   const [accountFormData, setAccountFormData] = useState({
     name: "",
     number: "",
+    accountType: "Brokerage" as "Retirement" | "Brokerage" | "Savings" | "Checking" | "Other",
   });
 
   const [tradeData, setTradeData] = useState({
@@ -207,14 +215,14 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
     { enabled: !!selectedPortfolioId }
   );
 
-  const [editingAccount, setEditingAccount] = useState<{ id: number, name: string, number?: string } | null>(null);
+  const [editingAccount, setEditingAccount] = useState<{ id: number, name: string, number?: string, accountType: string } | null>(null);
 
   // Mutations
   const addAccountMutation = trpc.account.addAccount.useMutation({
     onSuccess: () => {
       toast.success("Account added successfully!");
       refetchAccounts();
-      setAccountFormData({ name: "", number: "" });
+      setAccountFormData({ name: "", number: "", accountType: "Brokerage" });
       setIsAccountsDialogOpen(false);
     },
     onError: (error) => {
@@ -648,6 +656,24 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                     className="h-12 border-slate-200 focus:border-primary focus:ring-primary shadow-sm"
                   />
                 </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Account Type</label>
+                  <Select
+                    value={accountFormData.accountType}
+                    onValueChange={(value: any) => setAccountFormData(prev => ({ ...prev, accountType: value }))}
+                  >
+                    <SelectTrigger className="h-12 border-slate-200 focus:ring-primary">
+                      <SelectValue placeholder="Select type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Brokerage">Brokerage</SelectItem>
+                      <SelectItem value="Retirement">Retirement</SelectItem>
+                      <SelectItem value="Savings">Savings</SelectItem>
+                      <SelectItem value="Checking">Checking</SelectItem>
+                      <SelectItem value="Other">Other</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
               <Button 
                 onClick={() => {
@@ -655,7 +681,8 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                     addAccountMutation.mutate({ 
                       portfolioId: selectedPortfolioId, 
                       name: accountFormData.name,
-                      number: accountFormData.number
+                      number: accountFormData.number,
+                      accountType: accountFormData.accountType
                     });
                   }
                 }}
@@ -816,13 +843,32 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                             />
                           </div>
                         </div>
+                        <div className="grid gap-2">
+                          <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Account Type</label>
+                          <Select
+                            value={accountFormData.accountType}
+                            onValueChange={(value: any) => setAccountFormData(prev => ({ ...prev, accountType: value }))}
+                          >
+                            <SelectTrigger className="h-10 border-slate-200">
+                              <SelectValue placeholder="Select type" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="Brokerage">Brokerage</SelectItem>
+                              <SelectItem value="Retirement">Retirement</SelectItem>
+                              <SelectItem value="Savings">Savings</SelectItem>
+                              <SelectItem value="Checking">Checking</SelectItem>
+                              <SelectItem value="Other">Other</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
                         <Button
                           className="w-full h-10 font-bold uppercase tracking-wider"
                           disabled={addAccountMutation.isPending || !accountFormData.name}
                           onClick={() => addAccountMutation.mutate({
                             portfolioId: selectedPortfolioId,
                             name: accountFormData.name,
-                            number: accountFormData.number
+                            number: accountFormData.number,
+                            accountType: accountFormData.accountType
                           })}
                         >
                           {addAccountMutation.isPending ? "Adding..." : "Create Account"}
@@ -865,7 +911,14 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                               </button>
                             </td>
                             <td className="py-4 px-6">
-                              <div className="font-bold text-slate-800">{account.name}</div>
+                              <div className="flex items-center gap-2">
+                                <div className="font-bold text-slate-800">{account.name}</div>
+                                {account.accountType && (
+                                  <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 border border-slate-200">
+                                    {account.accountType}
+                                  </span>
+                                )}
+                              </div>
                               {account.number && <div className="text-[10px] text-slate-500 font-mono mt-0.5">{account.number}</div>}
                             </td>
                             <td className="py-4 px-6 text-right font-mono font-bold text-primary">
@@ -891,9 +944,14 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                                   <DropdownMenuContent align="end" className="w-56">
                                     <DropdownMenuLabel>Manage Account</DropdownMenuLabel>
                                     <DropdownMenuSeparator />
-                                    <DropdownMenuItem onClick={() => setEditingAccount({ id: account.id, name: account.name, number: account.number || "" })}>
+                                    <DropdownMenuItem onClick={() => setEditingAccount({ 
+                                      id: account.id, 
+                                      name: account.name, 
+                                      number: account.number || "",
+                                      accountType: account.accountType || "Brokerage"
+                                    })}>
                                       <Edit2 className="mr-2 h-4 w-4 text-slate-500" />
-                                      <span>Rename Account</span>
+                                      <span>Edit Account</span>
                                     </DropdownMenuItem>
                                     <DropdownMenuSeparator />
                                     <DropdownMenuItem onClick={() => {
@@ -1036,11 +1094,11 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
               </div>
             </Card>
 
-            {/* Rename Account Dialog */}
+            {/* Edit Account Dialog */}
             <Dialog open={!!editingAccount} onOpenChange={(open) => !open && setEditingAccount(null)}>
               <DialogContent className="sm:max-w-[425px]">
                 <DialogHeader>
-                  <DialogTitle>Rename Account</DialogTitle>
+                  <DialogTitle>Edit Account</DialogTitle>
                 </DialogHeader>
                 <div className="space-y-4 pt-4">
                   <div className="grid gap-2">
@@ -1057,13 +1115,32 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                       onChange={(e) => setEditingAccount(prev => prev ? { ...prev, number: e.target.value } : null)}
                     />
                   </div>
+                  <div className="grid gap-2">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Account Type</label>
+                    <Select
+                      value={editingAccount?.accountType}
+                      onValueChange={(value: any) => setEditingAccount(prev => prev ? { ...prev, accountType: value } : null)}
+                    >
+                      <SelectTrigger className="h-10 border-slate-200">
+                        <SelectValue placeholder="Select type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Brokerage">Brokerage</SelectItem>
+                        <SelectItem value="Retirement">Retirement</SelectItem>
+                        <SelectItem value="Savings">Savings</SelectItem>
+                        <SelectItem value="Checking">Checking</SelectItem>
+                        <SelectItem value="Other">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                   <Button
                     className="w-full h-10 font-bold uppercase tracking-wider"
                     disabled={updateAccountMutation.isPending || !editingAccount?.name}
                     onClick={() => editingAccount && updateAccountMutation.mutate({
                       id: editingAccount.id,
                       name: editingAccount.name,
-                      number: editingAccount.number
+                      number: editingAccount.number,
+                      accountType: editingAccount.accountType as any
                     })}
                   >
                     Save Changes
