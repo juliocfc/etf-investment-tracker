@@ -1517,17 +1517,20 @@ export const etfRouter = router({
         investmentValue: string, 
         cashValue: string, 
         totalValue: string,
+        accountType: string,
         assets: any[]
       }> = {};
-      
+
       // Initialize with cash balances
       allCashBalances.forEach((cb: any) => {
-        if (cb.accountId) {
+        if (cb.accountId !== undefined && cb.accountId !== null) {
           const cash = parseFloat(cb.amount);
+          const account = portfolioAccounts.find((a: any) => a.id === cb.accountId);
           accountSummaries[cb.accountId] = {
             investmentValue: "0.00",
             cashValue: truncateNumber(cash).toFixed(2),
             totalValue: truncateNumber(cash).toFixed(2),
+            accountType: account?.accountType || "Brokerage",
             assets: []
           };
         }
@@ -1535,11 +1538,13 @@ export const etfRouter = router({
 
       // Add investment values and assets
       holdingsWithValues.forEach((h: any) => {
-        if (h.accountId) {
+        if (h.accountId !== undefined && h.accountId !== null) {
+          const account = portfolioAccounts.find((a: any) => a.id === h.accountId);
           const existing = accountSummaries[h.accountId] || { 
             investmentValue: "0.00", 
             cashValue: "0.00", 
             totalValue: "0.00",
+            accountType: account?.accountType || "Brokerage",
             assets: []
           };
           const inv = parseFloat(existing.investmentValue) + h.currentValueNum;
@@ -1549,6 +1554,7 @@ export const etfRouter = router({
             investmentValue: truncateNumber(inv).toFixed(2),
             cashValue: truncateNumber(cash).toFixed(2),
             totalValue: truncateNumber(inv + cash).toFixed(2),
+            accountType: existing.accountType,
             assets: [
               ...existing.assets,
               {
@@ -1565,11 +1571,30 @@ export const etfRouter = router({
         }
       });
 
+      // Calculate distribution by account type
+      const typeMap = new Map<string, number>();
+      Object.values(accountSummaries).forEach((acc: any) => {
+        const type = acc.accountType || "Brokerage";
+        const val = parseFloat(acc.totalValue);
+        typeMap.set(type, (typeMap.get(type) || 0) + val);
+      });
+      
+      // The default cash (accountId 0) is now handled in accountSummaries initialization 
+      // because allCashBalances includes it and if (cb.accountId !== undefined) allows it.
+      // So no need for extra default cash handling here which was causing double counting.
+
+      const accountTypeBreakdown = Array.from(typeMap.entries()).map(([type, value]) => ({
+        type,
+        value: truncateNumber(value).toFixed(2),
+        percentage: totalValue > 0 ? ((value / totalValue) * 100).toFixed(2) : "0",
+      })).sort((a, b) => parseFloat(b.value) - parseFloat(a.value));
+
       return {
         holdings: processedHoldings,
         cashBalance: truncateNumber(cashAmount).toFixed(2),
         cashBalances: cashBalancesMap,
         accountSummaries,
+        accountTypeBreakdown,
         investmentValue: truncateNumber(totalInvestmentValue).toFixed(2),
         totalValue: totalValue.toFixed(2),
         allocationBreakdown: processedHoldings.map((h: any) => ({

@@ -887,7 +887,6 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                       <th className="text-right py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Total Value</th>
                       <th className="text-right py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Cash Balance</th>
                       <th className="text-right py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Investments</th>
-                      <th className="text-right py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider"></th>
                       <th className="text-center py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Actions</th>
                     </tr>
                   </thead>
@@ -932,7 +931,6 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                               <div className="font-mono font-medium text-green-600">{formatCurrency(truncateNumber(parseFloat(accDetails.investmentValue)))}</div>
                               <div className="text-[9px] font-bold text-slate-400 uppercase">{invPercent}%</div>
                             </td>
-                            <td className="py-4 px-6 text-right font-mono text-xs text-slate-400">—</td>
                             <td className="py-4 px-6">
                               <div className="flex items-center justify-center">
                                 <DropdownMenu>
@@ -1070,7 +1068,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                   {accounts && accounts.length > 0 && !selectedAccountId && (
                     <tfoot className="bg-slate-50 border-t-2 border-slate-200">
                       <tr className="font-bold text-slate-800">
-                        <td className="py-4 px-6 uppercase text-[10px] tracking-widest text-slate-500">Portfolio Totals</td>
+                        <td colSpan={2} className="py-4 px-6 uppercase text-[10px] tracking-widest text-slate-500">Portfolio Totals</td>
                         <td className="text-right py-4 px-6 font-mono text-sm text-primary">
                           {formatCurrency(truncateNumber(parseFloat(summary?.totalValue || "0")))}
                         </td>
@@ -1570,7 +1568,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                   {summary?.holdings && summary.holdings.length > 0 && (
                     <tfoot className="bg-slate-50 border-t-2 border-slate-200">
                       <tr className="font-bold text-slate-800">
-                        <td colSpan={5} className="py-4 px-3 uppercase text-[10px] tracking-widest text-slate-500">Total Portfolio Performance</td>
+                        <td colSpan={6} className="py-4 px-3 uppercase text-[10px] tracking-widest text-slate-500">Total Portfolio Performance</td>
                         <td className="text-right py-4 px-3 font-mono text-sm">{formatCurrency(summary.investmentValue)}</td>
                         <td className={`text-right py-4 px-3 font-mono text-sm ${(summary?.holdings?.reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0) || 0) >= 0
                           ? "text-green-600"
@@ -1600,6 +1598,51 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
 
             {/* Allocation & Management Grid */}
             <div className="grid grid-cols-1 gap-8">
+              {/* Account Type Allocation Pie Chart */}
+              {(summary as any)?.accountTypeBreakdown && (
+                <Card className="p-6 bg-white shadow-sm border border-border">
+                  <div className="flex items-center gap-2 mb-6">
+                    <div className="p-1.5 bg-slate-100 rounded text-slate-600">
+                      <Wallet className="w-4 h-4" />
+                    </div>
+                    <h2 className="text-lg font-bold text-slate-800">Account Type Distribution</h2>
+                  </div>
+                  <div className="flex flex-col md:flex-row items-center justify-center gap-16">
+                    <div className="shrink-0 flex items-center justify-center">
+                      <AccountTypeAllocationChart data={(summary as any).accountTypeBreakdown} />
+                    </div>
+                    <div className="flex-1 w-full max-w-2xl">
+                      <div className="space-y-3">
+                        {(summary as any).accountTypeBreakdown.map((item: any, index: number) => {
+                          const TYPE_COLORS: Record<string, string> = {
+                            "Brokerage": "#004a99",
+                            "Retirement": "#3d8a3d",
+                            "Savings": "#f2a900",
+                            "Checking": "#cc0000",
+                            "Other": "#666666"
+                          };
+                          return (
+                            <div key={item.type} className="flex justify-between items-center text-sm p-3 hover:bg-slate-50 rounded transition-colors">
+                              <div className="flex items-center gap-4">
+                                <div
+                                  className="w-4 h-4 rounded-full shrink-0"
+                                  style={{ backgroundColor: TYPE_COLORS[item.type] || CHART_COLORS[index % CHART_COLORS.length] }}
+                                />
+                                <span className="font-bold text-slate-700">{item.type}</span>
+                              </div>
+                              <div className="flex items-center gap-6">
+                                <span className="font-mono font-bold text-slate-600 text-sm">{formatCurrency(item.value)}</span>
+                                <span className="font-mono font-bold text-slate-700 text-base w-16 text-right">{item.percentage}%</span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                </Card>
+              )}
+
               {/* Portfolio Allocation Pie Chart */}
               {summary && (
                 <Card className="p-6 bg-white shadow-sm border border-border">
@@ -1642,13 +1685,13 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                             <span className="font-mono font-bold text-slate-700 text-base w-16 text-right">{summary.cashAllocationPercent}%</span>
                           </div>
                         </div>
-
                       </div>
                     </div>
                   </div>
                 </Card>
               )}
-            </div>        </>
+            </div>
+          </>
 
           {/* Dialogs */}
           <Dialog open={isHistoricalCashDialogOpen} onOpenChange={setIsHistoricalCashDialogOpen}>
@@ -1986,6 +2029,61 @@ function PortfolioAllocationChart({ data, cashPercent }: { data: any[], cashPerc
       ctx.fill();
     }
   }, [data, cashPercent]);
+
+  return (
+    <div className="flex flex-col items-center">
+      <canvas ref={canvasRef} width="400" height="400" className="drop-shadow-lg" />
+    </div>
+  );
+}
+
+function AccountTypeAllocationChart({ data }: { data: any[] }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const total = data.reduce((acc: number, item: any) => acc + parseFloat(item.percentage), 0);
+
+  useEffect(() => {
+    if (canvasRef.current && data.length > 0) {
+      const ctx = canvasRef.current.getContext("2d");
+      if (!ctx) return;
+
+      const size = 400;
+      const centerX = size / 2;
+      const centerY = size / 2;
+      const radius = size * 0.44;
+      let startAngle = 0;
+
+      ctx.clearRect(0, 0, size, size);
+
+      const TYPE_COLORS: Record<string, string> = {
+        "Brokerage": "#004a99",
+        "Retirement": "#3d8a3d",
+        "Savings": "#f2a900",
+        "Checking": "#cc0000",
+        "Other": "#666666"
+      };
+
+      data.forEach((item, index) => {
+        const sliceAngle = (parseFloat(item.percentage) / total) * 2 * Math.PI;
+        ctx.beginPath();
+        ctx.moveTo(centerX, centerY);
+        ctx.arc(centerX, centerY, radius, startAngle, startAngle + sliceAngle);
+        ctx.closePath();
+        ctx.fillStyle = TYPE_COLORS[item.type] || CHART_COLORS[index % CHART_COLORS.length];
+        ctx.fill();
+        ctx.strokeStyle = "white";
+        ctx.lineWidth = 4;
+        ctx.stroke();
+        startAngle += sliceAngle;
+      });
+
+      // Draw center hole for donut look
+      ctx.beginPath();
+      ctx.moveTo(centerX, centerY);
+      ctx.arc(centerX, centerY, radius * 0.68, 0, 2 * Math.PI);
+      ctx.fillStyle = "white";
+      ctx.fill();
+    }
+  }, [data]);
 
   return (
     <div className="flex flex-col items-center">
