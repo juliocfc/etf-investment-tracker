@@ -17,11 +17,20 @@ import {
 } from "recharts";
 import { DollarSign, Calendar, ListFilter, Trophy, RefreshCw, BarChart3, TrendingUp } from "lucide-react";
 
-export default function Dividends({ selectedPortfolioId }: { selectedPortfolioId: number }) {
+export default function Dividends({ 
+  selectedPortfolioId,
+  selectedAccountType = "all"
+}: { 
+  selectedPortfolioId: number,
+  selectedAccountType?: string
+}) {
   const [withDRIP, setWithDRIP] = useState(false);
 
   const { data: report, isLoading } = trpc.etf.getDetailedDividendReport.useQuery(
-    { portfolioId: selectedPortfolioId },
+    { 
+      portfolioId: selectedPortfolioId,
+      accountType: selectedAccountType === "all" ? undefined : selectedAccountType
+    },
     { enabled: !!selectedPortfolioId }
   );
 
@@ -31,7 +40,11 @@ export default function Dividends({ selectedPortfolioId }: { selectedPortfolioId
   );
 
   const { data: projections, isLoading: isProjectionLoading } = trpc.etf.getProjectedDividends.useQuery(
-    { portfolioId: selectedPortfolioId, withDRIP: withDRIP },
+    { 
+      portfolioId: selectedPortfolioId, 
+      withDRIP: withDRIP,
+      accountType: selectedAccountType === "all" ? undefined : selectedAccountType
+    },
     { enabled: !!selectedPortfolioId }
   );
 
@@ -494,9 +507,11 @@ export default function Dividends({ selectedPortfolioId }: { selectedPortfolioId
               className="bg-white border border-slate-200 rounded px-3 py-1.5 text-xs font-bold text-slate-600 focus:outline-none focus:border-primary"
             >
               <option value="ALL">All Accounts</option>
-              {accounts?.map((acc: any) => (
-                <option key={acc.id} value={acc.id.toString()}>{acc.name}</option>
-              ))}
+              {accounts
+                ?.filter((acc: any) => selectedAccountType === "all" || acc.accountType === selectedAccountType)
+                ?.map((acc: any) => (
+                  <option key={acc.id} value={acc.id.toString()}>{acc.name}</option>
+                ))}
             </select>
           </div>
         </div>

@@ -14,7 +14,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-export default function Activities({ selectedPortfolioId }: { selectedPortfolioId: number }) {
+export default function Activities({ 
+  selectedPortfolioId, 
+  selectedAccountType = "all" 
+}: { 
+  selectedPortfolioId: number, 
+  selectedAccountType?: string 
+}) {
   const [investmentRange, setInvestmentRange] = useState<string>("3d");
   const [cashRange, setCashRange] = useState<string>("3d");
   const [cashAccountId, setCashAccountId] = useState<string>("");
@@ -51,12 +57,20 @@ export default function Activities({ selectedPortfolioId }: { selectedPortfolioI
   }, [selectedPortfolioId]);
 
   const { data: activities, isLoading } = trpc.etf.getInvestmentActivities.useQuery(
-    { portfolioId: selectedPortfolioId, range: investmentRange },
+    { 
+      portfolioId: selectedPortfolioId, 
+      range: investmentRange,
+      accountType: selectedAccountType === "all" ? undefined : selectedAccountType
+    },
     { enabled: !!selectedPortfolioId }
   );
 
   const { data: cashActivities, isLoading: isCashLoading } = trpc.etf.getCashActivities.useQuery(
-    { portfolioId: selectedPortfolioId, range: cashRange },
+    { 
+      portfolioId: selectedPortfolioId, 
+      range: cashRange,
+      accountType: selectedAccountType === "all" ? undefined : selectedAccountType
+    },
     { enabled: !!selectedPortfolioId }
   );
 
@@ -258,9 +272,11 @@ export default function Activities({ selectedPortfolioId }: { selectedPortfolioI
                 onChange={(e) => setCashAccountId(e.target.value)}
               >
                 <option value="">All Accounts</option>
-                {accounts?.map((acc: any) => (
-                  <option key={acc.id} value={acc.id}>{acc.name} {acc.number ? `(${acc.number})` : ""}</option>
-                ))}
+                {accounts
+                  ?.filter((acc: any) => selectedAccountType === "all" || acc.accountType === selectedAccountType)
+                  ?.map((acc: any) => (
+                    <option key={acc.id} value={acc.id}>{acc.name} {acc.number ? `(${acc.number})` : ""}</option>
+                  ))}
               </select>
             </div>
 
@@ -358,7 +374,9 @@ export default function Activities({ selectedPortfolioId }: { selectedPortfolioI
                   onChange={(e) => setFilterAccountId(e.target.value)}
                 >
                   <option value="">All Accounts</option>
-                  {accounts?.map((acc: any) => (
+                {accounts
+                  ?.filter((acc: any) => selectedAccountType === "all" || acc.accountType === selectedAccountType)
+                  ?.map((acc: any) => (
                     <option key={acc.id} value={acc.id}>{acc.name} {acc.number ? `(${acc.number})` : ""}</option>
                   ))}
                 </select>

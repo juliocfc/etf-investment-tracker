@@ -40,9 +40,27 @@ import { calculatePerformanceMetrics } from "./performanceMetrics";
 
 export const etfRouter = router({
   getHoldings: protectedProcedure
-    .input(z.object({ portfolioId: z.number(), accountId: z.number().optional() }))
+    .input(z.object({ 
+      portfolioId: z.number(), 
+      accountId: z.number().optional(),
+      accountType: z.string().optional()
+    }))
     .query(async ({ ctx, input }) => {
-      const holdings = await getUserEtfHoldings(ctx.user.id, input.portfolioId, input.accountId);
+      let holdings = await getUserEtfHoldings(ctx.user.id, input.portfolioId, input.accountId);
+      
+      if (input.accountType && input.accountId === undefined) {
+        const db = await getDb();
+        const matchingAccounts = await db.select({ id: accounts.id })
+          .from(accounts)
+          .where(and(
+            eq(accounts.userId, ctx.user.id),
+            eq(accounts.portfolioId, input.portfolioId),
+            eq(accounts.accountType, input.accountType)
+          ));
+        const matchingIds = matchingAccounts.map((a: any) => a.id);
+        holdings = holdings.filter((h: any) => matchingIds.includes(h.accountId));
+      }
+
       if (!holdings || holdings.length === 0) return [];
       const holdingsWithAvgCost = await Promise.all(
         holdings.map(async (holding: any) => {
@@ -592,9 +610,26 @@ export const etfRouter = router({
     }),
 
   getDetailedDividendReport: protectedProcedure
-    .input(z.object({ portfolioId: z.number().optional() }))
+    .input(z.object({ 
+      portfolioId: z.number().optional(),
+      accountType: z.string().optional()
+    }))
     .query(async ({ ctx, input }) => {
-      const holdings = await getUserEtfHoldings(ctx.user.id, input.portfolioId);
+      let holdings = await getUserEtfHoldings(ctx.user.id, input.portfolioId);
+      const db = await getDb();
+
+      if (input.accountType) {
+        const matchingAccounts = await db.select({ id: accounts.id })
+          .from(accounts)
+          .where(and(
+            eq(accounts.userId, ctx.user.id),
+            eq(accounts.portfolioId, input.portfolioId!),
+            eq(accounts.accountType, input.accountType)
+          ));
+        const matchingIds = matchingAccounts.map((a: any) => a.id);
+        holdings = holdings.filter(h => matchingIds.includes(h.accountId));
+      }
+
       const now = new Date();
       const currentQuarter = Math.floor(now.getMonth() / 3) + 1;
       const currentYear = now.getFullYear();
@@ -852,10 +887,24 @@ export const etfRouter = router({
       portfolioId: z.number(),
       withDRIP: z.boolean().default(false),
       symbol: z.string().optional(),
-      accountId: z.number().optional()
+      accountId: z.number().optional(),
+      accountType: z.string().optional()
     }))
     .query(async ({ ctx, input }) => {
       let holdings = await getUserEtfHoldings(ctx.user.id, input.portfolioId, input.accountId);
+      
+      if (input.accountType && input.accountId === undefined) {
+        const db = await getDb();
+        const matchingAccounts = await db.select({ id: accounts.id })
+          .from(accounts)
+          .where(and(
+            eq(accounts.userId, ctx.user.id),
+            eq(accounts.portfolioId, input.portfolioId),
+            eq(accounts.accountType, input.accountType)
+          ));
+        const matchingIds = matchingAccounts.map((a: any) => a.id);
+        holdings = holdings.filter((h: any) => matchingIds.includes(h.accountId));
+      }
       
       if (input.symbol && input.symbol !== "ALL") {
         const symbolUpper = input.symbol.toUpperCase();
@@ -1399,16 +1448,48 @@ export const etfRouter = router({
     }),
 
   getPortfolioSummary: protectedProcedure
-    .input(z.object({ portfolioId: z.number(), accountId: z.number().optional() }))
+    .input(z.object({ 
+      portfolioId: z.number(), 
+      accountId: z.number().optional(),
+      accountType: z.string().optional()
+    }))
     .query(async ({ ctx, input }) => {
-      const holdings = await getUserEtfHoldings(ctx.user.id, input.portfolioId, input.accountId);
-      const currentCashBalance = await getCashBalance(ctx.user.id, input.portfolioId, input.accountId);
-
       const db = await getDb();
+      
+      // 1. Get all accounts for this portfolio to help with filtering
       const portfolioAccounts = await db.select().from(accounts).where(and(
         eq(accounts.userId, ctx.user.id),
         eq(accounts.portfolioId, input.portfolioId)
       ));
+
+      // Filter accounts by type if requested
+      const filteredAccountIds = portfolioAccounts
+        .filter((a: any) => !input.accountType || a.accountType === input.accountType)
+        .map((a: any) => a.id);
+
+      // 2. Get holdings, potentially filtered by accountId OR accountType
+      let holdings = await getUserEtfHoldings(ctx.user.id, input.portfolioId, input.accountId);
+      
+      // If filtering by accountType, restrict holdings to those accounts
+      if (input.accountType && input.accountId === undefined) {
+        holdings = holdings.filter((h: any) => filteredAccountIds.includes(h.accountId));
+      }
+
+      // 3. Get cash balance
+      let currentCashBalance = await getCashBalance(ctx.user.id, input.portfolioId, input.accountId);
+      
+      // If filtering by accountType, we need to sum cash from all matching accounts
+      if (input.accountType && input.accountId === undefined) {
+        const matchingCashRows = await db.select()
+          .from(cashBalance)
+          .where(and(
+            eq(cashBalance.userId, ctx.user.id),
+            eq(cashBalance.portfolioId, input.portfolioId),
+            sql`${cashBalance.accountId} IN (${sql.join(filteredAccountIds.length > 0 ? filteredAccountIds : [-1], sql`, `)})`
+          ));
+        const totalCash = matchingCashRows.reduce((sum: number, row: any) => sum + parseFloat(row.amount), 0);
+        currentCashBalance = { amount: totalCash.toString() } as any;
+      }
 
       const allCashBalances = await db.select().from(cashBalance).where(and(
         eq(cashBalance.userId, ctx.user.id),
@@ -1779,10 +1860,25 @@ export const etfRouter = router({
         holdingId: z.number().optional(),
         symbol: z.string().optional(),
         accountId: z.number().optional(),
+        accountType: z.string().optional(),
       })
     )
     .query(async ({ ctx, input }) => {
       let holdings = await getUserEtfHoldings(ctx.user.id, input.portfolioId, input.accountId);
+      
+      if (input.accountType && input.accountId === undefined) {
+        const db = await getDb();
+        const matchingAccounts = await db.select({ id: accounts.id })
+          .from(accounts)
+          .where(and(
+            eq(accounts.userId, ctx.user.id),
+            eq(accounts.portfolioId, input.portfolioId),
+            eq(accounts.accountType, input.accountType)
+          ));
+        const matchingIds = matchingAccounts.map((a: any) => a.id);
+        holdings = holdings.filter((h: any) => matchingIds.includes(h.accountId));
+      }
+
       if (input.symbol) {
         const symbolUpper = input.symbol.toUpperCase();
         holdings = holdings.filter((h: any) => h.symbol === symbolUpper);
@@ -1797,7 +1893,7 @@ export const etfRouter = router({
 
       const calculateForRange = async (range: "ytd" | "1y" | "all") => {
         const includeCash = !input.symbol && (!input.holdingId || input.holdingId === -1);
-        const data = await getProcessedEvolution(ctx.user.id, holdings, range, input.portfolioId, includeCash, undefined, input.accountId);
+        const data = await getProcessedEvolution(ctx.user.id, holdings, range, input.portfolioId, includeCash, undefined, input.accountId, input.accountType);
         if (data.length < 2) return { market: "0", price: "0" };
 
         const first = data[0];
@@ -1842,11 +1938,26 @@ export const etfRouter = router({
         symbol: z.string().optional(),
         granularity: z.enum(["1d", "1wk", "1mo"]).optional(),
         accountId: z.number().optional(),
+        accountType: z.string().optional(),
       })
     )
     .query(async ({ ctx, input }) => {
       try {
         let holdings = await getUserEtfHoldings(ctx.user.id, input.portfolioId, input.accountId);
+        
+        if (input.accountType && input.accountId === undefined) {
+          const db = await getDb();
+          const matchingAccounts = await db.select({ id: accounts.id })
+            .from(accounts)
+            .where(and(
+              eq(accounts.userId, ctx.user.id),
+              eq(accounts.portfolioId, input.portfolioId),
+              eq(accounts.accountType, input.accountType)
+            ));
+          const matchingIds = matchingAccounts.map((a: any) => a.id);
+          holdings = holdings.filter((h: any) => matchingIds.includes(h.accountId));
+        }
+
         if (input.symbol) {
           const symbolUpper = input.symbol.toUpperCase();
           holdings = holdings.filter((h: any) => h.symbol === symbolUpper);
@@ -1857,7 +1968,7 @@ export const etfRouter = router({
         const includeCash = !input.symbol && (!input.holdingId || input.holdingId === -1);
         // Force "1mo" granularity if not specifically overridden, but Performance page wants monthly bars
         const granularity = input.granularity || "1mo";
-        const data = await getProcessedEvolution(ctx.user.id, holdings, input.range, input.portfolioId, includeCash, granularity, input.accountId);
+        const data = await getProcessedEvolution(ctx.user.id, holdings, input.range, input.portfolioId, includeCash, granularity, input.accountId, input.accountType);
         return data.map((d: any) => ({
           date: d.date,
           value: d.totalValue.toFixed(2),
@@ -1910,10 +2021,25 @@ export const etfRouter = router({
       z.object({
         portfolioId: z.number(),
         range: z.string(), // Changed to string to support dynamic quarterly keys
+        accountType: z.string().optional(),
       })
     )
     .query(async ({ ctx, input }) => {
-      const holdings = await getUserEtfHoldings(ctx.user.id, input.portfolioId);
+      let holdings = await getUserEtfHoldings(ctx.user.id, input.portfolioId);
+      
+      if (input.accountType) {
+        const db = await getDb();
+        const matchingAccounts = await db.select({ id: accounts.id })
+          .from(accounts)
+          .where(and(
+            eq(accounts.userId, ctx.user.id),
+            eq(accounts.portfolioId, input.portfolioId),
+            eq(accounts.accountType, input.accountType)
+          ));
+        const matchingIds = matchingAccounts.map((a: any) => a.id);
+        holdings = holdings.filter((h: any) => matchingIds.includes(h.accountId));
+      }
+
       const { startDate, endDate } = calculateDateRange(input.range);
 
       const activitiesMap = new Map<string, any>();
@@ -1978,19 +2104,42 @@ export const etfRouter = router({
     }),
 
   getCashActivities: protectedProcedure
-    .input(z.object({ portfolioId: z.number(), range: z.string() }))
+    .input(z.object({ 
+      portfolioId: z.number(), 
+      range: z.string(),
+      accountType: z.string().optional()
+    }))
     .query(async ({ ctx, input }) => {
       const { startDate, endDate } = calculateDateRange(input.range);
       const db = await getDb();
       
+      const conditions = [
+        eq(cashBalanceHistory.userId, ctx.user.id),
+        eq(cashBalanceHistory.portfolioId, input.portfolioId),
+        gte(cashBalanceHistory.date, startDate),
+        lte(cashBalanceHistory.date, endDate)
+      ];
+
+      if (input.accountType) {
+        const matchingAccounts = await db.select({ id: accounts.id })
+          .from(accounts)
+          .where(and(
+            eq(accounts.userId, ctx.user.id),
+            eq(accounts.portfolioId, input.portfolioId),
+            eq(accounts.accountType, input.accountType)
+          ));
+        const matchingIds = matchingAccounts.map((a: any) => a.id);
+        if (matchingIds.length > 0) {
+          conditions.push(sql`${cashBalanceHistory.accountId} IN (${sql.join(matchingIds, sql`, `)})`);
+        } else {
+          // No accounts of this type, force empty result
+          conditions.push(eq(cashBalanceHistory.accountId, -1));
+        }
+      }
+
       return db.select()
         .from(cashBalanceHistory)
-        .where(and(
-          eq(cashBalanceHistory.userId, ctx.user.id),
-          eq(cashBalanceHistory.portfolioId, input.portfolioId),
-          gte(cashBalanceHistory.date, startDate),
-          lte(cashBalanceHistory.date, endDate)
-        ))
+        .where(and(...conditions))
         .orderBy(desc(cashBalanceHistory.date), desc(cashBalanceHistory.id));
     }),
 
@@ -2051,7 +2200,11 @@ export const etfRouter = router({
     }),
 
   getYearlyPerformance: protectedProcedure
-    .input(z.object({ portfolioId: z.number(), accountId: z.number().optional() }))
+    .input(z.object({ 
+      portfolioId: z.number(), 
+      accountId: z.number().optional(),
+      accountType: z.string().optional()
+    }))
     .query(async ({ ctx, input }) => {
       const db = await getDb();
       const holdings = await getUserEtfHoldings(ctx.user.id, input.portfolioId, input.accountId);
@@ -2213,7 +2366,11 @@ export const etfRouter = router({
     }),
 
   getMonthlyPerformance: protectedProcedure
-    .input(z.object({ portfolioId: z.number(), accountId: z.number().optional() }))
+    .input(z.object({ 
+      portfolioId: z.number(), 
+      accountId: z.number().optional(),
+      accountType: z.string().optional()
+    }))
     .query(async ({ ctx, input }) => {
       const db = await getDb();
       
@@ -2351,7 +2508,7 @@ function calculateDateRange(range: string) {
  * Shared engine to calculate evolution for any range
  * Ensures perfect consistency between charts and summary cards
  */
-async function getProcessedEvolution(userId: number, holdings: any[], range: "1m" | "ytd" | "1y" | "all", portfolioId?: number, includeCash?: boolean, granularity?: "1d" | "1wk" | "1mo", accountId?: number) {
+async function getProcessedEvolution(userId: number, holdings: any[], range: "1m" | "ytd" | "1y" | "all", portfolioId?: number, includeCash?: boolean, granularity?: "1d" | "1wk" | "1mo", accountId?: number, accountType?: string) {
   const now = new Date();
   now.setHours(23, 59, 59, 999);
 
@@ -2367,8 +2524,23 @@ async function getProcessedEvolution(userId: number, holdings: any[], range: "1m
     // Find oldest transaction (purchase or cash)
     const db = await getDb();
     const purchaseConditions = [eq(purchases.userId, userId)];
+    
     if (accountId !== undefined) {
       purchaseConditions.push(eq(purchases.accountId, accountId));
+    } else if (accountType && portfolioId) {
+      const matchingAccounts = await db.select({ id: accounts.id })
+        .from(accounts)
+        .where(and(
+          eq(accounts.userId, userId),
+          eq(accounts.portfolioId, portfolioId),
+          eq(accounts.accountType, accountType)
+        ));
+      const matchingIds = matchingAccounts.map((a: any) => a.id);
+      if (matchingIds.length > 0) {
+        purchaseConditions.push(sql`${purchases.accountId} IN (${sql.join(matchingIds, sql`, `)})`);
+      } else {
+        purchaseConditions.push(eq(purchases.accountId, -1));
+      }
     }
 
     const oldestPurchase = await db.select({ date: purchases.purchaseDate })
@@ -2381,13 +2553,32 @@ async function getProcessedEvolution(userId: number, holdings: any[], range: "1m
     let oldestDate = oldestPurchase ? new Date(oldestPurchase) : new Date();
 
     if (includeCash && portfolioId) {
+      const cashConditions = [
+        eq(cashBalanceHistory.userId, userId), 
+        eq(cashBalanceHistory.portfolioId, portfolioId)
+      ];
+
+      if (accountId !== undefined) {
+        cashConditions.push(eq(cashBalanceHistory.accountId, accountId));
+      } else if (accountType) {
+        const matchingAccounts = await db.select({ id: accounts.id })
+          .from(accounts)
+          .where(and(
+            eq(accounts.userId, userId),
+            eq(accounts.portfolioId, portfolioId),
+            eq(accounts.accountType, accountType)
+          ));
+        const matchingIds = matchingAccounts.map((a: any) => a.id);
+        if (matchingIds.length > 0) {
+          cashConditions.push(sql`${cashBalanceHistory.accountId} IN (${sql.join(matchingIds, sql`, `)})`);
+        } else {
+          cashConditions.push(eq(cashBalanceHistory.accountId, -1));
+        }
+      }
+
       const oldestCash = await db.select({ date: cashBalanceHistory.date })
         .from(cashBalanceHistory)
-        .where(and(
-          eq(cashBalanceHistory.userId, userId), 
-          eq(cashBalanceHistory.portfolioId, portfolioId),
-          accountId !== undefined ? eq(cashBalanceHistory.accountId, accountId) : sql`1=1`
-        ))
+        .where(and(...cashConditions))
         .orderBy(cashBalanceHistory.date)
         .limit(1)
         .then((rows: any[]) => rows[0]?.date);
@@ -2419,13 +2610,31 @@ async function getProcessedEvolution(userId: number, holdings: any[], range: "1m
     const priceHistory = await getSmartHistoricalPrices(holding.symbol as string, days + 10, interval);
     
     const db = await getDb();
-    // getPurchases already filters by holdingId and isSold = false, but it doesn't filter by accountId usually
+    const purchaseConditions = [
+      eq(purchases.holdingId, holding.id)
+    ];
+    
+    if (accountId !== undefined) {
+      purchaseConditions.push(eq(purchases.accountId, accountId));
+    } else if (accountType && portfolioId) {
+      const matchingAccounts = await db.select({ id: accounts.id })
+        .from(accounts)
+        .where(and(
+          eq(accounts.userId, userId),
+          eq(accounts.portfolioId, portfolioId),
+          eq(accounts.accountType, accountType)
+        ));
+      const matchingIds = matchingAccounts.map((a: any) => a.id);
+      if (matchingIds.length > 0) {
+        purchaseConditions.push(sql`${purchases.accountId} IN (${sql.join(matchingIds, sql`, `)})`);
+      } else {
+        purchaseConditions.push(eq(purchases.accountId, -1));
+      }
+    }
+
     const holdingPurchases = await db.select()
       .from(purchases)
-      .where(and(
-        eq(purchases.holdingId, holding.id),
-        accountId !== undefined ? eq(purchases.accountId, accountId) : sql`1=1`
-      ))
+      .where(and(...purchaseConditions))
       .orderBy(desc(purchases.purchaseDate));
 
     const pricesMap = new Map<string, number>();
@@ -2453,6 +2662,24 @@ async function getProcessedEvolution(userId: number, holdings: any[], range: "1m
   let cashHistory: any[] = [];
   if (includeCash && portfolioId) {
     cashHistory = await getCashBalanceHistory(userId, portfolioId, accountId);
+    
+    if (accountType && accountId === undefined) {
+      const db = await getDb();
+      const matchingAccounts = await db.select({ id: accounts.id })
+        .from(accounts)
+        .where(and(
+          eq(accounts.userId, userId),
+          eq(accounts.portfolioId, portfolioId),
+          eq(accounts.accountType, accountType)
+        ));
+      const matchingIds = matchingAccounts.map((a: any) => a.id);
+      if (matchingIds.length > 0) {
+        cashHistory = cashHistory.filter(ch => matchingIds.includes(ch.accountId));
+      } else {
+        cashHistory = [];
+      }
+    }
+
     cashHistory.forEach((ch: any) => {
       const dKey = new Date(ch.date).toISOString().split("T")[0];
       allDatesSet.add(dKey);

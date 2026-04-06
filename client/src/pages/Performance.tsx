@@ -21,7 +21,13 @@ import { TrendingUp, Activity, BarChart3, Database, RefreshCw, ArrowUpRight, Arr
 
 type TimeRange = "ytd" | "1y" | "all";
 
-export default function Performance({ selectedPortfolioId }: { selectedPortfolioId: number }) {
+export default function Performance({ 
+  selectedPortfolioId,
+  selectedAccountType = "all"
+}: { 
+  selectedPortfolioId: number,
+  selectedAccountType?: string
+}) {
   // Independent time range states for each panel
   const [growthRange, setGrowthRange] = useState<TimeRange>("ytd");
 
@@ -44,6 +50,7 @@ export default function Performance({ selectedPortfolioId }: { selectedPortfolio
       portfolioId: selectedPortfolioId, 
       range: growthRange,
       accountId: selectedAccountId === "ALL" ? undefined : selectedAccountId,
+      accountType: selectedAccountType === "all" ? undefined : selectedAccountType,
       granularity: "1mo"
     },
     { enabled: !!selectedPortfolioId }
@@ -52,7 +59,8 @@ export default function Performance({ selectedPortfolioId }: { selectedPortfolio
   const { data: yearlyPerformance } = trpc.etf.getYearlyPerformance.useQuery(
     { 
       portfolioId: selectedPortfolioId,
-      accountId: selectedAccountId === "ALL" ? undefined : selectedAccountId
+      accountId: selectedAccountId === "ALL" ? undefined : selectedAccountId,
+      accountType: selectedAccountType === "all" ? undefined : selectedAccountType
     },
     { enabled: !!selectedPortfolioId }
   );
@@ -60,7 +68,8 @@ export default function Performance({ selectedPortfolioId }: { selectedPortfolio
   const { data: monthlyPerformance } = trpc.etf.getMonthlyPerformance.useQuery(
     { 
       portfolioId: selectedPortfolioId,
-      accountId: selectedAccountId === "ALL" ? undefined : selectedAccountId
+      accountId: selectedAccountId === "ALL" ? undefined : selectedAccountId,
+      accountType: selectedAccountType === "all" ? undefined : selectedAccountType
     },
     { enabled: !!selectedPortfolioId }
   );
@@ -202,9 +211,11 @@ export default function Performance({ selectedPortfolioId }: { selectedPortfolio
               onChange={(e) => setSelectedAccountId(e.target.value === "ALL" ? "ALL" : Number(e.target.value))}
             >
               <option value="ALL">All Accounts</option>
-              {accounts?.map((acc: any) => (
-                <option key={acc.id} value={acc.id}>{acc.name}</option>
-              ))}
+              {accounts
+                ?.filter((acc: any) => selectedAccountType === "all" || acc.accountType === selectedAccountType)
+                ?.map((acc: any) => (
+                  <option key={acc.id} value={acc.id}>{acc.name}</option>
+                ))}
             </select>
           </div>
         </div>

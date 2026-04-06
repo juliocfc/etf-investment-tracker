@@ -49,6 +49,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
     direction: "desc"
   });
   const [selectedAccountId, setSelectedAccountId] = useState<number | undefined>(undefined);
+  const [selectedAccountType, setSelectedAccountType] = useState<string>("all");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isTradeDialogOpen, setIsTradeDialogOpen] = useState<{ id: number, symbol: string } | null>(null);
   const [purchaseHistoryOpen, setPurchaseHistoryOpen] = useState<{ id: number, symbol: string } | null>(null);
@@ -131,6 +132,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
   useEffect(() => {
     setActiveSubTab("overview");
     setSelectedAccountId(undefined);
+    setSelectedAccountType("all");
   }, [selectedPortfolioId]);
 
   // Queries
@@ -174,7 +176,11 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
   }, [accounts]);
 
   const { data: summary, refetch: refetchSummary } = trpc.etf.getPortfolioSummary.useQuery(
-    { portfolioId: selectedPortfolioId, accountId: selectedAccountId },
+    { 
+      portfolioId: selectedPortfolioId, 
+      accountId: selectedAccountId,
+      accountType: selectedAccountType === "all" ? undefined : selectedAccountType
+    },
     { enabled: !!selectedPortfolioId }
   );
 
@@ -211,7 +217,11 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
   }, [summary?.holdings, sortConfig]);
 
   const { data: holdings, refetch: refetchHoldings } = trpc.etf.getHoldings.useQuery(
-    { portfolioId: selectedPortfolioId, accountId: selectedAccountId },
+    { 
+      portfolioId: selectedPortfolioId, 
+      accountId: selectedAccountId,
+      accountType: selectedAccountType === "all" ? undefined : selectedAccountType
+    },
     { enabled: !!selectedPortfolioId }
   );
 
@@ -740,16 +750,37 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
 
             <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full md:w-auto">
               <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-md border border-slate-100 w-full sm:w-auto">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap">Type:</span>
+                <select
+                  className="bg-transparent border-none p-0 text-xs font-bold text-slate-600 focus:outline-none h-6 flex-1 sm:min-w-[100px]"
+                  value={selectedAccountType}
+                  onChange={(e) => {
+                    setSelectedAccountType(e.target.value);
+                    setSelectedAccountId(undefined); // Reset specific account filter when type changes
+                  }}
+                >
+                  <option value="all">All Types</option>
+                  <option value="Brokerage">Brokerage</option>
+                  <option value="Retirement">Retirement</option>
+                  <option value="Savings">Savings</option>
+                  <option value="Checking">Checking</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+
+              <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-md border border-slate-100 w-full sm:w-auto">
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap">Account Filter:</span>
                 <select
                   className="bg-transparent border-none p-0 text-xs font-bold text-slate-600 focus:outline-none h-6 flex-1 sm:min-w-[140px]"
                   value={selectedAccountId || ""}
                   onChange={(e) => setSelectedAccountId(e.target.value ? Number(e.target.value) : undefined)}
                 >
-                  <option value="">All Accounts</option>
-                  {accounts?.map((acc: any) => (
-                    <option key={acc.id} value={acc.id}>{acc.name} {acc.number ? `(${acc.number})` : ""}</option>
-                  ))}
+                  <option value="">All {selectedAccountType !== "all" ? selectedAccountType : ""} Accounts</option>
+                  {accounts
+                    ?.filter((acc: any) => selectedAccountType === "all" || acc.accountType === selectedAccountType)
+                    ?.map((acc: any) => (
+                      <option key={acc.id} value={acc.id}>{acc.name} {acc.number ? `(${acc.number})` : ""}</option>
+                    ))}
                 </select>
               </div>
             </div>
@@ -891,7 +922,13 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                     </tr>
                   </thead>
                   <tbody>
-                    {(selectedAccountId ? accounts?.filter((a: any) => a.id === selectedAccountId) : accounts)?.map((account: any) => {
+                    {accounts
+                      ?.filter((a: any) => {
+                        if (selectedAccountId) return a.id === selectedAccountId;
+                        if (selectedAccountType !== "all") return a.accountType === selectedAccountType;
+                        return true;
+                      })
+                      ?.map((account: any) => {
                       const accDetails = (summary as any)?.accountSummaries?.[account.id] || { investmentValue: "0.00", cashValue: "0.00", totalValue: "0.00", assets: [] };
                       const totalVal = parseFloat(accDetails.totalValue);
                       const invPercent = totalVal > 0 ? ((parseFloat(accDetails.investmentValue) / totalVal) * 100).toFixed(1) : "0";
@@ -1974,11 +2011,546 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
           )}
         </div>
       ) : activeSubTab === "activities" ? (
-        <Activities selectedPortfolioId={selectedPortfolioId} />
+        <Activities selectedPortfolioId={selectedPortfolioId} selectedAccountType={selectedAccountType} />
       ) : activeSubTab === "performance" ? (
-        <Performance selectedPortfolioId={selectedPortfolioId} />
+        <Performance selectedPortfolioId={selectedPortfolioId} selectedAccountType={selectedAccountType} />
+      ) : activeSubTab === "dividends" ? (
+        <Dividends selectedPortfolioId={selectedPortfolioId} selectedAccountType={selectedAccountType} />
       ) : (
-        <Dividends selectedPortfolioId={selectedPortfolioId} />
+        <div className="space-y-8">
+          {/* Main Portfolio Summary Stats */}
+          {summary ? (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <Card className="p-6 bg-white shadow-sm border border-border border-t-4 border-t-primary">
+                <div className="flex justify-between items-start mb-4">
+                  <div>
+                    <div className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Total Portfolio Value</div>
+                    <div className="text-3xl font-bold text-slate-800 font-mono">
+                      {formatCurrency(summary.totalValue)}
+                    </div>
+                  </div>
+                  <div className="p-2 bg-slate-100 rounded-lg">
+                    <Briefcase className="w-5 h-5 text-primary" />
+                  </div>
+                </div>
+                <div className="flex items-center gap-4 text-xs">
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-2 h-2 rounded-full bg-primary" />
+                    <span className="text-slate-500">Investments:</span>
+                    <span className="font-bold text-slate-700">{summary.investmentPercent}%</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-2 h-2 rounded-full bg-slate-200" />
+                    <span className="text-slate-500">Cash:</span>
+                    <span className="font-bold text-slate-700">{summary.cashPercent}%</span>
+                  </div>
+                </div>
+              </Card>
+
+              <Card className="p-6 bg-white shadow-sm border border-border border-t-4 border-t-green-600">
+                <div className="flex justify-between items-start mb-4">
+                  <div>
+                    <div className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Cash Balance</div>
+                    <div className="text-3xl font-bold text-slate-800 font-mono">
+                      {formatCurrency(summary.cashBalance)}
+                    </div>
+                  </div>
+                  <div className="p-2 bg-green-50 rounded-lg">
+                    <Wallet className="w-5 h-5 text-green-600" />
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-slate-500">Available across {summary.accountSummaries ? Object.keys(summary.accountSummaries).length : 0} accounts</span>
+                </div>
+              </Card>
+
+              <Card className="p-6 bg-white shadow-sm border border-border border-t-4 border-t-blue-600">
+                <div className="flex justify-between items-start mb-4">
+                  <div>
+                    <div className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Investment Value</div>
+                    <div className="text-3xl font-bold text-slate-800 font-mono">
+                      {formatCurrency(summary.investmentValue)}
+                    </div>
+                  </div>
+                  <div className="p-2 bg-blue-50 rounded-lg">
+                    <PieChart className="w-5 h-5 text-blue-600" />
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-slate-500">Total unrealized gains:</span>
+                  <span className={`text-xs font-bold font-mono ${parseFloat(summary.totalGain) >= 0 ? "text-green-600" : "text-red-600"}`}>
+                    {parseFloat(summary.totalGain) >= 0 ? "+" : ""}{formatCurrency(summary.totalGain)}
+                  </span>
+                </div>
+              </Card>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 animate-pulse">
+              {[1, 2, 3].map((i) => (
+                <Card key={i} className="h-32 bg-slate-50 border-slate-100" />
+              ))}
+            </div>
+          )}
+
+          {/* Accounts & Holdings Content */}
+          <div className="grid grid-cols-1 gap-8">
+            {/* Accounts Table */}
+            <Card className="bg-white shadow-sm border border-border overflow-hidden">
+              <div className="px-6 py-4 border-b border-border bg-slate-50/50 flex justify-between items-center">
+                <div className="flex items-center gap-2">
+                  <Wallet className="w-5 h-5 text-primary" />
+                  <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Account Breakdown</h3>
+                </div>
+                <Button 
+                  size="sm" 
+                  onClick={() => setIsAccountsDialogOpen(true)}
+                  className="h-8 text-[10px] uppercase font-bold"
+                >
+                  <Plus className="w-3.5 h-3.5 mr-1.5" />
+                  New Account
+                </Button>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-border">
+                      <th className="w-10"></th>
+                      <th className="text-left py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Account Name</th>
+                      <th className="text-right py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Allocation</th>
+                      <th className="text-right py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Cash</th>
+                      <th className="text-right py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Investments</th>
+                      <th className="text-center py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {accounts
+                      ?.filter((a: any) => {
+                        if (selectedAccountId) return a.id === selectedAccountId;
+                        if (selectedAccountType !== "all") return a.accountType === selectedAccountType;
+                        return true;
+                      })
+                      ?.map((account: any) => {
+                      const accDetails = (summary as any)?.accountSummaries?.[account.id] || { investmentValue: "0.00", cashValue: "0.00", totalValue: "0.00", assets: [] };
+                      const totalVal = parseFloat(accDetails.totalValue);
+                      const invPercent = totalVal > 0 ? ((parseFloat(accDetails.investmentValue) / totalVal) * 100).toFixed(1) : "0";
+                      const cashPercent = totalVal > 0 ? ((parseFloat(accDetails.cashValue) / totalVal) * 100).toFixed(1) : "0";
+                      const isExpanded = expandedAccounts.has(account.id);
+
+                      return (
+                        <React.Fragment key={account.id}>
+                          <tr className="border-b border-border hover:bg-slate-50 transition-colors">
+                            <td className="text-center">
+                              <button 
+                                onClick={() => toggleAccount(account.id)}
+                                className="p-1 hover:bg-slate-100 rounded"
+                              >
+                                {isExpanded ? <ChevronDown className="w-4 h-4 text-slate-400" /> : <ChevronRight className="w-4 h-4 text-slate-400" />}
+                              </button>
+                            </td>
+                            <td className="py-4 px-6">
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-slate-700">{account.name}</span>
+                                {account.number && <span className="text-[10px] font-mono text-slate-400">({account.number})</span>}
+                                {selectedAccountType === "all" && (
+                                  <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 border border-slate-200">
+                                    {account.accountType}
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="py-4 px-6 text-right">
+                              <div className="flex items-center justify-end gap-3 text-[10px]">
+                                <div className="flex items-center gap-1">
+                                  <div className="w-1.5 h-1.5 rounded-full bg-primary" />
+                                  <span className="text-slate-500">{invPercent}%</span>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  <div className="w-1.5 h-1.5 rounded-full bg-slate-200" />
+                                  <span className="text-slate-500">{cashPercent}%</span>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="py-4 px-6 text-right font-mono font-medium text-slate-600">{formatCurrency(accDetails.cashValue)}</td>
+                            <td className="py-4 px-6 text-right font-mono font-bold text-primary">{formatCurrency(accDetails.investmentValue)}</td>
+                            <td className="py-4 px-6 text-center">
+                              <div className="flex items-center justify-center gap-1">
+                                <Button 
+                                  variant="ghost" 
+                                  size="icon" 
+                                  className="h-8 w-8 text-slate-400 hover:text-green-600 hover:bg-green-50"
+                                  onClick={() => setCashHistoryOpen({ id: account.id, name: account.name })}
+                                  title="Cash History"
+                                >
+                                  <RefreshCw className="h-4 w-4" />
+                                </Button>
+                                <Button 
+                                  variant="ghost" 
+                                  size="icon" 
+                                  className="h-8 w-8 text-slate-400 hover:text-blue-600 hover:bg-blue-50"
+                                  onClick={() => setEditingAccount(account)}
+                                  title="Edit Account"
+                                >
+                                  <Edit2 className="h-4 w-4" />
+                                </Button>
+                                <Button 
+                                  variant="ghost" 
+                                  size="icon" 
+                                  className="h-8 w-8 text-slate-400 hover:text-red-600 hover:bg-red-50"
+                                  onClick={() => {
+                                    if (confirm(`Are you sure you want to delete account "${account.name}"? This will also remove its cash history and purchase assignments.`)) {
+                                      deleteAccountMutation.mutate({ id: account.id });
+                                    }
+                                  }}
+                                  title="Delete Account"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </td>
+                          </tr>
+                          
+                          {/* Expanded Assets for this account */}
+                          <AnimatePresence>
+                            {isExpanded && accDetails.assets && accDetails.assets.length > 0 && (
+                              <motion.tr
+                                initial={{ opacity: 0, height: 0 }}
+                                animate={{ opacity: 1, height: "auto" }}
+                                exit={{ opacity: 0, height: 0 }}
+                              >
+                                <td colSpan={6} className="p-0 bg-slate-50/30">
+                                  <div className="px-6 py-3 border-l-4 border-l-primary/20 ml-10 my-2">
+                                    <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">Allocated Assets</h4>
+                                    <div className="grid grid-cols-4 gap-4">
+                                      {accDetails.assets.map((asset: any) => (
+                                        <div key={asset.symbol} className="bg-white p-3 rounded border border-slate-100 shadow-sm flex justify-between items-center">
+                                          <div>
+                                            <div className="font-bold text-primary text-sm">{asset.symbol}</div>
+                                            <div className="text-[10px] text-slate-500 font-mono">{formatNumber(asset.quantity, 3)} units</div>
+                                          </div>
+                                          <div className="text-right">
+                                            <div className="font-bold text-slate-700 text-sm">{formatCurrency(asset.currentValue)}</div>
+                                            <div className={`text-[10px] font-bold font-mono ${parseFloat(asset.gain) >= 0 ? "text-green-600" : "text-red-600"}`}>
+                                              {parseFloat(asset.gain) >= 0 ? "+" : ""}{asset.gainPercent}%
+                                            </div>
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                </td>
+                              </motion.tr>
+                            )}
+                          </AnimatePresence>
+                        </React.Fragment>
+                      );
+                    })}
+                    {(!accounts || accounts.length === 0) && (
+                      <tr>
+                        <td colSpan={6} className="py-12 text-center">
+                          <div className="flex flex-col items-center gap-2 text-slate-400 italic">
+                            <Wallet className="w-8 h-8 opacity-20" />
+                            <p>No accounts added to this portfolio yet.</p>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+
+            {/* Active Holdings Table */}
+            <Card className="bg-white shadow-sm border border-border overflow-hidden">
+              <div className="px-6 py-4 border-b border-border bg-slate-50/50 flex justify-between items-center">
+                <div className="flex items-center gap-2">
+                  <TrendingUp className="w-5 h-5 text-primary" />
+                  <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Active Holdings</h3>
+                </div>
+                {summary?.holdings && summary.holdings.length > 0 && (
+                  <Badge variant="secondary" className="font-mono text-[10px]">
+                    {summary.holdings.length} Assets Tracked
+                  </Badge>
+                )}
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-border">
+                      <th className="text-left py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider cursor-pointer hover:bg-slate-100 transition-colors group" onClick={() => requestSort("symbol")}>
+                        <div className="flex items-center gap-1">
+                          Asset
+                          {sortConfig?.key === "symbol" ? (
+                            sortConfig.direction === "asc" ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />
+                          ) : (
+                            <ArrowUpDown className="w-3 h-3 opacity-0 group-hover:opacity-100" />
+                          )}
+                        </div>
+                      </th>
+                      <th className="text-right py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider cursor-pointer hover:bg-slate-100 transition-colors group" onClick={() => requestSort("quantity")}>
+                        <div className="flex items-center justify-end gap-1">
+                          Qty
+                          {sortConfig?.key === "quantity" ? (
+                            sortConfig.direction === "asc" ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />
+                          ) : (
+                            <ArrowUpDown className="w-3 h-3 opacity-0 group-hover:opacity-100" />
+                          )}
+                        </div>
+                      </th>
+                      <th className="text-right py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider cursor-pointer hover:bg-slate-100 transition-colors group" onClick={() => requestSort("averageCost")}>
+                        <div className="flex items-center justify-end gap-1">
+                          Avg Cost
+                          {sortConfig?.key === "averageCost" ? (
+                            sortConfig.direction === "asc" ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />
+                          ) : (
+                            <ArrowUpDown className="w-3 h-3 opacity-0 group-hover:opacity-100" />
+                          )}
+                        </div>
+                      </th>
+                      <th className="text-right py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider cursor-pointer hover:bg-slate-100 transition-colors group" onClick={() => requestSort("totalCost")}>
+                        <div className="flex items-center justify-end gap-1">
+                          Total Cost
+                          {sortConfig?.key === "totalCost" ? (
+                            sortConfig.direction === "asc" ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />
+                          ) : (
+                            <ArrowUpDown className="w-3 h-3 opacity-0 group-hover:opacity-100" />
+                          )}
+                        </div>
+                      </th>
+                      <th className="text-right py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider cursor-pointer hover:bg-slate-100 transition-colors group" onClick={() => requestSort("currentPrice")}>
+                        <div className="flex items-center justify-end gap-1">
+                          Mkt Price
+                          {sortConfig?.key === "currentPrice" ? (
+                            sortConfig.direction === "asc" ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />
+                          ) : (
+                            <ArrowUpDown className="w-3 h-3 opacity-0 group-hover:opacity-100" />
+                          )}
+                        </div>
+                      </th>
+                      <th className="text-right py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider cursor-pointer hover:bg-slate-100 transition-colors group" onClick={() => requestSort("currentValue")}>
+                        <div className="flex items-center justify-end gap-1">
+                          Mkt Value
+                          {sortConfig?.key === "currentValue" ? (
+                            sortConfig.direction === "asc" ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />
+                          ) : (
+                            <ArrowUpDown className="w-3 h-3 opacity-0 group-hover:opacity-100" />
+                          )}
+                        </div>
+                      </th>
+                      <th className="text-right py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider cursor-pointer hover:bg-slate-100 transition-colors group" onClick={() => requestSort("gain")}>
+                        <div className="flex items-center justify-end gap-1">
+                          Gain/Loss
+                          {sortConfig?.key === "gain" ? (
+                            sortConfig.direction === "asc" ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />
+                          ) : (
+                            <ArrowUpDown className="w-3 h-3 opacity-0 group-hover:opacity-100" />
+                          )}
+                        </div>
+                      </th>
+                      <th className="text-right py-3 px-6 text-slate-600 font-bold uppercase text-[10px] tracking-wider cursor-pointer hover:bg-slate-100 transition-colors group" onClick={() => requestSort("gainPercent")}>
+                        <div className="flex items-center justify-end gap-1">
+                          Gain/Loss %
+                          {sortConfig?.key === "gainPercent" ? (
+                            sortConfig.direction === "asc" ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />
+                          ) : (
+                            <ArrowUpDown className="w-3 h-3 opacity-0 group-hover:opacity-100" />
+                          )}
+                        </div>
+                      </th>
+                      <th className="text-right py-3 px-6 text-slate-600">Allocation</th>
+                      <th className="text-center py-3 px-6 text-slate-600">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sortedHoldings.map((h: any) => {
+                      const allocation = (summary as any)?.investmentAllocationBreakdown?.find((en: any) => en.symbol === h.symbol);
+                      const isGain = parseFloat(h.gain) >= 0;
+                      const isUnderallocated = parseFloat(allocation?.percentage || "0") < (parseFloat(h.desiredAllocation) || 0);
+                      const isConsolidated = h.isConsolidated || h.id === -1;
+
+                      return (
+                        <tr key={isConsolidated ? `consolidated-${h.symbol}` : h.id} className="border-b border-border hover:bg-slate-50 transition-colors">
+                          <td className="py-3 px-6">
+                            <div className="font-bold text-primary text-sm leading-tight">{h.symbol}</div>
+                            <TooltipProvider>
+                              <TooltipBase>
+                                <TooltipTrigger asChild>
+                                  <div className="text-slate-500 text-[10px] leading-tight cursor-help whitespace-nowrap">
+                                    {h.name.length > 20 ? `${h.name.substring(0, 20)}...` : h.name}
+                                  </div>
+                                </TooltipTrigger>
+                                <TooltipContent side="right">
+                                  <p className="max-w-[300px]">{h.name}</p>
+                                </TooltipContent>
+                              </TooltipBase>
+                            </TooltipProvider>
+                          </td>
+                          <td className="text-right py-3 px-6 font-mono text-xs font-medium">
+                            {formatNumber(h.quantity, 3)}
+                          </td>
+                          <td className="text-right py-3 px-6 font-mono text-xs text-slate-600">
+                            {formatCurrency(h.averageCost)}
+                          </td>
+                          <td className="text-right py-3 px-6 font-mono text-xs text-slate-600">
+                            {formatCurrency(h.totalCost)}
+                          </td>
+                          <td className="text-right py-3 px-6 font-mono text-xs text-slate-600">
+                            {formatCurrency(h.currentPrice)}
+                          </td>
+                          <td className="text-right py-3 px-6 font-mono text-xs font-bold">
+                            {formatCurrency(h.currentValue)}
+                          </td>
+                          <td className={`text-right py-3 px-6 font-mono text-xs font-bold ${isGain ? "text-green-600" : "text-red-600"}`}>
+                            {isGain ? "+" : ""}{formatCurrency(h.gain)}
+                          </td>
+                          <td className={`text-right py-3 px-6 font-mono text-xs font-bold ${isGain ? "text-green-600" : "text-red-600"}`}>
+                            {isGain ? "+" : ""}{h.gainPercent}%
+                          </td>
+                          <td className="text-right py-3 px-6 font-mono">
+                            <div className="flex flex-col items-end gap-1">
+                              <div className="text-xs font-bold text-slate-700 leading-none">
+                                {allocation?.percentage || "0.00"}%
+                              </div>
+                              <div className="flex items-center gap-1.5 mt-0.5">
+                                {isUnderallocated && (
+                                  <div className="flex items-center text-[8px] font-bold text-green-600 animate-pulse">
+                                    <PlusCircle className="w-2.5 h-2.5 mr-0.5" /> BUY
+                                  </div>
+                                )}
+                                <div className="flex items-center text-[10px] text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                                  <span className="mr-1">Target</span>
+                                  <input 
+                                    type="number"
+                                    step="0.1"
+                                    defaultValue={h.desiredAllocation || "0"}
+                                    onBlur={(e) => {
+                                      if (e.target.value !== h.desiredAllocation) {
+                                        updateDesiredAllocationMutation.mutate({ 
+                                          id: h.id, 
+                                          symbol: h.symbol,
+                                          portfolioId: selectedPortfolioId, 
+                                          desiredAllocation: e.target.value 
+                                        });
+                                      }
+                                    }}
+                                    className="w-10 bg-transparent border-none p-0 text-right focus:outline-none focus:ring-0 font-bold text-slate-600"
+                                  />
+                                  <span>%</span>
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="text-center py-3 px-6">
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-primary">
+                                  <MoreVertical className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="w-56">
+                                <DropdownMenuLabel>Manage Asset</DropdownMenuLabel>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem onClick={() => setIsTradeDialogOpen({ id: h.id, symbol: h.symbol })}>
+                                  <ArrowLeftRight className="mr-2 h-4 w-4 text-slate-500" />
+                                  <span>Add Trade</span>
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => setIsCSVImportOpen({ id: h.id, symbol: h.symbol })}>
+                                  <RefreshCw className="mr-2 h-4 w-4 text-slate-500" />
+                                  <span>Import Purchases</span>
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleExportPurchases(h.id, h.symbol)}>
+                                  <Download className="mr-2 h-4 w-4 text-slate-500" />
+                                  <span>Export Purchases</span>
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => setViewingHistoryOpen({ id: h.id, symbol: h.symbol })}>
+                                  <History className="mr-2 h-4 w-4 text-slate-500" />
+                                  <span>View History</span>
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem 
+                                  onClick={() => handleDeleteInvestment(h.id, h.symbol)}
+                                  className="text-red-600 focus:text-red-600 focus:bg-red-50"
+                                >
+                                  <Trash2 className="mr-2 h-4 w-4" />
+                                  <span>Delete Investment</span>
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                  {(summary?.holdings) && summary.holdings.length > 0 && (
+                    <tfoot className="bg-slate-50 border-t-2 border-slate-200">
+                      <tr className="font-bold text-slate-800">
+                        <td colSpan={5} className="py-4 px-6 uppercase text-[10px] tracking-widest text-slate-500">Total Portfolio Performance</td>
+                        <td className="text-right py-4 px-6 font-mono text-sm">{formatCurrency(summary.investmentValue)}</td>
+                        <td className={`text-right py-4 px-6 font-mono text-sm ${(summary?.holdings?.reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0) || 0) >= 0 ? "text-green-600" : "text-red-600"}`}>
+                          {(summary?.holdings?.reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0) || 0) >= 0 ? "+" : ""}{formatCurrency(summary.holdings?.reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0) || 0)}
+                        </td>
+                        <td className={`text-right py-4 px-6 font-mono text-sm ${((summary?.holdings?.reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0) || 0) / (summary?.holdings?.reduce((acc: number, h: any) => acc + parseFloat(h.averageCost || h.purchasePrice) * parseFloat(h.quantity), 0) || 1) * 100) >= 0 ? "text-green-600" : "text-red-600"}`}>
+                          {(((summary?.holdings?.reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0) || 0) / (summary?.holdings?.reduce((acc: number, h: any) => acc + parseFloat(h.averageCost || h.purchasePrice) * parseFloat(h.quantity), 0) || 1) * 100)).toFixed(2)}%
+                        </td>
+                        <td className="text-right py-4 px-6 font-mono text-slate-500 text-xs">100%</td>
+                        <td />
+                      </tr>
+                    </tfoot>
+                  )}
+                </table>
+              </div>
+            </Card>
+
+            {/* Allocation Visuals */}
+            <div className="grid grid-cols-1 gap-8">
+              {summary && (
+                <Card className="p-6 bg-white shadow-sm border border-border">
+                  <div className="flex items-center gap-2 mb-6">
+                    <div className="p-1.5 bg-slate-100 rounded text-slate-600">
+                      <PieChart className="w-4 h-4" />
+                    </div>
+                    <h2 className="text-lg font-bold text-slate-800">Portfolio Allocation</h2>
+                  </div>
+                  <div className="flex flex-col md:flex-row items-center justify-center gap-16">
+                    <div className="shrink-0 flex items-center justify-center">
+                      <PortfolioAllocationChart data={summary.allocationBreakdown} cashPercent={summary.cashAllocationPercent} />
+                    </div>
+                    <div className="flex-1 w-full max-w-2xl">
+                      <div className="space-y-3">
+                        {summary.allocationBreakdown.map((item: any, index: number) => (
+                          <div key={item.symbol} className="flex justify-between items-center text-sm p-3 hover:bg-slate-50 rounded transition-colors">
+                            <div className="flex items-center gap-4">
+                              <div
+                                className="w-4 h-4 rounded-full shrink-0"
+                                style={{ backgroundColor: CHART_COLORS[index % CHART_COLORS.length] }}
+                              />
+                              <span className="font-bold text-primary w-16">{item.symbol}</span>
+                              <span className="text-slate-500 text-xs truncate max-w-[250px] md:max-w-[400px]">{item.name}</span>
+                            </div>
+                            <div className="flex items-center gap-6">
+                              <span className="font-mono font-bold text-slate-600 text-sm">{formatCurrency(item.currentValue)}</span>
+                              <span className="font-mono font-bold text-slate-700 text-base w-16 text-right">{item.percentage}%</span>
+                            </div>
+                          </div>
+                        ))}
+                        <div className="border-t border-slate-100 pt-3 mt-3 flex justify-between items-center text-sm p-3 bg-slate-50 rounded">
+                          <div className="flex items-center gap-4">
+                            <div className="w-4 h-4 rounded-full shrink-0 bg-slate-200" />
+                            <span className="font-bold text-slate-600 w-16">CASH</span>
+                            <span className="text-slate-500 text-xs">Cash Reserve</span>
+                          </div>
+                          <div className="flex items-center gap-6">
+                            <span className="font-mono font-bold text-slate-600 text-sm">{formatCurrency(summary.cashBalance)}</span>
+                            <span className="font-mono font-bold text-slate-700 text-base w-16 text-right">{summary.cashAllocationPercent}%</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </Card>
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
