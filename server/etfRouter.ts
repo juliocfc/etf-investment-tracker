@@ -1605,13 +1605,21 @@ export const etfRouter = router({
       // Initialize with cash balances
       allCashBalances.forEach((cb: any) => {
         if (cb.accountId !== undefined && cb.accountId !== null) {
-          const cash = parseFloat(cb.amount);
+          // If specific account filter is on, only include that account
+          if (input.accountId !== undefined && cb.accountId !== input.accountId) return;
+
           const account = portfolioAccounts.find((a: any) => a.id === cb.accountId);
+          const type = account?.accountType || "Brokerage";
+
+          // If account type filter is on, only include accounts of that type
+          if (input.accountType && type !== input.accountType) return;
+
+          const cash = parseFloat(cb.amount);
           accountSummaries[cb.accountId] = {
             investmentValue: "0.00",
             cashValue: truncateNumber(cash).toFixed(2),
             totalValue: truncateNumber(cash).toFixed(2),
-            accountType: account?.accountType || "Brokerage",
+            accountType: type,
             assets: []
           };
         }
