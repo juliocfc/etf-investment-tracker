@@ -28,7 +28,7 @@ import Activities from "./Activities";
 import Performance from "./Performance";
 import Dividends from "./Dividends";
 
-const CHART_COLORS = ["#004a99", "#3d8a3d", "#f2a900", "#cc0000", "#666666", "#94a3b8", "#38bdf8", "#10b981", "#fbbf24"];
+export const CHART_COLORS = ["#004a99", "#3d8a3d", "#f2a900", "#cc0000", "#666666", "#94a3b8", "#38bdf8", "#10b981", "#fbbf24"];
 
 // Helper to get the last trading day (today if weekday, Friday if weekend)
 const getLastTradingDay = () => {
@@ -2609,7 +2609,7 @@ function PortfolioAllocationChart({ data, cashPercent }: { data: any[], cashPerc
   );
 }
 
-function AccountTypeAllocationChart({ data }: { data: any[] }) {
+export function AccountTypeAllocationChart({ data }: { data: any[] }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const total = data.reduce((acc: number, item: any) => acc + parseFloat(item.percentage), 0);
 

@@ -16,6 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { AccountTypeAllocationChart, CHART_COLORS } from "./Portfolio";
 
 interface PortfoliosProps {
   onPortfolioSelect?: (id: number) => void;
@@ -290,6 +291,32 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
       cashPercent: overall > 0 ? ((cash / overall) * 100).toFixed(1) : "0",
     };
   }, [portfolios]);
+
+  const accountTypeBreakdown = useMemo(() => {
+    if (!portfolios) return [];
+    
+    const typeMap = new Map<string, number>();
+    let totalValueAcrossAll = 0;
+
+    portfolios.forEach(p => {
+      // Filter by portfolio if needed
+      const filterId = portfolioFilter === "all" ? null : parseInt(portfolioFilter);
+      if (filterId !== null && p.id !== filterId) return;
+
+      p.accounts.forEach((acc: any) => {
+        const type = acc.accountType || "Brokerage";
+        const val = parseFloat(acc.totalValue);
+        typeMap.set(type, (typeMap.get(type) || 0) + val);
+        totalValueAcrossAll += val;
+      });
+    });
+
+    return Array.from(typeMap.entries()).map(([type, value]) => ({
+      type,
+      value: truncateNumber(value).toFixed(2),
+      percentage: totalValueAcrossAll > 0 ? ((value / totalValueAcrossAll) * 100).toFixed(2) : "0",
+    })).sort((a, b) => parseFloat(b.value) - parseFloat(a.value));
+  }, [portfolios, portfolioFilter]);
 
   if (isLoading) {
     return (
@@ -1022,6 +1049,69 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
           )}
         </div>
       </Card>
+
+      {/* Account Type Allocation Pie Chart */}
+      {accountTypeBreakdown && accountTypeBreakdown.length > 0 && (
+        <Card className="p-6 bg-white shadow-sm border border-border mt-8">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 bg-slate-100 rounded text-slate-600">
+                <Wallet className="w-4 h-4" />
+              </div>
+              <h2 className="text-lg font-bold text-slate-800">Account Type Distribution</h2>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Filter:</span>
+              <Select value={portfolioFilter} onValueChange={setPortfolioFilter}>
+                <SelectTrigger className="h-7 text-[10px] font-bold uppercase tracking-wider min-w-[140px] bg-slate-50 border-slate-200">
+                  <SelectValue placeholder="All Portfolios" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all" className="text-[10px] font-bold uppercase">All Portfolios</SelectItem>
+                  {portfolios?.map(p => (
+                    <SelectItem key={p.id} value={p.id.toString()} className="text-[10px] font-bold uppercase">
+                      {p.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="flex flex-col md:flex-row items-center justify-center gap-16">
+            <div className="shrink-0 flex items-center justify-center">
+              <AccountTypeAllocationChart data={accountTypeBreakdown} />
+            </div>
+            <div className="flex-1 w-full max-w-2xl">
+              <div className="space-y-3">
+                {accountTypeBreakdown.map((item: any, index: number) => {
+                  const TYPE_COLORS: Record<string, string> = {
+                    "Brokerage": "#004a99",
+                    "Retirement": "#3d8a3d",
+                    "Savings": "#f2a900",
+                    "Checking": "#cc0000",
+                    "Other": "#666666"
+                  };
+                  return (
+                    <div key={item.type} className="flex justify-between items-center text-sm p-3 hover:bg-slate-50 rounded transition-colors">
+                      <div className="flex items-center gap-4">
+                        <div
+                          className="w-4 h-4 rounded-full shrink-0"
+                          style={{ backgroundColor: TYPE_COLORS[item.type] || CHART_COLORS[index % CHART_COLORS.length] }}
+                        />
+                        <span className="font-bold text-slate-700">{item.type}</span>
+                      </div>
+                      <div className="flex items-center gap-6">
+                        <span className="font-mono font-bold text-slate-600 text-sm">{formatCurrency(item.value)}</span>
+                        <span className="font-mono font-bold text-slate-700 text-base w-16 text-right">{item.percentage}%</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </Card>
+      )}
 
       {/* Rename Dialog */}
       <Dialog open={!!editingPortfolio} onOpenChange={() => setEditingPortfolio(null)}>
