@@ -257,20 +257,6 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
     }
   });
 
-  const updatePricesMutation = trpc.etf.updatePrices.useMutation({
-    onSuccess: () => {
-      toast.success("Prices updated successfully!");
-      utils.portfolio.getDetailedAll.invalidate();
-      utils.portfolio.getHistory.invalidate();
-      utils.portfolio.getAllHoldings.invalidate();
-      utils.portfolio.getConsolidatedSummary.invalidate();
-      utils.etf.getDetailedDividendReport.invalidate();
-    },
-    onError: (error) => {
-      toast.error(error.message || "Failed to update prices");
-    }
-  });
-
   const totals = useMemo(() => {
     if (!portfolios) return { investment: 0, cash: 0, overall: 0, totalCost: 0, gain: 0, gainPercent: "0", investmentPercent: "0", cashPercent: "0" };
     const investment = portfolios.reduce((acc, p) => acc + parseFloat(p.investmentValue), 0);
@@ -657,16 +643,6 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
               <List className="w-4 h-4 text-primary" />
               <CardTitle className="text-sm font-bold text-slate-800 uppercase tracking-widest">All Investment Assets</CardTitle>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => updatePricesMutation.mutate({ portfolioId: portfolioFilter === "all" ? undefined : parseInt(portfolioFilter) })}
-              disabled={updatePricesMutation.isPending}
-              className="h-7 border-slate-200 hover:bg-slate-50 text-[10px] font-bold uppercase tracking-wider px-3"
-            >
-              <RefreshCw className={`mr-1.5 h-3 w-3 ${updatePricesMutation.isPending ? "animate-spin" : ""}`} />
-              {updatePricesMutation.isPending ? "Updating..." : "Update Prices"}
-            </Button>
           </div>
           <div className="flex items-center gap-2">
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Filter:</span>

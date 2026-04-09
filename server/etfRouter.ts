@@ -1280,7 +1280,7 @@ export const etfRouter = router({
             eq(purchases.portfolioId, input.portfolioId),
             eq(purchases.symbol, input.symbol.toUpperCase())
           )
-        ).orderBy(desc(purchases.purchaseDate));
+        ).orderBy(desc(sql`COALESCE(${purchases.soldDate}, ${purchases.purchaseDate})`));
       }
       return getPurchases(input.holdingId);
     }),

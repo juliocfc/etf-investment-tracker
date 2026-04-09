@@ -198,6 +198,7 @@ export default function BrokerageTransactions() {
   const importedSet = useMemo(() => new Set(importedIds || []), [importedIds]);
 
   const addHoldingMutation = trpc.etf.addHolding.useMutation();
+  const executeTradeMutation = trpc.etf.executeTrade.useMutation();
   const recordCashMutation = trpc.etf.recordCashTransaction.useMutation();
   const markImportedMutation = trpc.brokerage.markTransactionsAsImported.useMutation();
 
@@ -334,17 +335,38 @@ export default function BrokerageTransactions() {
         }
       }
 
-      const txAmount = tx.amount || 0;
-      const txUnits = tx.units || 0;
-      const absAmount = Math.abs(txAmount);
+      const txAmountRaw = tx.amount || tx.net_amount || 0;
+      const txUnitsRaw = tx.units || 0;
+      const txUnits = Math.abs(txUnitsRaw); // Use absolute value for internal ledger
       
-      let initialPrice = tx.price?.toString() || (txUnits !== 0 ? (absAmount / txUnits).toString() : "0");
+      let txAmountCalculated = txAmountRaw;
+      if (txAmountCalculated === 0 && tx.price) {
+        if (txUnits !== 0) {
+          txAmountCalculated = tx.price * txUnits;
+        } else {
+          // Cash transactions (dividends, interest, etc.) sometimes have the value in 'price' 
+          // and units as 0 or null
+          txAmountCalculated = tx.price;
+        }
+      }
+      
+      const absAmount = Math.abs(txAmountCalculated);
+      
+      // For trades, we prefer to calculate the price from the amount if both are present
+      // to ensure that (quantity * price) matches the total amount after truncation.
+      let initialPrice: string;
+      if ((mappedType === "buy" || mappedType === "sell") && txUnits !== 0 && absAmount !== 0) {
+        // Calculate price from amount to ensure consistency
+        initialPrice = (absAmount / txUnits).toString();
+      } else {
+        initialPrice = tx.price?.toString() || (txUnits !== 0 && absAmount !== 0 ? (absAmount / txUnits).toString() : "0");
+      }
       
       // Auto-adjust price if it's a trade and (qty * price) != absAmount
       if ((mappedType === "buy" || mappedType === "sell") && txUnits !== 0) {
         const calculatedTotal = truncateNumber(txUnits * parseFloat(initialPrice));
         if (Math.abs(calculatedTotal - absAmount) > 0.01) {
-          // Force price to be exactly amount / units to satisfy the truncation rule later
+          // Force price to be exactly amount / units if it wasn't already (safety fallback)
           initialPrice = (absAmount / txUnits).toString();
         }
       }
@@ -383,13 +405,15 @@ export default function BrokerageTransactions() {
 
         try {
           if (mapping.type === "buy" || mapping.type === "sell") {
-            await addHoldingMutation.mutateAsync({
+            // For buys and sells, we use the unified executeTrade mutation 
+            // which handles both the asset quantity and the cash balance update
+            await executeTradeMutation.mutateAsync({
               portfolioId: mapping.portfolioId,
               accountId: mapping.accountId,
+              holdingId: -1, // Look up by symbol
               symbol: mapping.symbol,
-              name: mapping.symbol,
               quantity: mapping.quantity,
-              purchasePrice: mapping.price,
+              price: mapping.price,
               purchaseDate: mapping.date,
               type: mapping.type as "buy" | "sell",
               fees: "0"
@@ -922,7 +946,10 @@ export default function BrokerageTransactions() {
                           {formatCurrency(mapping.amount)}
                         </td>
                         <td className="py-3 px-3 text-right font-mono text-xs font-bold">
-                          {formatCurrency(truncateNumber(parseFloat(mapping.quantity || "0") * parseFloat(mapping.price || "0")))}
+                          {mapping.type === "buy" || mapping.type === "sell" 
+                            ? formatCurrency(truncateNumber(parseFloat(mapping.quantity || "0") * parseFloat(mapping.price || "0")))
+                            : formatCurrency(mapping.amount)
+                          }
                         </td>
                       </tr>
                     ))}

@@ -428,7 +428,9 @@ export async function deleteEtfHolding(id: number) {
 // Purchase queries
 export async function getPurchases(holdingId: number) {
   const db = await getDb();
-  return db.select().from(purchases).where(and(eq(purchases.holdingId, holdingId), eq(purchases.isSold, false))).orderBy(desc(purchases.purchaseDate));
+  return db.select().from(purchases)
+    .where(eq(purchases.holdingId, holdingId))
+    .orderBy(desc(sql`COALESCE(${purchases.soldDate}, ${purchases.purchaseDate})`));
 }
 
 export async function addPurchase(data: any) {
@@ -773,11 +775,26 @@ export async function bulkImportPurchases(
 
 export async function calculateAverageCost(holdingId: number) {
   const db = await getDb();
-  const allPurchases = await getPurchases(holdingId);
+  const allPurchases = await db.select().from(purchases).where(and(eq(purchases.holdingId, holdingId), eq(purchases.isSold, false))).orderBy(desc(purchases.purchaseDate));
 
   if (allPurchases.length === 0) {
-    await deleteEtfHolding(holdingId);
-    return "0";
+    // Check if there are ANY purchases at all (even sold ones)
+    const hasAnyPurchases = await db.select({ id: purchases.id }).from(purchases).where(eq(purchases.holdingId, holdingId)).limit(1).then((rows: any[]) => rows.length > 0);
+    
+    if (hasAnyPurchases) {
+      // Asset is fully sold, keep the holding but set quantity to 0
+      await db
+        .update(etfHoldings)
+        .set({
+          quantity: "0",
+        })
+        .where(eq(etfHoldings.id, holdingId));
+      return "0";
+    } else {
+      // No purchases at all, delete the holding
+      await deleteEtfHolding(holdingId);
+      return "0";
+    }
   }
 
   let totalQty = 0;
@@ -793,17 +810,13 @@ export async function calculateAverageCost(holdingId: number) {
   const avgCost = totalQty > 0 ? (totalCost / totalQty).toString() : "0";
   const totalQtyStr = totalQty.toString();
 
-  if (totalQty === 0) {
-    await deleteEtfHolding(holdingId);
-  } else {
-    await db
-      .update(etfHoldings)
-      .set({
-        purchasePrice: avgCost,
-        quantity: totalQtyStr,
-      })
-      .where(eq(etfHoldings.id, holdingId));
-  }
+  await db
+    .update(etfHoldings)
+    .set({
+      purchasePrice: avgCost,
+      quantity: totalQtyStr,
+    })
+    .where(eq(etfHoldings.id, holdingId));
 
   return avgCost;
 }
@@ -838,19 +851,8 @@ export async function markTransactionsAsImported(userId: number, externalIds: st
   if (externalIds.length === 0) return;
   
   for (const id of externalIds) {
-    // Update new table if possible
+    // Update brokerageTransactions table
     await markBrokerageTransactionImported(id, userId);
-
-    // Also update legacy table for backward compatibility
-    try {
-      await db.insert(importedTransactions).values({
-        userId,
-        externalId: id,
-        source
-      });
-    } catch (e) {
-      // Ignore duplicates
-    }
   }
 }
 

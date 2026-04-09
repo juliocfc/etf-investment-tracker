@@ -24,6 +24,25 @@ function DashboardRouter() {
   const [selectedPortfolioId, setSelectedPortfolioId] = useState<number | null>(null);
   const utils = trpc.useUtils();
 
+  const updatePricesMutation = trpc.etf.updatePrices.useMutation({
+    onSuccess: () => {
+      utils.portfolio.getAll.invalidate();
+      utils.portfolio.getDetailedAll.invalidate();
+      utils.portfolio.getAllHoldings.invalidate();
+      utils.portfolio.getConsolidatedSummary.invalidate();
+      utils.etf.getPortfolioSummary.invalidate();
+      utils.etf.getHoldings.invalidate();
+    },
+    onError: (error) => {
+      console.error("Failed to update prices on load:", error);
+    },
+  });
+
+  // Automatically update prices on mount
+  useEffect(() => {
+    updatePricesMutation.mutate({});
+  }, []);
+
   // Handle URL paths
   useEffect(() => {
     if (location === "/privacy") {

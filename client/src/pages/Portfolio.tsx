@@ -265,18 +265,6 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
     },
   });
 
-  const updatePricesMutation = trpc.etf.updatePrices.useMutation({
-    onSuccess: () => {
-      toast.success("Prices updated!");
-      refetchHoldings();
-      refetchSummary();
-      utils.portfolio.getConsolidatedSummary.invalidate();
-    },
-    onError: (error) => {
-      toast.error(error.message || "Failed to update prices");
-    },
-  });
-
   const addHoldingMutation = trpc.etf.addHolding.useMutation({
     onSuccess: () => {
       toast.success("Investment added successfully!");
@@ -1196,17 +1184,6 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                 </div>
 
                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => selectedPortfolioId && updatePricesMutation.mutate({ portfolioId: selectedPortfolioId })}
-                    disabled={updatePricesMutation.isPending}
-                    className="border-slate-200 hover:bg-slate-50 text-xs font-bold uppercase tracking-wider h-9 flex-1 sm:flex-none"
-                  >
-                    <RefreshCw className={`mr-2 h-3.5 w-3.5 ${updatePricesMutation.isPending ? "animate-spin" : ""}`} />
-                    Update Prices
-                  </Button>
-
                   <Dialog open={isAddDialogOpen} onOpenChange={(open) => {
                     setIsAddDialogOpen(open);
                     if (!open) {
@@ -2785,40 +2762,52 @@ function PurchaseHistoryTable({
           </thead>
           <tbody>
             {filteredPurchases?.map((purchase: any) => {
-              const dateStr = formatUTCDate(purchase.purchaseDate);
+              const dateStr = formatUTCDate(purchase.isSold && purchase.soldDate ? purchase.soldDate : purchase.purchaseDate);
               const accountName = accounts?.find((a: any) => a.id === purchase.accountId)?.name || "Default";
               const quantity = parseFloat(purchase.quantity);
               const price = parseFloat(purchase.price);
               const totalAmount = truncateNumber(quantity * price);
+              const isSale = !!purchase.isSold;
+              
               return (
-                <tr key={purchase.id} className="border-b border-border hover:bg-white transition-colors">
+                <tr key={purchase.id} className={`border-b border-border hover:bg-white transition-colors ${isSale ? "bg-slate-50/50 italic text-slate-500" : ""}`}>
                   <td className="py-3 px-4 font-mono whitespace-nowrap text-xs text-slate-500">{dateStr}</td>
                   <td className="py-3 px-4 whitespace-nowrap">
                     <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200">
                       {accountName}
                     </span>
                   </td>
-                  <td className="text-right py-3 px-4 font-mono">{formatNumber(purchase.quantity, 3)}</td>
+                  <td className={`text-right py-3 px-4 font-mono ${isSale ? "text-red-500" : ""}`}>
+                    {isSale ? "-" : ""}{formatNumber(purchase.quantity, 3)}
+                  </td>
                   <td className="text-right py-3 px-4 font-mono font-medium">{formatCurrency(purchase.price)}</td>
-                  <td className="text-right py-3 px-4 font-mono font-bold text-slate-700">{formatCurrency(totalAmount)}</td>
+                  <td className={`text-right py-3 px-4 font-mono font-bold ${isSale ? "text-red-600" : "text-slate-700"}`}>
+                    {isSale ? "-" : ""}{formatCurrency(totalAmount)}
+                  </td>
                   <td className="text-center py-3 px-4">
                     <div className="flex items-center justify-center gap-1">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => setEditingPurchase(purchase)}
-                        className="text-slate-400 hover:text-primary"
-                      >
-                        <Edit2 className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => onDelete(purchase.id, holdingId, portfolioId, purchase.accountId, symbol)}
-                        className="text-slate-400 hover:text-destructive"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      {isSale ? (
+                        <Badge variant="outline" className="text-[8px] font-bold uppercase bg-red-50 text-red-600 border-red-100">Sale</Badge>
+                      ) : (
+                        <>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setEditingPurchase(purchase)}
+                            className="text-slate-400 hover:text-primary"
+                          >
+                            <Edit2 className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => onDelete(purchase.id, holdingId, portfolioId, purchase.accountId, symbol)}
+                            className="text-slate-400 hover:text-destructive"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </>
+                      )}
                     </div>
                   </td>
                 </tr>
