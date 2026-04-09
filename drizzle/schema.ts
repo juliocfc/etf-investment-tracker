@@ -73,6 +73,7 @@ export const purchases = sqliteTable("purchases", {
   purchaseDate: integer("purchaseDate", { mode: "timestamp" }).notNull(),
   isSold: integer("isSold", { mode: "boolean" }).default(false),
   soldDate: integer("soldDate", { mode: "timestamp" }),
+  soldPrice: text("soldPrice"),
   createdAt: integer("createdAt", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 

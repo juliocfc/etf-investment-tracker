@@ -2765,9 +2765,9 @@ function PurchaseHistoryTable({
               const dateStr = formatUTCDate(purchase.isSold && purchase.soldDate ? purchase.soldDate : purchase.purchaseDate);
               const accountName = accounts?.find((a: any) => a.id === purchase.accountId)?.name || "Default";
               const quantity = parseFloat(purchase.quantity);
-              const price = parseFloat(purchase.price);
-              const totalAmount = truncateNumber(quantity * price);
               const isSale = !!purchase.isSold;
+              const price = parseFloat(isSale ? (purchase.soldPrice || purchase.price) : purchase.price);
+              const totalAmount = truncateNumber(quantity * price);
               
               return (
                 <tr key={purchase.id} className={`border-b border-border hover:bg-white transition-colors ${isSale ? "bg-slate-50/50 italic text-slate-500" : ""}`}>
@@ -2780,7 +2780,7 @@ function PurchaseHistoryTable({
                   <td className={`text-right py-3 px-4 font-mono ${isSale ? "text-red-500" : ""}`}>
                     {isSale ? "-" : ""}{formatNumber(purchase.quantity, 3)}
                   </td>
-                  <td className="text-right py-3 px-4 font-mono font-medium">{formatCurrency(purchase.price)}</td>
+                  <td className="text-right py-3 px-4 font-mono font-medium">{formatCurrency(price)}</td>
                   <td className={`text-right py-3 px-4 font-mono font-bold ${isSale ? "text-red-600" : "text-slate-700"}`}>
                     {isSale ? "-" : ""}{formatCurrency(totalAmount)}
                   </td>

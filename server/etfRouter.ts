@@ -269,7 +269,8 @@ export const etfRouter = router({
             // Mark entire purchase as sold
             await updatePurchase(purchase.id, { 
               isSold: true, 
-              soldDate: input.purchaseDate 
+              soldDate: input.purchaseDate,
+              soldPrice: input.purchasePrice
             });
             remainingToSell -= purchaseQty;
           } else {
@@ -280,7 +281,8 @@ export const etfRouter = router({
             await updatePurchase(purchase.id, { 
               quantity: remainingToSell.toString(),
               isSold: true,
-              soldDate: input.purchaseDate
+              soldDate: input.purchaseDate,
+              soldPrice: input.purchasePrice
             });
 
             // 2. Create a new record for the unsold portion
@@ -292,7 +294,7 @@ export const etfRouter = router({
               symbol: purchase.symbol,
               quantity: remainingQty.toString(),
               price: purchase.price,
-              fees: "0", // Original fees stay with the sold portion (or we could split them, but usually they are per transaction)
+              fees: "0", // Original fees stay with the sold portion
               purchaseDate: purchase.purchaseDate,
               isSold: false
             });
@@ -1216,7 +1218,8 @@ export const etfRouter = router({
             // Mark entire purchase as sold
             await updatePurchase(purchase.id, { 
               isSold: true, 
-              soldDate: input.purchaseDate 
+              soldDate: input.purchaseDate,
+              soldPrice: input.price
             });
             remainingToSell -= purchaseQty;
           } else {
@@ -1227,7 +1230,8 @@ export const etfRouter = router({
             await updatePurchase(purchase.id, { 
               quantity: remainingToSell.toString(),
               isSold: true,
-              soldDate: input.purchaseDate
+              soldDate: input.purchaseDate,
+              soldPrice: input.price
             });
 
             // 2. Create a new record for the unsold portion
