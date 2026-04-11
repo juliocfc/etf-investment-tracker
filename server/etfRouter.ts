@@ -28,7 +28,8 @@ import {
   getDb,
   truncateNumber,
 } from "./db";
-import { gte, lte, sql, and, eq, desc, asc } from "drizzle-orm";
+import { gte, lte, sql, and, eq, desc, asc, inArray } from "drizzle-orm";
+import { TRPCError } from "@trpc/server";
 import {
   fetchEtfPrice,
   validateEtfSymbol,
@@ -1287,6 +1288,96 @@ export const etfRouter = router({
         ).orderBy(desc(sql`COALESCE(${purchases.soldDate}, ${purchases.purchaseDate})`));
       }
       return getPurchases(input.holdingId);
+    }),
+
+  transferPurchases: protectedProcedure
+    .input(z.object({
+      purchaseIds: z.array(z.number()),
+      targetPortfolioId: z.number(),
+      targetAccountId: z.number(),
+      symbol: z.string(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const db = await getDb();
+      
+      // 1. Verify target account belongs to target portfolio and user
+      const targetAccount = await db.select().from(accounts).where(and(
+        eq(accounts.id, input.targetAccountId),
+        eq(accounts.portfolioId, input.targetPortfolioId),
+        eq(accounts.userId, ctx.user.id)
+      )).then(rows => rows[0]);
+
+      if (!targetAccount) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Target account not found or access denied" });
+      }
+
+      // 2. Ensure holding exists in the target account
+      let targetHolding = await db.select().from(etfHoldings).where(and(
+        eq(etfHoldings.symbol, input.symbol.toUpperCase()),
+        eq(etfHoldings.accountId, input.targetAccountId),
+        eq(etfHoldings.userId, ctx.user.id)
+      )).then(rows => rows[0]);
+
+      if (!targetHolding) {
+        // Find information from any source holding to create the target holding
+        const sourcePurchase = await db.select().from(purchases).where(and(
+          eq(purchases.id, input.purchaseIds[0]),
+          eq(purchases.userId, ctx.user.id)
+        )).then(rows => rows[0]);
+
+        if (!sourcePurchase) throw new TRPCError({ code: "NOT_FOUND", message: "Source purchase not found" });
+
+        const sourceHolding = await db.select().from(etfHoldings).where(and(
+          eq(etfHoldings.id, sourcePurchase.holdingId)
+        )).then(rows => rows[0]);
+
+        const holdingId = await createEtfHolding({
+          userId: ctx.user.id,
+          portfolioId: input.targetPortfolioId,
+          accountId: input.targetAccountId,
+          symbol: input.symbol.toUpperCase(),
+          name: sourceHolding?.name || input.symbol.toUpperCase(),
+          quantity: "0",
+          purchasePrice: sourceHolding?.purchasePrice || "0",
+          purchaseDate: sourceHolding?.purchaseDate || new Date(),
+          desiredAllocation: "0",
+          currentPrice: sourceHolding?.currentPrice || "0",
+          lastPriceUpdate: new Date(),
+        });
+        
+        targetHolding = { id: Number(holdingId) } as any;
+      }
+
+      // 3. Track source holding IDs to recalculate them later
+      const sourceHoldingIds = new Set<number>();
+      const sourcePurchases = await db.select().from(purchases).where(and(
+        inArray(purchases.id, input.purchaseIds),
+        eq(purchases.userId, ctx.user.id)
+      ));
+
+      for (const sp of sourcePurchases) {
+        sourceHoldingIds.add(sp.holdingId);
+      }
+
+      // 4. Update all selected purchases
+      await db.update(purchases)
+        .set({
+          portfolioId: input.targetPortfolioId,
+          accountId: input.targetAccountId,
+          holdingId: targetHolding!.id,
+        })
+        .where(and(
+          inArray(purchases.id, input.purchaseIds),
+          eq(purchases.userId, ctx.user.id)
+        ));
+
+      // 5. Recalculate average cost and quantity for all involved holdings
+      for (const hid of Array.from(sourceHoldingIds)) {
+        await calculateAverageCost(hid);
+      }
+      await calculateAverageCost(targetHolding!.id);
+
+      return { success: true };
     }),
 
   calculateAverageCost: protectedProcedure

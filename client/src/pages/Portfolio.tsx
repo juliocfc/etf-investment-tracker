@@ -20,7 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Trash2, RefreshCw, ShoppingCart, History, FolderPlus, FileUp, Wallet, TrendingUp, Info, ArrowUpCircle, ArrowDownCircle, CheckCircle2, MoreVertical, CalendarPlus, Download, List, Activity, DollarSign, LayoutDashboard, Edit2, ArrowUpDown, ChevronUp, ChevronDown, ChevronRight } from "lucide-react";
+import { Plus, Trash2, RefreshCw, ShoppingCart, History, FolderPlus, FileUp, Wallet, TrendingUp, Info, ArrowUpCircle, ArrowDownCircle, CheckCircle2, MoreVertical, CalendarPlus, Download, List, Activity, DollarSign, LayoutDashboard, Edit2, ArrowUpDown, ChevronUp, ChevronDown, ChevronRight, ArrowLeftRight, CheckSquare, Square } from "lucide-react";
 import { toast } from "sonner";
 import { formatCurrency, formatNumber, formatDate, formatUTCDate, truncateNumber } from "@/lib/utils";
 import React, { useEffect, useRef, useState, useMemo } from "react";
@@ -123,6 +123,18 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
   }, [isTradeDialogOpen]);
 
   const [isCSVImportOpen, setIsCSVImportOpen] = useState<{ id: number, symbol: string } | null>(null);
+  const [isTransferDialogOpen, setIsTransferDialogOpen] = useState<{ id: number, symbol: string, accountId?: number } | null>(null);
+  const [transferData, setTransferData] = useState<{
+    sourceAccountId: string;
+    targetPortfolioId: string;
+    targetAccountId: string;
+    selectedPurchaseIds: Set<number>;
+  }>({
+    sourceAccountId: "",
+    targetPortfolioId: "",
+    targetAccountId: "",
+    selectedPurchaseIds: new Set(),
+  });
   const lookupTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const quantityInputRef = useRef<HTMLInputElement>(null);
 
@@ -136,6 +148,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
   }, [selectedPortfolioId]);
 
   // Queries
+  const { data: portfolios } = trpc.portfolio.getAll.useQuery();
   const { data: accounts, refetch: refetchAccounts } = trpc.account.getAccounts.useQuery(
     { portfolioId: selectedPortfolioId },
     { enabled: !!selectedPortfolioId }
@@ -1521,6 +1534,18 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                                     <TrendingUp className="mr-2 h-4 w-4 text-slate-500" />
                                     <span>Add Trade</span>
                                   </DropdownMenuItem>
+                                  <DropdownMenuItem onClick={() => {
+                                    setIsTransferDialogOpen({ id: holding.id, symbol: holding.symbol, accountId: holding.accountId });
+                                    setTransferData({
+                                      sourceAccountId: (holding as any).accountId?.toString() || "",
+                                      targetPortfolioId: "",
+                                      targetAccountId: "",
+                                      selectedPurchaseIds: new Set(),
+                                    });
+                                  }}>
+                                    <ArrowLeftRight className="mr-2 h-4 w-4 text-slate-500" />
+                                    <span>Transfer Asset</span>
+                                  </DropdownMenuItem>
                                   <DropdownMenuItem onClick={() => setIsCSVImportOpen({ id: holding.id, symbol: holding.symbol })}>
                                     <FileUp className="mr-2 h-4 w-4 text-slate-500" />
                                     <span>Import Purchases</span>
@@ -1571,7 +1596,40 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                                 <td className={`text-right py-2 px-3 font-mono text-[10px] font-bold ${bdIsGain ? "text-green-600/80" : "text-red-600/80"}`}>
                                   {bdIsGain ? "+" : ""}{breakdown.gainPercent}%
                                 </td>
-                                <td colSpan={2}></td>
+                                <td></td>
+                                <td className="py-2 px-3">
+                                  <div className="flex items-center justify-center">
+                                    <DropdownMenu>
+                                      <DropdownMenuTrigger asChild>
+                                        <Button variant="ghost" size="icon" className="h-6 w-6 text-slate-400 hover:text-primary">
+                                          <MoreVertical className="h-3 w-3" />
+                                        </Button>
+                                      </DropdownMenuTrigger>
+                                      <DropdownMenuContent align="end" className="w-48">
+                                        <DropdownMenuItem onClick={() => setIsTradeDialogOpen({ id: breakdown.id, symbol: holding.symbol })}>
+                                          <TrendingUp className="mr-2 h-3.5 w-3.5 text-slate-500" />
+                                          <span className="text-xs">Add Trade</span>
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem onClick={() => {
+                                          setIsTransferDialogOpen({ id: breakdown.id, symbol: holding.symbol, accountId: breakdown.accountId });
+                                          setTransferData({
+                                            sourceAccountId: breakdown.accountId.toString(),
+                                            targetPortfolioId: "",
+                                            targetAccountId: "",
+                                            selectedPurchaseIds: new Set(),
+                                          });
+                                        }}>
+                                          <ArrowLeftRight className="mr-2 h-3.5 w-3.5 text-slate-500" />
+                                          <span className="text-xs">Transfer Asset</span>
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem onClick={() => setIsCSVImportOpen({ id: breakdown.id, symbol: holding.symbol })}>
+                                          <FileUp className="mr-2 h-3.5 w-3.5 text-slate-500" />
+                                          <span className="text-xs">Import Purchases</span>
+                                        </DropdownMenuItem>
+                                      </DropdownMenuContent>
+                                    </DropdownMenu>
+                                  </div>
+                                </td>
                               </tr>
                             );
                           })}
@@ -1936,6 +1994,18 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                 </div>
               </DialogContent>
             </Dialog>
+          )}
+
+          {isTransferDialogOpen && (
+            <TransferAssetDialog
+              isOpen={!!isTransferDialogOpen}
+              onClose={() => setIsTransferDialogOpen(null)}
+              holdingId={isTransferDialogOpen.id}
+              symbol={isTransferDialogOpen.symbol}
+              sourceAccountId={isTransferDialogOpen.accountId}
+              portfolios={portfolios || []}
+              currentPortfolioId={selectedPortfolioId}
+            />
           )}
 
           {cashHistoryOpen && (
@@ -2638,6 +2708,224 @@ export function AccountTypeAllocationChart({ data }: { data: any[] }) {
     <div className="flex flex-col items-center">
       <canvas ref={canvasRef} width="400" height="400" className="drop-shadow-lg" />
     </div>
+  );
+}
+
+function TransferAssetDialog({
+  isOpen,
+  onClose,
+  holdingId,
+  symbol,
+  sourceAccountId: initialSourceAccountId,
+  portfolios,
+  currentPortfolioId
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  holdingId: number;
+  symbol: string;
+  sourceAccountId?: number;
+  portfolios: any[];
+  currentPortfolioId: number;
+}) {
+  const utils = trpc.useUtils();
+  const [sourceAccountId, setSourceAccountId] = useState<string>(initialSourceAccountId?.toString() || "");
+  const [targetPortfolioId, setTargetPortfolioId] = useState<string>(currentPortfolioId.toString());
+  const [targetAccountId, setTargetAccountId] = useState<string>("");
+  const [selectedPurchaseIds, setSelectedPurchaseIds] = useState<Set<number>>(new Set());
+
+  const { data: currentPortfolioAccounts } = trpc.account.getAccounts.useQuery(
+    { portfolioId: currentPortfolioId },
+    { enabled: isOpen }
+  );
+
+  const { data: targetAccounts } = trpc.account.getAccounts.useQuery(
+    { portfolioId: Number(targetPortfolioId) },
+    { enabled: !!targetPortfolioId }
+  );
+
+  const { data: purchases } = trpc.etf.getPurchases.useQuery(
+    { holdingId: sourceAccountId ? -1 : holdingId, symbol, portfolioId: currentPortfolioId },
+    { enabled: isOpen }
+  );
+
+  const activePurchases = useMemo(() => {
+    if (!purchases) return [];
+    return purchases.filter((p: any) => !p.isSold && (sourceAccountId ? p.accountId === Number(sourceAccountId) : true));
+  }, [purchases, sourceAccountId]);
+
+  // Reset selection when source account changes
+  useEffect(() => {
+    setSelectedPurchaseIds(new Set());
+  }, [sourceAccountId]);
+
+  const transferMutation = trpc.etf.transferPurchases.useMutation({
+    onSuccess: () => {
+      toast.success("Assets transferred successfully!");
+      utils.etf.getPortfolioSummary.invalidate();
+      utils.etf.getHoldings.invalidate();
+      utils.portfolio.getConsolidatedSummary.invalidate();
+      onClose();
+    },
+    onError: (error) => {
+      toast.error(error.message || "Failed to transfer assets");
+    }
+  });
+
+  const togglePurchase = (id: number) => {
+    const next = new Set(selectedPurchaseIds);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setSelectedPurchaseIds(next);
+  };
+
+  const toggleAll = () => {
+    if (selectedPurchaseIds.size === activePurchases.length) {
+      setSelectedPurchaseIds(new Set());
+    } else {
+      setSelectedPurchaseIds(new Set(activePurchases.map((p: any) => p.id)));
+    }
+  };
+
+  const handleTransfer = () => {
+    if (!targetAccountId) {
+      toast.error("Please select a target account");
+      return;
+    }
+    if (selectedPurchaseIds.size === 0) {
+      toast.error("Please select at least one purchase to transfer");
+      return;
+    }
+
+    transferMutation.mutate({
+      purchaseIds: Array.from(selectedPurchaseIds),
+      targetPortfolioId: Number(targetPortfolioId),
+      targetAccountId: Number(targetAccountId),
+      symbol
+    });
+  };
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-[800px]">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <ArrowLeftRight className="w-5 h-5 text-primary" />
+            Transfer {symbol}
+          </DialogTitle>
+        </DialogHeader>
+        
+        <div className="space-y-6 pt-4">
+          <div className="grid grid-cols-3 gap-4">
+            <div className="grid gap-2">
+              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Source Account</label>
+              <Select value={sourceAccountId} onValueChange={setSourceAccountId}>
+                <SelectTrigger className="h-9">
+                  <SelectValue placeholder="Select Source Account" />
+                </SelectTrigger>
+                <SelectContent>
+                  {currentPortfolioAccounts?.map(a => (
+                    <SelectItem key={a.id} value={a.id.toString()}>{a.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2">
+              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Target Portfolio</label>
+              <Select value={targetPortfolioId} onValueChange={(val) => {
+                setTargetPortfolioId(val);
+                setTargetAccountId("");
+              }}>
+                <SelectTrigger className="h-9">
+                  <SelectValue placeholder="Select Portfolio" />
+                </SelectTrigger>
+                <SelectContent>
+                  {portfolios.map(p => (
+                    <SelectItem key={p.id} value={p.id.toString()}>{p.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2">
+              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Target Account</label>
+              <Select value={targetAccountId} onValueChange={setTargetAccountId}>
+                <SelectTrigger className="h-9">
+                  <SelectValue placeholder="Select Account" />
+                </SelectTrigger>
+                <SelectContent>
+                  {targetAccounts?.filter((a: any) => a.id.toString() !== sourceAccountId || targetPortfolioId !== currentPortfolioId.toString()).map((a: any) => (
+                    <SelectItem key={a.id} value={a.id.toString()}>{a.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Select Purchases to Transfer</label>
+              <Button variant="ghost" size="sm" className="h-7 text-[10px] uppercase font-bold" onClick={toggleAll}>
+                {selectedPurchaseIds.size === activePurchases.length ? "Deselect All" : "Select All"}
+              </Button>
+            </div>
+            
+            <div className="border border-slate-200 rounded-lg overflow-hidden max-h-[300px] overflow-y-auto">
+              <table className="w-full text-xs">
+                <thead className="bg-slate-50 border-b border-slate-200 sticky top-0">
+                  <tr>
+                    <th className="w-10 p-2"></th>
+                    <th className="text-left p-2">Date</th>
+                    <th className="text-right p-2">Quantity</th>
+                    <th className="text-right p-2">Price</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {activePurchases.map((p: any) => (
+                    <tr 
+                      key={p.id} 
+                      className={`hover:bg-slate-50 cursor-pointer transition-colors ${selectedPurchaseIds.has(p.id) ? "bg-primary/5" : ""}`}
+                      onClick={() => togglePurchase(p.id)}
+                    >
+                      <td className="p-2 text-center">
+                        {selectedPurchaseIds.has(p.id) ? (
+                          <CheckSquare className="w-4 h-4 text-primary mx-auto" />
+                        ) : (
+                          <Square className="w-4 h-4 text-slate-300 mx-auto" />
+                        )}
+                      </td>
+                      <td className="p-2 font-mono text-slate-500">{formatUTCDate(p.purchaseDate)}</td>
+                      <td className="p-2 text-right font-mono font-bold">{formatNumber(p.quantity, 3)}</td>
+                      <td className="p-2 text-right font-mono">{formatCurrency(p.price)}</td>
+                    </tr>
+                  ))}
+                  {activePurchases.length === 0 && (
+                    <tr>
+                      <td colSpan={4} className="p-8 text-center text-slate-400 italic">No active purchases found.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 flex justify-between items-center">
+            <div>
+              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total to Transfer</div>
+              <div className="text-lg font-mono font-bold text-primary">
+                {formatNumber(activePurchases.filter((p: any) => selectedPurchaseIds.has(p.id)).reduce((acc: number, p: any) => acc + parseFloat(p.quantity), 0), 3)} shares
+              </div>
+            </div>
+            <Button 
+              onClick={handleTransfer} 
+              disabled={transferMutation.isPending || selectedPurchaseIds.size === 0 || !targetAccountId}
+              className="px-8"
+            >
+              {transferMutation.isPending ? "Transferring..." : "Confirm Transfer"}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
