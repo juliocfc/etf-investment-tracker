@@ -1941,7 +1941,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
 
           {purchaseHistoryOpen && (
             <Dialog open={!!purchaseHistoryOpen} onOpenChange={() => setPurchaseHistoryOpen(null)}>
-              <DialogContent className="sm:max-w-[900px]">
+              <DialogContent className="sm:max-w-[1100px]">
                 <DialogHeader>
                   <DialogTitle>Purchase History for {purchaseHistoryOpen.symbol}</DialogTitle>
                 </DialogHeader>
@@ -2880,6 +2880,13 @@ function PurchaseHistoryTable({
   const [filterAccountId, setFilterAccountId] = useState<string>("");
   const [editingPurchase, setEditingPurchase] = useState<any | null>(null);
 
+  const { data: marketHistory } = trpc.etf.getMarketPriceHistory.useQuery(
+    { symbol, days: 1 },
+    { enabled: !!symbol }
+  );
+
+  const currentPrice = marketHistory?.[0]?.price || 0;
+
   const editPurchaseMutation = trpc.etf.editPurchase.useMutation({
     onSuccess: () => {
       toast.success("Purchase updated successfully!");
@@ -2943,18 +2950,26 @@ function PurchaseHistoryTable({
   return (
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-50 p-3 rounded-lg border border-border">
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Filter by Account:</span>
-          <select
-            className="bg-white border border-slate-200 rounded px-2 py-1 text-xs font-bold text-slate-600 focus:outline-none h-8 min-w-[160px]"
-            value={filterAccountId}
-            onChange={(e) => setFilterAccountId(e.target.value)}
-          >
-            <option value="">All Accounts</option>
-            {accounts?.map((acc: any) => (
-              <option key={acc.id} value={acc.id}>{acc.name}</option>
-            ))}
-          </select>
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Filter by Account:</span>
+            <select
+              className="bg-white border border-slate-200 rounded px-2 py-1 text-xs font-bold text-slate-600 focus:outline-none h-8 min-w-[160px]"
+              value={filterAccountId}
+              onChange={(e) => setFilterAccountId(e.target.value)}
+            >
+              <option value="">All Accounts</option>
+              {accounts?.map((acc: any) => (
+                <option key={acc.id} value={acc.id}>{acc.name}</option>
+              ))}
+            </select>
+          </div>
+          {currentPrice > 0 && (
+            <div className="flex items-center gap-2 px-3 py-1 bg-primary/5 rounded-full border border-primary/10">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Mkt Price:</span>
+              <span className="text-xs font-mono font-bold text-primary">{formatCurrency(currentPrice)}</span>
+            </div>
+          )}
         </div>
 
         <Button
@@ -2973,12 +2988,14 @@ function PurchaseHistoryTable({
         <table className="w-full text-sm">
           <thead className="sticky top-0 bg-slate-50 z-10 shadow-sm">
             <tr className="border-b border-border">
-              <th className="text-left py-3 px-4">Date</th>
-              <th className="text-left py-3 px-4">Account</th>
-              <th className="text-right py-3 px-4">Quantity</th>
-              <th className="text-right py-3 px-4">Price</th>
-              <th className="text-right py-3 px-4">Total</th>
-              <th className="text-center py-3 px-4">Action</th>
+              <th className="text-left py-3 px-4 text-[10px] font-bold uppercase tracking-wider text-slate-500">Date</th>
+              <th className="text-left py-3 px-4 text-[10px] font-bold uppercase tracking-wider text-slate-500">Account</th>
+              <th className="text-right py-3 px-4 text-[10px] font-bold uppercase tracking-wider text-slate-500">Qty</th>
+              <th className="text-right py-3 px-4 text-[10px] font-bold uppercase tracking-wider text-slate-500">Price</th>
+              <th className="text-right py-3 px-4 text-[10px] font-bold uppercase tracking-wider text-slate-500">Total Cost</th>
+              <th className="text-right py-3 px-4 text-[10px] font-bold uppercase tracking-wider text-slate-500">Value</th>
+              <th className="text-right py-3 px-4 text-[10px] font-bold uppercase tracking-wider text-slate-500">Gain/Loss</th>
+              <th className="text-center py-3 px-4 text-[10px] font-bold uppercase tracking-wider text-slate-500">Action</th>
             </tr>
           </thead>
           <tbody>
@@ -2988,10 +3005,15 @@ function PurchaseHistoryTable({
               const quantity = parseFloat(purchase.quantity);
               const isSale = !!purchase.isSold;
               const price = parseFloat(isSale ? (purchase.soldPrice || purchase.price) : purchase.price);
-              const totalAmount = truncateNumber(quantity * price);
+              const totalCost = truncateNumber(quantity * price);
               
+              const currentValue = isSale ? 0 : truncateNumber(quantity * currentPrice);
+              const gainLoss = isSale ? 0 : (currentValue - totalCost);
+              const gainLossPercent = isSale ? 0 : (totalCost > 0 ? (gainLoss / totalCost) * 100 : 0);
+              const isGain = gainLoss >= 0;
+
               return (
-                <tr key={purchase.id} className={`border-b border-border hover:bg-white transition-colors ${isSale ? "bg-slate-50/50 italic text-slate-500" : ""}`}>
+                <tr key={purchase.id} className={`border-b border-border hover:bg-white transition-colors ${isSale ? "bg-slate-50/50 italic text-slate-500 opacity-60" : ""}`}>
                   <td className="py-3 px-4 font-mono whitespace-nowrap text-xs text-slate-500">{dateStr}</td>
                   <td className="py-3 px-4 whitespace-nowrap">
                     <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200">
@@ -3003,7 +3025,22 @@ function PurchaseHistoryTable({
                   </td>
                   <td className="text-right py-3 px-4 font-mono font-medium">{formatCurrency(price)}</td>
                   <td className={`text-right py-3 px-4 font-mono font-bold ${isSale ? "text-red-600" : "text-slate-700"}`}>
-                    {isSale ? "-" : ""}{formatCurrency(totalAmount)}
+                    {isSale ? "-" : ""}{formatCurrency(totalCost)}
+                  </td>
+                  <td className="text-right py-3 px-4 font-mono font-bold text-slate-700">
+                    {!isSale && formatCurrency(currentValue)}
+                  </td>
+                  <td className={`text-right py-3 px-4 font-mono whitespace-nowrap`}>
+                    {!isSale && (
+                      <div className="flex flex-col items-end">
+                        <span className={`font-bold ${isGain ? "text-green-600" : "text-red-600"}`}>
+                          {isGain ? "+" : ""}{formatCurrency(gainLoss)}
+                        </span>
+                        <span className={`text-[10px] font-bold ${isGain ? "text-green-500" : "text-red-500"}`}>
+                          {isGain ? "+" : ""}{gainLossPercent.toFixed(2)}%
+                        </span>
+                      </div>
+                    )}
                   </td>
                   <td className="text-center py-3 px-4">
                     <div className="flex items-center justify-center gap-1">
@@ -3036,7 +3073,7 @@ function PurchaseHistoryTable({
             })}
             {filteredPurchases.length === 0 && (
               <tr>
-                <td colSpan={6} className="py-8 text-center text-slate-400 italic">
+                <td colSpan={8} className="py-8 text-center text-slate-400 italic">
                   No purchase records found for this selection.
                 </td>
               </tr>
