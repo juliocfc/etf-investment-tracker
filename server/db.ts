@@ -698,7 +698,7 @@ export async function deleteCashTransaction(userId: number, portfolioId: number,
 
 // CSV Parsing and Bulk Import
 export function parseCSVContent(csvContent: string) {
-  const lines = csvContent.split("\n");
+  const lines = csvContent.split(/\r?\n/);
   const records = [];
 
   let startIndex = 0;
@@ -710,22 +710,54 @@ export function parseCSVContent(csvContent: string) {
     const line = lines[i].trim();
     if (!line) continue;
 
-    const parts = line.split(",").map((p) => p.trim().replace("$", ""));
+    // Handle CSV with possible quotes: "date","qty","cost"
+    const parts = line.split(",").map((p) => {
+      let cleaned = p.trim();
+      if (cleaned.startsWith('"') && cleaned.endsWith('"')) {
+        cleaned = cleaned.substring(1, cleaned.length - 1).trim();
+      }
+      return cleaned;
+    });
+
     if (parts.length < 3) {
       records.push({
-        error: `Row ${i + 1}: Invalid format (expected 3 columns)`,
+        error: `Row ${i + 1}: Invalid format (expected at least 3 columns, got ${parts.length})`,
       });
       continue;
     }
 
     const [dateStr, quantityStr, costStr] = parts;
-    const quantity = parseFloat(quantityStr);
-    const cost = parseFloat(costStr);
-    const date = new Date(dateStr);
+    
+    // More robust number parsing: remove currency symbols, commas, and other non-numeric chars
+    // but keep minus sign and decimal point
+    const cleanNumber = (val: string) => val.replace(/[^0-9.-]/g, "");
+    
+    const quantity = parseFloat(cleanNumber(quantityStr));
+    const cost = parseFloat(cleanNumber(costStr));
+    
+    // Try to handle various date formats
+    let date = new Date(dateStr);
+    
+    // Fallback for DD/MM/YYYY or DD-MM-YYYY
+    if (isNaN(date.getTime()) && dateStr.includes("/")) {
+      const parts = dateStr.split("/");
+      if (parts.length === 3) {
+        // Assume DD/MM/YYYY and try to convert to YYYY-MM-DD
+        const d = parts[0].padStart(2, '0');
+        const m = parts[1].padStart(2, '0');
+        const y = parts[2].length === 2 ? `20${parts[2]}` : parts[2];
+        date = new Date(`${y}-${m}-${d}`);
+      }
+    }
 
-    if (isNaN(quantity) || isNaN(cost) || isNaN(date.getTime())) {
+    const errors = [];
+    if (isNaN(date.getTime())) errors.push(`Invalid date: "${dateStr}"`);
+    if (isNaN(quantity)) errors.push(`Invalid quantity: "${quantityStr}"`);
+    if (isNaN(cost)) errors.push(`Invalid cost: "${costStr}"`);
+
+    if (errors.length > 0) {
       records.push({
-        error: `Row ${i + 1}: Invalid data types`,
+        error: `Row ${i + 1}: ${errors.join(", ")}`,
       });
       continue;
     }

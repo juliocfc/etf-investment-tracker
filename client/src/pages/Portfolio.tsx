@@ -123,6 +123,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
   }, [isTradeDialogOpen]);
 
   const [isCSVImportOpen, setIsCSVImportOpen] = useState<{ id: number, symbol: string } | null>(null);
+  const [isGeneralCSVImportOpen, setIsGeneralCSVImportOpen] = useState(false);
   const [isTransferDialogOpen, setIsTransferDialogOpen] = useState<{ id: number, symbol: string, accountId?: number } | null>(null);
   const [transferData, setTransferData] = useState<{
     sourceAccountId: string;
@@ -396,13 +397,23 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
         toast.success(`Imported ${data.imported} purchases!`);
         if (data.failed > 0) {
           toast.warning(`${data.failed} rows failed to import.`);
+          if (data.errors && data.errors.length > 0) {
+            console.error("CSV Import Errors:", data.errors);
+            // Show the first 3 errors to the user
+            data.errors.slice(0, 3).forEach((err: string) => toast.error(err));
+          }
         }
         refetchHoldings();
         refetchSummary();
         utils.portfolio.getConsolidatedSummary.invalidate();
         setIsCSVImportOpen(null);
+        setIsGeneralCSVImportOpen(false);
       } else {
-        toast.error("Failed to import CSV");
+        if (data.errors && data.errors.length > 0) {
+          data.errors.slice(0, 3).forEach((err: string) => toast.error(err));
+        } else {
+          toast.error("Failed to import CSV: No valid data found");
+        }
       }
     },
     onError: (error) => {
@@ -1222,112 +1233,18 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                       </Button>
                     </DialogTrigger>
                     <DialogContent className="sm:max-w-[425px]">
-                      <DialogHeader>
-                        <DialogTitle>Add Trade</DialogTitle>
-                      </DialogHeader>
-                      <div className="space-y-4 pt-4">
-                        <div className="grid gap-2">
-                          <label className="text-xs font-bold text-slate-500 uppercase">Trade Type</label>
-                          <div className="flex bg-slate-100 p-1 rounded-md">
-                            <button
-                              onClick={() => setFormData(prev => ({ ...prev, type: "buy" }))}
-                              className={`flex-1 py-1.5 text-xs font-bold rounded shadow-sm transition-all ${formData.type === "buy" ? "bg-white text-primary" : "text-slate-500 hover:text-slate-700"}`}
-                            >
-                              BUY
-                            </button>
-                            <button
-                              onClick={() => setFormData(prev => ({ ...prev, type: "sell" }))}
-                              className={`flex-1 py-1.5 text-xs font-bold rounded shadow-sm transition-all ${formData.type === "sell" ? "bg-white text-destructive" : "text-slate-500 hover:text-slate-700"}`}
-                            >
-                              SELL
-                            </button>
-                          </div>
-                        </div>
-                        <div className="grid gap-2">
-                          <label className="text-xs font-bold text-slate-500 uppercase">Account</label>
-                          <select
-                            className="bg-white border border-input rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary h-10"
-                            value={formData.accountId}
-                            onChange={(e) => setFormData(prev => ({ ...prev, accountId: e.target.value }))}
-                          >
-                            {accounts?.map((acc: any) => (
-                              <option key={acc.id} value={acc.id}>{acc.name} {acc.number ? `(${acc.number})` : ""}</option>
-                            ))}
-                          </select>
-                        </div>
-                        <div className="grid gap-2">
-                          <label className="text-xs font-bold text-slate-500 uppercase">Symbol</label>
-                          <Input
-                            placeholder="e.g., VOO, AAPL"
-                            value={formData.symbol}
-                            onChange={handleSymbolChange}
-                            onBlur={() => fetchAndSetPrice(formData.symbol, formData.purchaseDate)}
-                            onKeyDown={(e) => {
-                              if (e.key === "Tab" && !e.shiftKey) {
-                                e.preventDefault();
-                                quantityInputRef.current?.focus();
-                              }
-                            }}
-                          />
-                        </div>
-                        {formData.type === "buy" && !doesHoldingExistInAccount && (
-                          <div className="grid gap-2">
-                            <label className="text-xs font-bold text-slate-500 uppercase">Investment Name</label>
-                            <Input placeholder="Vanguard S&P 500 ETF" value={formData.name} onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))} />
-                          </div>
-                        )}
-                        <div className="grid gap-2">
-                          <label className="text-xs font-bold text-slate-500 uppercase">Trade Date</label>
-                          <Input type="date" value={formData.purchaseDate} onChange={handleDateChange} />
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="grid gap-2">
-                            <label className="text-xs font-bold text-slate-500 uppercase">Quantity</label>
-                            <Input ref={quantityInputRef} type="number" step="0.001" value={formData.quantity} onChange={(e) => setFormData(prev => ({ ...prev, quantity: e.target.value }))} />
-                          </div>
-                          <div className="grid gap-2">
-                            <label className="text-xs font-bold text-slate-500 uppercase">Price per Share</label>
-                            <Input
-                              type="text"
-                              inputMode="decimal"
-                              value={formData.purchasePrice}
-                              onFocus={handleFocus}
-                              onChange={(e) => handlePriceInputChange(e.target.value, (val) => setFormData(prev => ({ ...prev, purchasePrice: val })))}
-                            />
-                          </div>
-                        </div>
-                        <div className="grid gap-2">
-                          <label className="text-xs font-bold text-slate-500 uppercase">Fees</label>
-                          <Input
-                            type="text"
-                            inputMode="decimal"
-                            placeholder="0.00"
-                            value={formData.fees}
-                            onFocus={handleFocus}
-                            onChange={(e) => handlePriceInputChange(e.target.value, (val) => setFormData(prev => ({ ...prev, fees: val })))}
-                          />
-                        </div>
-                        <div className="grid gap-2 p-3 bg-slate-50 rounded-md border border-slate-100">
-                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                            Estimated Transaction Total
-                          </label>
-                          <div className="text-lg font-mono font-bold text-slate-700">
-                            {formatCurrency(
-                              (parseFloat(formData.quantity || "0") * parseFloat(formData.purchasePrice || "0")) +
-                              (formData.type === "buy" ? parseFloat(formData.fees || "0") : -parseFloat(formData.fees || "0"))
-                            )}
-                          </div>
-                        </div>
-                        <Button
-                          onClick={handleAddHolding}
-                          className={`w-full mt-2 ${formData.type === "sell" ? "bg-destructive hover:bg-destructive/90" : ""}`}
-                          disabled={addHoldingMutation.isPending}
-                        >
-                          Confirm {formData.type === "buy" ? "Purchase" : "Sale"}
-                        </Button>
-                      </div>
+...
                     </DialogContent>
                   </Dialog>
+
+                  <Button 
+                    size="sm" 
+                    onClick={() => setIsGeneralCSVImportOpen(true)}
+                    className="bg-primary hover:bg-primary/90 text-white shadow-md shadow-primary/10 text-xs font-bold uppercase tracking-wider h-9 flex-1 sm:flex-none"
+                  >
+                    <FileUp className="mr-2 h-3.5 w-3.5" />
+                    Import Trades
+                  </Button>
                 </div>
               </div>
               <div className="overflow-x-auto">
@@ -2056,7 +1973,23 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
               </DialogContent>
             </Dialog>
           )}
-        </div>
+
+          {isGeneralCSVImportOpen && (
+            <Dialog open={isGeneralCSVImportOpen} onOpenChange={() => setIsGeneralCSVImportOpen(false)}>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Import Trade History</DialogTitle>
+                </DialogHeader>
+                <CSVImportForm
+                  holdingId={-1}
+                  symbol=""
+                  onImport={handleImportCSV}
+                  isLoading={importCSVMutation.isPending}
+                  accounts={accounts || []}
+                />
+              </DialogContent>
+            </Dialog>
+          )}        </div>
       ) : activeSubTab === "activities" ? (
         <Activities selectedPortfolioId={selectedPortfolioId} selectedAccountType={selectedAccountType} />
       ) : activeSubTab === "performance" ? (
@@ -3196,7 +3129,7 @@ function PurchaseEditForm({ purchase, onSubmit, onCancel, isLoading }: { purchas
 
 function CSVImportForm({
   holdingId,
-  symbol,
+  symbol: initialSymbol,
   onImport,
   isLoading,
   accounts,
@@ -3209,8 +3142,33 @@ function CSVImportForm({
   accounts: any[],
   currentAccountId?: number
 }) {
+  const utils = trpc.useUtils();
   const [file, setFile] = useState<File | null>(null);
-  const [selectedAccountId, setSelectedAccountId] = useState<string>(currentAccountId?.toString() || "");
+  const [selectedAccountId, setSelectedAccountId] = useState<string>(currentAccountId?.toString() || (accounts && accounts.length > 0 ? accounts[0].id.toString() : ""));
+  const [symbol, setSymbol] = useState(initialSymbol);
+  const [assetName, setAssetName] = useState<string>("");
+  const lookupTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    const symbolToLookup = symbol || initialSymbol;
+    if (symbolToLookup && symbolToLookup.length >= 2) {
+      if (lookupTimeoutRef.current) clearTimeout(lookupTimeoutRef.current);
+      lookupTimeoutRef.current = setTimeout(async () => {
+        try {
+          const name = await utils.etf.lookupETFName.fetch({ symbol: symbolToLookup });
+          if (name) setAssetName(name);
+          else setAssetName("");
+        } catch (e) {
+          setAssetName("");
+        }
+      }, initialSymbol ? 0 : 500); // Immediate if initialSymbol
+    } else {
+      setAssetName("");
+    }
+    return () => {
+      if (lookupTimeoutRef.current) clearTimeout(lookupTimeoutRef.current);
+    };
+  }, [symbol, initialSymbol, utils.etf.lookupETFName]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
@@ -3219,6 +3177,11 @@ function CSVImportForm({
   };
 
   const handleUpload = () => {
+    if (!symbol && !initialSymbol) {
+      toast.error("Please enter an asset symbol");
+      return;
+    }
+
     if (!file) {
       toast.error("Please select a file first");
       return;
@@ -3233,7 +3196,7 @@ function CSVImportForm({
     reader.onload = (e) => {
       const content = e.target?.result as string;
       if (content) {
-        onImport(holdingId, symbol, content, Number(selectedAccountId));
+        onImport(holdingId, symbol || initialSymbol, content, Number(selectedAccountId));
       }
     };
     reader.onerror = () => {
@@ -3244,17 +3207,40 @@ function CSVImportForm({
 
   return (
     <div className="space-y-6 pt-4">
-      <div className="space-y-2">
-        <label className="text-xs font-bold text-slate-500 uppercase">Target Account</label>
-        <select
-          className="bg-white border border-input rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary h-10 w-full"
-          value={selectedAccountId}
-          onChange={(e) => setSelectedAccountId(e.target.value)}
-        >
-          {accounts?.map((acc: any) => (
-            <option key={acc.id} value={acc.id}>{acc.name} {acc.number ? `(${acc.number})` : ""}</option>
-          ))}
-        </select>
+      {initialSymbol && assetName && (
+        <div className="text-xs font-bold text-primary uppercase animate-in fade-in slide-in-from-top-1 duration-300">
+          {assetName}
+        </div>
+      )}
+      <div className="grid grid-cols-2 gap-4">
+        {!initialSymbol && (
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-slate-500 uppercase">Asset Symbol</label>
+            <Input 
+              placeholder="e.g. VOO, QQQ" 
+              value={symbol} 
+              onChange={(e) => setSymbol(e.target.value.toUpperCase())}
+              className="uppercase"
+            />
+            {assetName && (
+              <div className="text-[10px] font-bold text-primary uppercase truncate animate-in fade-in slide-in-from-top-1 duration-300">
+                {assetName}
+              </div>
+            )}
+          </div>
+        )}
+        <div className={`space-y-2 ${!initialSymbol ? "col-span-1" : "col-span-2"}`}>
+          <label className="text-xs font-bold text-slate-500 uppercase">Target Account</label>
+          <select
+            className="bg-white border border-input rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary h-10 w-full"
+            value={selectedAccountId}
+            onChange={(e) => setSelectedAccountId(e.target.value)}
+          >
+            {accounts?.map((acc: any) => (
+              <option key={acc.id} value={acc.id}>{acc.name} {acc.number ? `(${acc.number})` : ""}</option>
+            ))}
+          </select>
+        </div>
       </div>
 
       <div className="bg-slate-50 p-4 rounded-lg border border-border">
