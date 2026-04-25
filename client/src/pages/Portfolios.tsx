@@ -71,6 +71,8 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
       annualDividendPerShare: number
     }> = {};
 
+    let totalMktValue = 0;
+
     allHoldings.forEach((h: any) => {
       if (filterId !== null && h.portfolioId !== filterId) return;
 
@@ -91,6 +93,7 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
       assetMap[h.symbol].quantity += qty;
       assetMap[h.symbol].totalCost += qty * avgPurchasePrice;
       assetMap[h.symbol].currentPrice = parseFloat(h.currentPrice);
+      totalMktValue += truncateNumber(qty * parseFloat(h.currentPrice));
     });
 
     return Object.values(assetMap).map(asset => {
@@ -100,6 +103,7 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
       const avgCost = asset.quantity > 0 ? asset.totalCost / asset.quantity : 0;
       const projectedDividend = asset.quantity * asset.annualDividendPerShare;
       const divYield = asset.currentPrice > 0 ? (asset.annualDividendPerShare / asset.currentPrice) * 100 : 0;
+      const allocation = totalMktValue > 0 ? (mktValue / totalMktValue) * 100 : 0;
 
       return {
         ...asset,
@@ -108,7 +112,8 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
         gainLoss,
         gainLossPercent,
         projectedDividend,
-        divYield
+        divYield,
+        allocation
       };
     }).sort((a, b) => b.mktValue - a.mktValue);
   }, [allHoldings, portfolioFilter]);
@@ -672,6 +677,7 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
                   <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Total Cost</th>
                   <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Current Price</th>
                   <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Mkt Value</th>
+                  <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Allocation %</th>
                   <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Gain/Loss</th>
                   <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Gain/Loss %</th>
                   <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Annual Div/Share</th>
@@ -694,6 +700,7 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
                         <td className="py-3 px-4 text-right font-mono text-slate-600 text-xs">{formatCurrency(asset.totalCost)}</td>
                         <td className="py-3 px-4 text-right font-mono font-bold text-slate-700">{formatCurrency(asset.currentPrice)}</td>
                         <td className="py-3 px-4 text-right font-mono font-bold text-primary">{formatCurrency(asset.mktValue)}</td>
+                        <td className="py-3 px-4 text-right font-mono text-xs font-bold text-slate-600">{asset.allocation.toFixed(2)}%</td>
                         <td className={`py-3 px-4 text-right font-mono text-xs font-bold ${isGain ? "text-green-600" : "text-red-600"}`}>
                           {isGain ? "+" : ""}{formatCurrency(asset.gainLoss)}
                         </td>
@@ -708,7 +715,7 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
                   })
                 ) : (
                   <tr>
-                    <td colSpan={11} className="py-8 text-center text-slate-400 italic text-sm">
+                    <td colSpan={12} className="py-8 text-center text-slate-400 italic text-sm">
                       No investment assets found.
                     </td>
                   </tr>
@@ -721,6 +728,7 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
                     <td className="py-4 px-4 text-right font-mono text-xs text-slate-700">{formatCurrency(tableTotals.totalCost)}</td>
                     <td className="py-4 px-4 text-right"></td>
                     <td className="py-4 px-4 text-right font-mono text-sm text-primary">{formatCurrency(tableTotals.mktValue)}</td>
+                    <td className="py-4 px-4 text-right font-mono text-xs text-slate-600">100.00%</td>
                     <td className={`py-4 px-4 text-right font-mono text-xs ${tableTotals.gainLoss >= 0 ? "text-green-700" : "text-red-700"}`}>
                       {tableTotals.gainLoss >= 0 ? "+" : ""}{formatCurrency(tableTotals.gainLoss)}
                     </td>
