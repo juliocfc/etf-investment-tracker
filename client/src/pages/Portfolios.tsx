@@ -739,7 +739,10 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
                     <td className="py-4 px-4 text-right font-mono text-xs font-medium text-blue-700">
                       {(tableTotals.mktValue > 0 ? (tableTotals.projectedDividend / tableTotals.mktValue) * 100 : 0).toFixed(2)}%
                     </td>
-                    <td className="py-4 px-4 text-right font-mono text-sm text-blue-700">{formatCurrency(tableTotals.projectedDividend)}</td>
+                    <td className="py-4 px-4 text-right font-mono text-sm text-blue-700">
+                      <div>{formatCurrency(tableTotals.projectedDividend)}</div>
+                      <div className="text-[10px] opacity-70">({formatCurrency(tableTotals.projectedDividend / 12)}/month)</div>
+                    </td>
                   </tr>
                 </tfoot>
               )}
