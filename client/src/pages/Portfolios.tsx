@@ -385,7 +385,7 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
             <Briefcase className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="text-lg font-bold text-slate-800">Portfolio Management</h2>
+            <h2 className="text-lg font-bold text-slate-800">Investment Dashboard</h2>
             <p className="text-xs text-slate-500 font-medium uppercase tracking-tight">Overview of all investment portfolios and accounts</p>
           </div>
         </div>

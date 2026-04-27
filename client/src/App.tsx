@@ -53,13 +53,6 @@ function DashboardRouter() {
   // Global portfolios query
   const { data: portfolios } = trpc.portfolio.getAll.useQuery();
 
-  // Initialize selected portfolio
-  useEffect(() => {
-    if (portfolios && portfolios.length > 0 && !selectedPortfolioId) {
-      setSelectedPortfolioId(portfolios[0].id);
-    }
-  }, [portfolios, selectedPortfolioId]);
-
   // Global mutations
   const createPortfolioMutation = trpc.portfolio.create.useMutation({
     onSuccess: (newPortfolio) => {
@@ -154,10 +147,17 @@ function DashboardRouter() {
     }
   };
 
+  const handleTabChange = (tab: string) => {
+    setActiveTab(tab);
+    if (tab !== "portfolio") {
+      setSelectedPortfolioId(null);
+    }
+  };
+
   return (
     <DashboardLayout 
       activeTab={activeTab} 
-      onTabChange={setActiveTab}
+      onTabChange={handleTabChange}
       portfolios={portfolios || []}
       selectedPortfolioId={selectedPortfolioId}
       onPortfolioChange={setSelectedPortfolioId}

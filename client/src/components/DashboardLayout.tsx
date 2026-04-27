@@ -3,9 +3,24 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import { formatCurrency } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Menu, X, LogOut, TrendingUp, Wallet, Briefcase, Plus, Mail, ArrowRightLeft } from "lucide-react";
+import { Menu, X, LogOut, TrendingUp, Wallet, Briefcase, Plus, Mail, ArrowRightLeft, LayoutDashboard, ChevronDown } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -27,204 +42,164 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
   onPortfolioChange,
   onCreatePortfolio,
 }) => {
-  const [sidebarOpen, setSidebarOpen] = useState(true);
   const [isAddPortfolioOpen, setIsAddPortfolioOpen] = useState(false);
   const [newPortfolioName, setNewPortfolioName] = useState("");
   const { user, logout } = useAuth();
 
+  const selectedPortfolio = portfolios.find(p => p.id === selectedPortfolioId);
+
   return (
-    <div className="h-screen bg-slate-50 text-slate-900 flex flex-col overflow-hidden">
-      {/* Header */}
-      <header className="h-14 border-b border-slate-200 bg-white sticky top-0 z-[60] shadow-sm">
-        <div className="flex items-center justify-between px-6 h-full">
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="p-2 hover:bg-slate-100 rounded-md text-slate-500"
-            >
-              {sidebarOpen ? (
-                <X className="w-5 h-5" />
-              ) : (
-                <Menu className="w-5 h-5" />
-              )}
-            </button>
-            <div className="flex items-center gap-2">
+    <div className="h-screen bg-slate-50 text-slate-900 flex flex-col overflow-hidden font-sans">
+      {/* Top Navigation Bar */}
+      <header className="h-16 border-b border-slate-200 bg-white sticky top-0 z-[60] shadow-sm">
+        <div className="flex items-center justify-between px-6 h-full max-w-[1800px] mx-auto w-full">
+          {/* Left Section: Logo and Navigation */}
+          <div className="flex items-center gap-8">
+            <div className="flex items-center gap-2 mr-4">
               <div className="bg-[#004a99] p-1.5 rounded">
                 <TrendingUp className="w-5 h-5 text-white" />
               </div>
-              <h1 className="text-lg font-bold tracking-tight text-[#004a99] uppercase hidden sm:block">
+              <h1 className="text-lg font-bold tracking-tight text-[#004a99] uppercase hidden lg:block">
                 Investment Insights
               </h1>
             </div>
+
+            <nav className="hidden md:flex items-center gap-1">
+              <button
+                onClick={() => onTabChange?.("portfolios")}
+                className={`flex items-center gap-2 px-4 py-2 rounded-md transition-all font-bold uppercase text-[11px] tracking-wider ${
+                  activeTab === "portfolios"
+                    ? "bg-slate-100 text-[#004a99]"
+                    : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+                }`}
+              >
+                <LayoutDashboard className="w-4 h-4" />
+                Dashboard
+              </button>
+
+              {(user?.role === "admin" || user?.role === "premium") && (
+                <button
+                  onClick={() => onTabChange?.("brokerage")}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-md transition-all font-bold uppercase text-[11px] tracking-wider ${
+                    activeTab === "brokerage"
+                      ? "bg-slate-100 text-[#004a99]"
+                      : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+                  }`}
+                >
+                  <ArrowRightLeft className="w-4 h-4" />
+                  Brokerage
+                </button>
+              )}
+
+              <Dialog open={isAddPortfolioOpen} onOpenChange={setIsAddPortfolioOpen}>
+                <DialogTrigger asChild>
+                  <button className="flex items-center gap-2 px-4 py-2 rounded-md transition-all font-bold uppercase text-[11px] tracking-wider text-slate-500 hover:bg-slate-50 hover:text-primary group">
+                    <Plus className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                    New Portfolio
+                  </button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Create New Portfolio</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4 pt-4">
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Portfolio Name</label>
+                      <Input
+                        placeholder="e.g., Retirement, Growth, Dividend"
+                        value={newPortfolioName}
+                        onChange={(e) => setNewPortfolioName(e.target.value)}
+                        autoFocus
+                      />
+                    </div>
+                    <Button
+                      onClick={() => {
+                        onCreatePortfolio(newPortfolioName);
+                        setIsAddPortfolioOpen(false);
+                        setNewPortfolioName("");
+                      }}
+                      className="w-full bg-[#004a99] hover:bg-[#003d7a]"
+                      disabled={!newPortfolioName}
+                    >
+                      Create Portfolio
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            </nav>
           </div>
 
-          <div className="flex items-center gap-2 sm:gap-6">
-            <div className="flex flex-col items-end hidden sm:flex">
-              <span className="text-sm font-semibold text-slate-700">
-                {user?.name || "User"}
-              </span>
-              <span className="text-[10px] text-slate-400 uppercase tracking-wider font-bold">
-                Standard Member
-              </span>
+          {/* Right Section: Portfolio Selector and User Profile */}
+          <div className="flex items-center gap-4">
+            <div className="hidden sm:block">
+              <Select
+                value={selectedPortfolioId?.toString() || "select"}
+                onValueChange={(val) => {
+                  if (val === "select") {
+                    onPortfolioChange(null as any);
+                    onTabChange?.("portfolios");
+                  } else {
+                    onPortfolioChange(parseInt(val));
+                    onTabChange?.("portfolio");
+                  }
+                }}
+              >
+                <SelectTrigger className="w-[200px] h-9 bg-slate-50 border-slate-200 text-xs font-bold uppercase tracking-wider">
+                  <SelectValue placeholder="Select Portfolio" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="select" className="text-xs font-bold uppercase text-slate-400">
+                    Select Portfolio
+                  </SelectItem>
+                  {portfolios.map((p) => (
+                    <SelectItem key={p.id} value={p.id.toString()} className="text-xs font-bold uppercase">
+                      {p.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-            <button
-              onClick={() => logout()}
-              className="flex items-center gap-2 text-sm text-slate-500 hover:text-red-600 transition-colors font-medium border-l border-slate-200 pl-2 sm:pl-6"
-              title="Logout"
-            >
-              <LogOut className="w-4 h-4" />
-              <span className="hidden sm:inline">Sign Out</span>
-            </button>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="flex items-center gap-3 pl-4 border-l border-slate-200 hover:opacity-80 transition-opacity">
+                  <div className="flex flex-col items-end hidden sm:flex">
+                    <span className="text-sm font-bold text-slate-700">
+                      {user?.name || "User"}
+                    </span>
+                    <span className="text-[9px] text-slate-400 uppercase tracking-widest font-black">
+                      {user?.role || "Standard"} Member
+                    </span>
+                  </div>
+                  <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-slate-500">
+                    {user?.name?.[0] || "U"}
+                  </div>
+                  <ChevronDown className="w-4 h-4 text-slate-400" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuLabel>My Account</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => onTabChange?.("contact")}>
+                  <Mail className="w-4 h-4 mr-2" />
+                  Support
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onTabChange?.("privacy")}>
+                  <Briefcase className="w-4 h-4 mr-2" />
+                  Privacy Policy
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => logout()} className="text-red-600">
+                  <LogOut className="w-4 h-4 mr-2" />
+                  Sign Out
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       </header>
 
       <div className="flex flex-1 overflow-hidden">
-        {/* Sidebar */}
-        <aside
-          className={`${sidebarOpen ? "w-64" : "w-0"
-            } bg-white border-r border-slate-200 transition-all duration-300 overflow-hidden lg:static fixed top-14 bottom-0 left-0 z-50 shadow-lg lg:shadow-none flex flex-col`}
-        >
-          <div className="p-4 flex-1 overflow-y-auto space-y-1 custom-scrollbar">
-            <div className="px-4 py-2 mb-1 flex items-center justify-between">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Navigation</span>
-              <button 
-                onClick={() => setSidebarOpen(false)} 
-                className="lg:hidden p-1 text-slate-400 hover:text-slate-600 transition-colors"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* All Portfolios Link */}
-            <button
-              onClick={() => {
-                onTabChange?.("portfolios");
-                if (window.innerWidth < 1024) setSidebarOpen(false);
-              }}
-              className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-md transition-all duration-200 font-medium ${activeTab === "portfolios"
-                ? "bg-slate-100 text-[#004a99]"
-                : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
-                }`}
-            >
-              <Briefcase className="w-4 h-4" />
-              <span className="text-sm font-bold uppercase tracking-wider">My Portfolios</span>
-              {activeTab === "portfolios" && (
-                <div className="ml-auto w-1.5 h-1.5 rounded-full bg-[#004a99]" />
-              )}
-            </button>
-
-
-            {/* Individual Portfolios */}
-            {portfolios.map((p) => (
-              <button
-                key={p.id}
-                onClick={() => {
-                  onPortfolioChange(p.id);
-                  onTabChange?.("portfolio");
-                  if (window.innerWidth < 1024) setSidebarOpen(false);
-                }}
-                className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-md transition-all duration-200 font-medium ${activeTab === "portfolio" && selectedPortfolioId === p.id
-                  ? "bg-primary/10 text-primary shadow-sm"
-                  : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
-                  }`}
-              >
-                <Wallet className={`w-4 h-4 ${activeTab === "portfolio" && selectedPortfolioId === p.id ? "text-primary" : "text-slate-400"}`} />
-                <span className="text-sm truncate">{p.name}</span>
-                {activeTab === "portfolio" && selectedPortfolioId === p.id && (
-                  <div className="ml-auto w-1 h-4 rounded-full bg-primary" />
-                )}
-              </button>
-            ))}
-
-            {/* New Portfolio Dialog */}
-            <Dialog open={isAddPortfolioOpen} onOpenChange={setIsAddPortfolioOpen}>
-              <DialogTrigger asChild>
-                <button className="w-full flex items-center gap-3 px-4 py-2.5 rounded-md transition-all duration-200 font-medium text-slate-400 hover:text-primary hover:bg-slate-50 group">
-                  <Plus className="w-4 h-4 group-hover:scale-110 transition-transform" />
-                  <span className="text-sm uppercase tracking-wider font-bold">New Portfolio</span>
-                </button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Create New Portfolio</DialogTitle>
-                </DialogHeader>
-                <div className="space-y-4 pt-4">
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Portfolio Name</label>
-                    <Input
-                      placeholder="e.g., Retirement, Growth, Dividend"
-                      value={newPortfolioName}
-                      onChange={(e) => setNewPortfolioName(e.target.value)}
-                      autoFocus
-                    />
-                  </div>
-                  <Button
-                    onClick={() => {
-                      onCreatePortfolio(newPortfolioName);
-                      setIsAddPortfolioOpen(false);
-                      setNewPortfolioName("");
-                    }}
-                    className="w-full bg-[#004a99] hover:bg-[#003d7a]"
-                    disabled={!newPortfolioName}
-                  >
-                    Create Portfolio
-                  </Button>
-                </div>
-              </DialogContent>
-            </Dialog>
-            {/* Brokerage Link */}
-            {(user?.role === "admin" || user?.role === "premium") && (
-              <button
-                onClick={() => {
-                  onTabChange?.("brokerage");
-                  if (window.innerWidth < 1024) setSidebarOpen(false);
-                }}
-                className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-md transition-all duration-200 font-medium ${
-                  activeTab === "brokerage"
-                    ? "bg-slate-100 text-[#004a99]"
-                    : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
-                }`}
-              >
-                <ArrowRightLeft className="w-4 h-4" />
-                <span className="text-sm font-bold uppercase tracking-wider">Brokerage</span>
-                {activeTab === "brokerage" && (
-                  <div className="ml-auto w-1.5 h-1.5 rounded-full bg-[#004a99]" />
-                )}
-              </button>
-            )}
-
-          </div>
-
-          {/* Contact Us at the bottom */}
-          <div className="p-4 border-t border-slate-100 mt-auto">
-            <button
-              onClick={() => {
-                onTabChange?.("contact");
-                if (window.innerWidth < 1024) setSidebarOpen(false);
-              }}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-md transition-all duration-200 font-medium ${activeTab === "contact"
-                ? "bg-slate-100 text-[#004a99]"
-                : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
-                }`}
-            >
-              <Mail className="w-4 h-4" />
-              <span className="text-sm">Contact Us</span>
-              {activeTab === "contact" && (
-                <div className="ml-auto w-1.5 h-1.5 rounded-full bg-[#004a99]" />
-              )}
-            </button>
-          </div>
-        </aside>
-
-        {/* Overlay for mobile sidebar */}
-        {sidebarOpen && (
-          <div
-            className="lg:hidden fixed inset-0 bg-slate-900/20 backdrop-blur-sm z-40 top-14"
-            onClick={() => setSidebarOpen(false)}
-          />
-        )}
-
         {/* Main Content */}
         <main className="flex-1 overflow-auto bg-slate-50 flex flex-col">
           <div className="p-6 lg:p-10 max-w-[1800px] mx-auto w-full flex-1">
