@@ -44,6 +44,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
 }) => {
   const [isAddPortfolioOpen, setIsAddPortfolioOpen] = useState(false);
   const [newPortfolioName, setNewPortfolioName] = useState("");
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { user, logout } = useAuth();
 
   const selectedPortfolio = portfolios.find(p => p.id === selectedPortfolioId);
@@ -52,14 +53,21 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
     <div className="h-screen bg-slate-50 text-slate-900 flex flex-col overflow-hidden font-sans">
       {/* Top Navigation Bar */}
       <header className="h-16 border-b border-slate-200 bg-white sticky top-0 z-[60] shadow-sm">
-        <div className="flex items-center justify-between px-6 h-full max-w-[1800px] mx-auto w-full">
+        <div className="flex items-center justify-between px-4 sm:px-6 h-full max-w-[1800px] mx-auto w-full">
           {/* Left Section: Logo and Navigation */}
-          <div className="flex items-center gap-8">
-            <div className="flex items-center gap-2 mr-4">
+          <div className="flex items-center gap-2 md:gap-8">
+            <button
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              className="p-2 md:hidden hover:bg-slate-100 rounded-md text-slate-500"
+            >
+              {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+            </button>
+
+            <div className="flex items-center gap-2 mr-2 md:mr-4">
               <div className="bg-[#004a99] p-1.5 rounded">
-                <TrendingUp className="w-5 h-5 text-white" />
+                <TrendingUp className="w-4 h-4 md:w-5 md:h-5 text-white" />
               </div>
-              <h1 className="text-lg font-bold tracking-tight text-[#004a99] uppercase hidden lg:block">
+              <h1 className="text-sm md:text-lg font-bold tracking-tight text-[#004a99] uppercase hidden sm:block">
                 Investment Insights
               </h1>
             </div>
@@ -130,7 +138,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
           </div>
 
           {/* Right Section: Portfolio Selector and User Profile */}
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 md:gap-4">
             <div className="hidden sm:block">
               <Select
                 value={selectedPortfolioId?.toString() || "select"}
@@ -144,7 +152,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
                   }
                 }}
               >
-                <SelectTrigger className="w-[200px] h-9 bg-slate-50 border-slate-200 text-xs font-bold uppercase tracking-wider">
+                <SelectTrigger className="w-[140px] md:w-[200px] h-9 bg-slate-50 border-slate-200 text-[10px] md:text-xs font-bold uppercase tracking-wider">
                   <SelectValue placeholder="Select Portfolio" />
                 </SelectTrigger>
                 <SelectContent>
@@ -162,8 +170,8 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button className="flex items-center gap-3 pl-4 border-l border-slate-200 hover:opacity-80 transition-opacity">
-                  <div className="flex flex-col items-end hidden sm:flex">
+                <button className="flex items-center gap-2 md:gap-3 pl-2 md:pl-4 border-l border-slate-200 hover:opacity-80 transition-opacity">
+                  <div className="flex flex-col items-end hidden md:flex">
                     <span className="text-sm font-bold text-slate-700">
                       {user?.name || "User"}
                     </span>
@@ -171,10 +179,10 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
                       {user?.role || "Standard"} Member
                     </span>
                   </div>
-                  <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-slate-500">
+                  <div className="w-7 h-7 md:w-8 md:h-8 rounded-full bg-slate-200 flex items-center justify-center text-slate-500 text-xs md:text-sm font-bold">
                     {user?.name?.[0] || "U"}
                   </div>
-                  <ChevronDown className="w-4 h-4 text-slate-400" />
+                  <ChevronDown className="w-3 h-3 md:w-4 md:h-4 text-slate-400" />
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
@@ -198,6 +206,99 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
           </div>
         </div>
       </header>
+
+      {/* Mobile Navigation Menu */}
+      {mobileMenuOpen && (
+        <div className="md:hidden fixed inset-0 z-[100] bg-white pt-16 animate-in slide-in-from-left duration-200">
+          <div className="p-6 space-y-6">
+            <div className="flex justify-between items-center mb-8">
+              <div className="flex items-center gap-2">
+                <div className="bg-[#004a99] p-1.5 rounded">
+                  <TrendingUp className="w-5 h-5 text-white" />
+                </div>
+                <h1 className="text-lg font-bold tracking-tight text-[#004a99] uppercase">
+                  Insights
+                </h1>
+              </div>
+              <button 
+                onClick={() => setMobileMenuOpen(false)}
+                className="p-2 hover:bg-slate-100 rounded-md text-slate-500"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            <nav className="flex flex-col gap-2">
+              <button
+                onClick={() => {
+                  onTabChange?.("portfolios");
+                  setMobileMenuOpen(false);
+                }}
+                className={`flex items-center gap-4 px-4 py-4 rounded-xl transition-all font-bold uppercase text-sm tracking-widest ${
+                  activeTab === "portfolios"
+                    ? "bg-slate-100 text-[#004a99]"
+                    : "text-slate-500 hover:bg-slate-50"
+                }`}
+              >
+                <LayoutDashboard className="w-5 h-5" />
+                Dashboard
+              </button>
+
+              {(user?.role === "admin" || user?.role === "premium") && (
+                <button
+                  onClick={() => {
+                    onTabChange?.("brokerage");
+                    setMobileMenuOpen(false);
+                  }}
+                  className={`flex items-center gap-4 px-4 py-4 rounded-xl transition-all font-bold uppercase text-sm tracking-widest ${
+                    activeTab === "brokerage"
+                      ? "bg-slate-100 text-[#004a99]"
+                      : "text-slate-500 hover:bg-slate-50"
+                  }`}
+                >
+                  <ArrowRightLeft className="w-5 h-5" />
+                  Brokerage
+                </button>
+              )}
+
+              <button
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  setIsAddPortfolioOpen(true);
+                }}
+                className="flex items-center gap-4 px-4 py-4 rounded-xl transition-all font-bold uppercase text-sm tracking-widest text-slate-500 hover:bg-slate-50"
+              >
+                <Plus className="w-5 h-5" />
+                New Portfolio
+              </button>
+            </nav>
+
+            <div className="pt-6 border-t border-slate-100">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 block">Quick Select Portfolio</label>
+              <div className="grid grid-cols-1 gap-2">
+                {portfolios.map((p) => (
+                  <button
+                    key={p.id}
+                    onClick={() => {
+                      onPortfolioChange(p.id);
+                      onTabChange?.("portfolio");
+                      setMobileMenuOpen(false);
+                    }}
+                    className={`flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${
+                      selectedPortfolioId === p.id 
+                        ? "bg-primary text-white shadow-md shadow-primary/20" 
+                        : "bg-slate-50 text-slate-600"
+                    }`}
+                  >
+                    <Wallet className={`w-4 h-4 ${selectedPortfolioId === p.id ? "text-white" : "text-slate-400"}`} />
+                    {p.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="flex flex-1 overflow-hidden">
         {/* Main Content */}
