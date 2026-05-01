@@ -205,5 +205,15 @@ export const expenses = sqliteTable("expenses", {
   updatedAt: integer("updatedAt", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
+export const fiSimulationAssets = sqliteTable("fiSimulationAssets", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("userId").notNull(),
+  symbol: text("symbol").notNull(),
+  allocation: text("allocation").default("0").notNull(),
+  createdAt: integer("createdAt", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
 export type Expense = typeof expenses.$inferSelect;
 export type InsertExpense = typeof expenses.$inferInsert;
+export type FiSimulationAsset = typeof fiSimulationAssets.$inferSelect;
+export type InsertFiSimulationAsset = typeof fiSimulationAssets.$inferInsert;
