@@ -52,6 +52,7 @@ export const etfHoldings = sqliteTable("etfHoldings", {
   quantity: text("quantity").notNull(),
   purchasePrice: text("purchasePrice").notNull(),
   currentPrice: text("currentPrice").notNull(),
+  annualDividendPerShare: text("annualDividendPerShare").default("0").notNull(),
   desiredAllocation: text("desiredAllocation").default("0").notNull(),
   purchaseDate: integer("purchaseDate", { mode: "timestamp" }).notNull(),
   lastPriceUpdate: integer("lastPriceUpdate", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
@@ -194,3 +195,15 @@ export const brokerageHoldings = sqliteTable("brokerageHoldings", {
 }, (table) => [
   uniqueIndex("holdings_user_acc_sym_idx").on(table.userId, table.accountId, table.symbol),
 ]);
+
+export const expenses = sqliteTable("expenses", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("userId").notNull(),
+  description: text("description").notNull(),
+  amount: text("amount").notNull(),
+  createdAt: integer("createdAt", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+  updatedAt: integer("updatedAt", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+export type Expense = typeof expenses.$inferSelect;
+export type InsertExpense = typeof expenses.$inferInsert;

@@ -85,6 +85,18 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
                 Dashboard
               </button>
 
+              <button
+                onClick={() => onTabChange?.("fi")}
+                className={`flex items-center gap-2 px-4 py-2 rounded-md transition-all font-bold uppercase text-[11px] tracking-wider ${
+                  activeTab === "fi"
+                    ? "bg-slate-100 text-[#004a99]"
+                    : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+                }`}
+              >
+                <TrendingUp className="w-4 h-4" />
+                FI
+              </button>
+
               {(user?.role === "admin" || user?.role === "premium") && (
                 <button
                   onClick={() => onTabChange?.("brokerage")}
@@ -242,6 +254,21 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
               >
                 <LayoutDashboard className="w-5 h-5" />
                 Dashboard
+              </button>
+
+              <button
+                onClick={() => {
+                  onTabChange?.("fi");
+                  setMobileMenuOpen(false);
+                }}
+                className={`flex items-center gap-4 px-4 py-4 rounded-xl transition-all font-bold uppercase text-sm tracking-widest ${
+                  activeTab === "fi"
+                    ? "bg-slate-100 text-[#004a99]"
+                    : "text-slate-500 hover:bg-slate-50"
+                }`}
+              >
+                <TrendingUp className="w-5 h-5" />
+                FI
               </button>
 
               {(user?.role === "admin" || user?.role === "premium") && (

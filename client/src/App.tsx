@@ -8,6 +8,7 @@ import DashboardLayout from "./components/DashboardLayout";
 import Holdings from "./pages/Portfolio";
 import Contact from "./pages/Contact";
 import Portfolios from "./pages/Portfolios";
+import FinanceIndependence from "./pages/FinanceIndependence";
 import BrokerageTransactions from "./pages/BrokerageTransactions";
 import Privacy from "./pages/Privacy";
 import { Button } from "./components/ui/button";
@@ -135,6 +136,8 @@ function DashboardRouter() {
             setActiveTab("portfolio");
           }} 
         />;
+      case "fi":
+        return <FinanceIndependence />;
       case "brokerage":
         return <BrokerageTransactions />;
       case "privacy":

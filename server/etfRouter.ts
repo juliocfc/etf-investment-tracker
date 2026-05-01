@@ -34,6 +34,7 @@ import {
   fetchEtfPrice,
   validateEtfSymbol,
   fetchDividendData,
+  calculateAnnualDPS,
 } from "./financialApi";
 import { getSmartHistoricalPrices } from "./priceService";
 import { fetchETFName } from "./etfLookup";
@@ -167,16 +168,19 @@ export const etfRouter = router({
         const priceData = await fetchEtfPrice(input.symbol);
         currentPrice = priceData?.price.toString();
         lastPriceUpdate = new Date();
+        const annualDividendPerShare = (await calculateAnnualDPS(input.symbol)).toString();
         
         if (currentPrice && existingHolding) {
           await updateEtfHoldingBySymbol(ctx.user.id, input.symbol, {
             currentPrice,
             lastPriceUpdate,
+            annualDividendPerShare,
           });
         }
       }
 
       if (!existingHolding) {
+        const annualDividendPerShare = (await calculateAnnualDPS(input.symbol)).toString();
         holdingId = await createEtfHolding({
           userId: ctx.user.id,
           portfolioId: input.portfolioId,
@@ -189,6 +193,7 @@ export const etfRouter = router({
           desiredAllocation: input.desiredAllocation || "0",
           currentPrice,
           lastPriceUpdate,
+          annualDividendPerShare,
         });
       }
 
@@ -390,11 +395,13 @@ export const etfRouter = router({
         if (priceData) {
           const currentPrice = priceData.price.toString();
           const lastPriceUpdate = new Date();
+          const annualDividendPerShare = (await calculateAnnualDPS(symbol)).toString();
 
           // Update ALL holdings with this symbol for this user across ALL portfolios
           await updateEtfHoldingBySymbol(ctx.user.id, symbol, {
             currentPrice,
             lastPriceUpdate,
+            annualDividendPerShare,
           });
 
           await addPriceHistory(
@@ -1114,6 +1121,7 @@ export const etfRouter = router({
           }
           const priceData = await fetchEtfPrice(input.symbol);
           const currentPrice = priceData?.price.toString();
+          const annualDividendPerShare = (await calculateAnnualDPS(input.symbol)).toString();
 
           holdingId = await createEtfHolding({
             userId: ctx.user.id,
@@ -1127,6 +1135,7 @@ export const etfRouter = router({
             desiredAllocation: "0",
             currentPrice: currentPrice || input.price,
             lastPriceUpdate: new Date(),
+            annualDividendPerShare,
           });
           holding = { symbol: input.symbol.toUpperCase(), accountId: input.accountId };
         } else {
@@ -1843,6 +1852,7 @@ export const etfRouter = router({
             throw new Error(`Invalid ETF symbol: ${input.symbol}`);
           }
           const priceData = await fetchEtfPrice(input.symbol);
+          const annualDividendPerShare = (await calculateAnnualDPS(input.symbol)).toString();
           
           holdingId = await createEtfHolding({
             userId: ctx.user.id,
@@ -1856,6 +1866,7 @@ export const etfRouter = router({
             desiredAllocation: "0",
             currentPrice: priceData?.price.toString() || "0",
             lastPriceUpdate: new Date(),
+            annualDividendPerShare,
           });
           holding = { symbol: input.symbol.toUpperCase(), accountId: input.accountId };
         } else {

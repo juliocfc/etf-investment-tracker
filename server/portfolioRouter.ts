@@ -556,70 +556,25 @@ export const portfolioRouter = router({
 
   // Get all holdings for the current user
   getAllHoldings: protectedProcedure.query(async ({ ctx }) => {
+    console.log(`[Portfolio] Fetching all holdings for user ${ctx.user.id}...`);
     const db = await getDb();
     if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database unavailable" });
 
     const { etfHoldings: holdingsTable } = await import("../drizzle/schema");
-    const { fetchDividendData } = await import("./financialApi");
 
     const holdings = await db
       .select()
       .from(holdingsTable)
       .where(eq(holdingsTable.userId, ctx.user.id));
 
-    const holdingsWithDividends = [];
+    console.log(`[Portfolio] Found ${holdings.length} holdings for user ${ctx.user.id}`);
     
-    // Group symbols to fetch dividends only once per symbol
-    const symbols = Array.from(new Set(holdings.map((h: any) => h.symbol.toUpperCase()))) as string[];
-    const symbolDividends: Record<string, number> = {};
+    const holdingsWithDividends = holdings.map(h => ({
+      ...h,
+      annualDividendPerShare: parseFloat(h.annualDividendPerShare || "0")
+    }));
 
-    const now = new Date();
-    const twelveMonthsAgo = new Date();
-    twelveMonthsAgo.setFullYear(now.getFullYear() - 1);
-
-    for (const symbol of symbols) {
-      try {
-        const dividendData = await fetchDividendData(symbol);
-        if (dividendData && dividendData.length > 0) {
-          // 1. Get payments in the last 12 months strictly (Trailing Twelve Months)
-          const lastYearPayments = dividendData.filter((d: any) => {
-            const dDate = new Date(d.exDate);
-            return dDate >= twelveMonthsAgo && dDate <= now;
-          });
-
-          // 2. Estimate annual DPS based on frequency for better projection
-          // Sort by date desc to get the most recent ones
-          const sortedData = [...dividendData].sort((a, b) => new Date(b.exDate).getTime() - new Date(a.exDate).getTime());
-          
-          let estimatedAnnualDPS = 0;
-          if (lastYearPayments.length >= 10) {
-            // Likely a monthly payer - use the most recent payment * 12
-            estimatedAnnualDPS = sortedData[0].dividendPerShare * 12;
-          } else if (lastYearPayments.length >= 3) {
-            // Likely a quarterly payer - use the most recent payment * 4
-            estimatedAnnualDPS = sortedData[0].dividendPerShare * 4;
-          } else {
-            // Irregular or semi-annual - use sum of last 12 months
-            estimatedAnnualDPS = lastYearPayments.reduce((sum: number, d: any) => sum + d.dividendPerShare, 0);
-          }
-          
-          symbolDividends[symbol] = estimatedAnnualDPS;
-        } else {
-          symbolDividends[symbol] = 0;
-        }
-      } catch (error) {
-        console.error(`Error fetching dividends for ${symbol}:`, error);
-        symbolDividends[symbol] = 0;
-      }
-    }
-
-    for (const holding of holdings) {
-      holdingsWithDividends.push({
-        ...holding,
-        annualDividendPerShare: symbolDividends[holding.symbol.toUpperCase()] || 0
-      });
-    }
-
+    console.log(`[Portfolio] Finished processing all holdings for user ${ctx.user.id}`);
     return holdingsWithDividends;
   }),
 });

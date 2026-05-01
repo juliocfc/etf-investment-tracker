@@ -84,4 +84,4 @@ CREATE TABLE `users` (
 	`lastSignedIn` integer DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 --> statement-breakpoint
-CREATE UNIQUE INDEX `users_openId_unique` ON `users` (`openId`);
+CREATE UNIQUE INDEX IF NOT EXISTS `users_openId_unique` ON `users` (`openId`);

@@ -6,6 +6,7 @@ import { etfRouter } from "./etfRouter";
 import { portfolioRouter } from "./portfolioRouter";
 import { accountRouter } from "./accountRouter";
 import { brokerageRouter } from "./brokerageRouter";
+import { fiRouter } from "./fiRouter";
 
 export const appRouter = router({
   system: systemRouter,
@@ -23,6 +24,7 @@ export const appRouter = router({
   account: accountRouter,
   etf: etfRouter,
   brokerage: brokerageRouter,
+  fi: fiRouter,
 });
 
 export type AppRouter = typeof appRouter;

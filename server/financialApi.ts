@@ -210,6 +210,43 @@ export async function validateEtfSymbol(symbol: string): Promise<boolean> {
 }
 
 /**
+ * Calculate annual dividend per share based on historical data
+ */
+export async function calculateAnnualDPS(symbol: string): Promise<number> {
+  try {
+    const dividendData = await fetchDividendData(symbol);
+    if (!dividendData || dividendData.length === 0) return 0;
+
+    const now = new Date();
+    const twelveMonthsAgo = new Date();
+    twelveMonthsAgo.setFullYear(now.getFullYear() - 1);
+
+    // 1. Get payments in the last 12 months strictly
+    const lastYearPayments = dividendData.filter((d: any) => {
+      const dDate = new Date(d.exDate);
+      return dDate >= twelveMonthsAgo && dDate <= now;
+    });
+
+    // 2. Estimate annual DPS based on frequency
+    const sortedData = [...dividendData].sort((a, b) => b.exDate.getTime() - a.exDate.getTime());
+
+    if (lastYearPayments.length >= 10) {
+      // Likely a monthly payer
+      return sortedData[0].dividendPerShare * 12;
+    } else if (lastYearPayments.length >= 3) {
+      // Likely a quarterly payer
+      return sortedData[0].dividendPerShare * 4;
+    } else {
+      // Irregular or semi-annual
+      return lastYearPayments.reduce((sum: number, d: any) => sum + d.dividendPerShare, 0);
+    }
+  } catch (error) {
+    console.error(`Error calculating annual DPS for ${symbol}:`, error);
+    return 0;
+  }
+}
+
+/**
  * Batch fetch prices for multiple symbols
  */
 export async function fetchMultiplePrices(
