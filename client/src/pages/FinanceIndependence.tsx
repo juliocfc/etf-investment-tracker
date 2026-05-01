@@ -21,7 +21,7 @@ import {
   DialogTrigger,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Plus, Trash2, Edit, Calculator, Wallet, ReceiptText, BarChart, Search } from "lucide-react";
+import { Plus, Trash2, Edit, Calculator, Wallet, ReceiptText, BarChart, Search, Target } from "lucide-react";
 import { toast } from "sonner";
 
 const FinanceIndependence: React.FC = () => {
@@ -29,13 +29,21 @@ const FinanceIndependence: React.FC = () => {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<{ id: number; description: string; amount: string } | null>(null);
   const [newExpense, setNewExpense] = useState({ description: "", amount: "" });
+  
+  // Bridge Simulation State
   const [simulationSymbol, setSimulationSymbol] = useState("");
   const [simulationAllocation, setSimulationAllocation] = useState("0");
+  
+  // Full Simulation State
+  const [fullSimSymbol, setFullSimSymbol] = useState("");
+  const [fullSimAllocation, setFullSimAllocation] = useState("0");
+  const [fullSimUsage, setFullSimUsage] = useState("100");
 
   // Data fetching
   const { data: holdings, isPending: isHoldingsPending, error: holdingsError } = trpc.portfolio.getAllHoldings.useQuery();
   const { data: expenses, isPending: isExpensesPending, error: expensesError } = trpc.fi.getExpenses.useQuery();
   const { data: simulationData, isPending: isSimPending } = trpc.fi.getSimulationData.useQuery();
+  const { data: fullSimData, isPending: isFullSimPending } = trpc.fi.getFullSimulationData.useQuery();
 
   // Mutations
   const addExpenseMutation = trpc.fi.addExpense.useMutation({
@@ -64,7 +72,7 @@ const FinanceIndependence: React.FC = () => {
 
   const addSimAssetMutation = trpc.fi.addSimulationAsset.useMutation({
     onSuccess: () => {
-      toast.success("Asset added to simulation");
+      toast.success("Asset added to bridge simulation");
       utils.fi.getSimulationData.invalidate();
       setSimulationSymbol("");
       setSimulationAllocation("0");
@@ -72,15 +80,34 @@ const FinanceIndependence: React.FC = () => {
   });
 
   const updateSimAssetMutation = trpc.fi.updateSimulationAsset.useMutation({
-    onSuccess: () => {
-      utils.fi.getSimulationData.invalidate();
-    },
+    onSuccess: () => utils.fi.getSimulationData.invalidate(),
   });
 
   const deleteSimAssetMutation = trpc.fi.deleteSimulationAsset.useMutation({
     onSuccess: () => {
-      toast.success("Asset removed from simulation");
+      toast.success("Asset removed from bridge simulation");
       utils.fi.getSimulationData.invalidate();
+    },
+  });
+
+  const addFullSimAssetMutation = trpc.fi.addFullSimulationAsset.useMutation({
+    onSuccess: () => {
+      toast.success("Asset added to full simulation");
+      utils.fi.getFullSimulationData.invalidate();
+      setFullSimSymbol("");
+      setFullSimAllocation("0");
+      setFullSimUsage("100");
+    },
+  });
+
+  const updateFullSimAssetMutation = trpc.fi.updateFullSimulationAsset.useMutation({
+    onSuccess: () => utils.fi.getFullSimulationData.invalidate(),
+  });
+
+  const deleteFullSimAssetMutation = trpc.fi.deleteFullSimulationAsset.useMutation({
+    onSuccess: () => {
+      toast.success("Asset removed from full simulation");
+      utils.fi.getFullSimulationData.invalidate();
     },
   });
 
@@ -99,28 +126,18 @@ const FinanceIndependence: React.FC = () => {
     const expensesList = expenses || [];
     if (expensesList.length === 0) return [];
 
-    // Sort by amount ascending
     const sorted = [...expensesList].sort((a, b) => parseFloat(a.amount) - parseFloat(b.amount));
-    
     let remainingIncome = monthlyIncome;
 
     return sorted.map(exp => {
       const amount = parseFloat(exp.amount);
       const covered = Math.min(amount, remainingIncome);
       remainingIncome = Math.max(0, remainingIncome - covered);
-      
       const coveredPercent = amount > 0 ? (covered / amount) * 100 : 0;
       const remainingAmount = amount - covered;
       const remainingPercent = amount > 0 ? (remainingAmount / amount) * 100 : 0;
 
-      return {
-        ...exp,
-        amount,
-        covered,
-        coveredPercent,
-        remainingAmount,
-        remainingPercent
-      };
+      return { ...exp, amount, covered, coveredPercent, remainingAmount, remainingPercent };
     });
   }, [expenses, monthlyIncome]);
 
@@ -134,23 +151,31 @@ const FinanceIndependence: React.FC = () => {
 
   const remainingGap = Math.max(0, totals.amount - monthlyIncome);
 
+  // Bridge Simulation Calculation (Allocation applies to Capital Required)
   const simulationResults = useMemo(() => {
     if (!simulationData || simulationData.length === 0 || remainingGap <= 0) return [];
 
+    // Calculate weighted yield of the simulated portfolio
+    let weightedYieldSum = 0;
+    simulationData.forEach(asset => {
+      const alloc = parseFloat(asset.allocation) || 0;
+      const yield_ = asset.price > 0 ? (asset.annualDPS / 12) / asset.price : 0;
+      weightedYieldSum += (alloc / 100) * yield_;
+    });
+
+    if (weightedYieldSum <= 0) return [];
+
+    // Total capital needed to cover the gap
+    const totalCapitalNeeded = remainingGap / weightedYieldSum;
+
     return simulationData.map(asset => {
       const allocationPercent = parseFloat(asset.allocation) || 0;
-      const amountToCover = (remainingGap * allocationPercent) / 100;
+      const costNeeded = totalCapitalNeeded * (allocationPercent / 100);
+      const sharesNeeded = asset.price > 0 ? Math.ceil(costNeeded / asset.price) : 0;
       const monthlyDPS = asset.annualDPS / 12;
-      const sharesNeeded = monthlyDPS > 0 ? Math.ceil(amountToCover / monthlyDPS) : 0;
-      const costNeeded = sharesNeeded * asset.price;
+      const totalMonthlyDiv = sharesNeeded * monthlyDPS;
 
-      return {
-        ...asset,
-        monthlyDPS,
-        sharesNeeded,
-        costNeeded,
-        allocationPercent
-      };
+      return { ...asset, monthlyDPS, sharesNeeded, costNeeded, allocationPercent, totalMonthlyDiv };
     });
   }, [simulationData, remainingGap]);
 
@@ -158,9 +183,77 @@ const FinanceIndependence: React.FC = () => {
     return simulationResults.reduce((acc, curr) => ({
       cost: acc.cost + curr.costNeeded,
       shares: acc.shares + curr.sharesNeeded,
-      allocation: acc.allocation + curr.allocationPercent
-    }), { cost: 0, shares: 0, allocation: 0 });
+      allocation: acc.allocation + curr.allocationPercent,
+      totalMonthlyDiv: acc.totalMonthlyDiv + curr.totalMonthlyDiv
+    }), { cost: 0, shares: 0, allocation: 0, totalMonthlyDiv: 0 });
   }, [simulationResults]);
+
+  // Full Simulation Calculation (Allocation applies to Capital Required)
+  const fullSimulationResults = useMemo(() => {
+    if (!fullSimData || fullSimData.length === 0 || totals.amount <= 0) return [];
+
+    // Calculate weighted yield considering usage percent
+    let weightedYieldSum = 0;
+    fullSimData.forEach(asset => {
+      const alloc = parseFloat(asset.allocation) || 0;
+      const usage = parseFloat(asset.usagePercent) || 100;
+      const yield_ = asset.price > 0 ? (asset.annualDPS / 12) / asset.price : 0;
+      weightedYieldSum += (alloc / 100) * yield_ * (usage / 100);
+    });
+
+    if (weightedYieldSum <= 0) return [];
+
+    // Total capital needed to cover all expenses
+    const totalCapitalNeeded = totals.amount / weightedYieldSum;
+
+    return fullSimData.map(asset => {
+      const allocationPercent = parseFloat(asset.allocation) || 0;
+      const usagePercent = parseFloat(asset.usagePercent) || 100;
+      const costNeeded = totalCapitalNeeded * (allocationPercent / 100);
+      const totalSharesNeeded = asset.price > 0 ? Math.ceil(costNeeded / asset.price) : 0;
+      
+      // Calculate current shares owned
+      const currentShares = holdings
+        ? holdings
+            .filter(h => h.symbol.toUpperCase() === asset.symbol.toUpperCase())
+            .reduce((sum, h) => sum + parseFloat(h.quantity.toString()), 0)
+        : 0;
+
+      const remainingSharesNeeded = Math.max(0, totalSharesNeeded - currentShares);
+      const remainingCostNeeded = remainingSharesNeeded * asset.price;
+
+      const monthlyDPS = asset.annualDPS / 12;
+      const totalMonthlyDiv = totalSharesNeeded * monthlyDPS;
+      const monthlyDivUsed = (totalMonthlyDiv * usagePercent) / 100;
+
+      return { 
+        ...asset, 
+        monthlyDPS, 
+        totalSharesNeeded, 
+        costNeeded, 
+        currentShares,
+        remainingSharesNeeded,
+        remainingCostNeeded,
+        allocationPercent, 
+        usagePercent, 
+        totalMonthlyDiv, 
+        monthlyDivUsed 
+      };
+    });
+  }, [fullSimData, totals.amount, holdings]);
+
+  const fullSimTotals = useMemo(() => {
+    return fullSimulationResults.reduce((acc, curr) => ({
+      cost: acc.cost + curr.costNeeded,
+      totalShares: acc.totalShares + curr.totalSharesNeeded,
+      currentShares: acc.currentShares + curr.currentShares,
+      remainingShares: acc.remainingShares + curr.remainingSharesNeeded,
+      remainingCost: acc.remainingCost + curr.remainingCostNeeded,
+      allocation: acc.allocation + curr.allocationPercent,
+      totalMonthlyDiv: acc.totalMonthlyDiv + curr.totalMonthlyDiv,
+      monthlyDivUsed: acc.monthlyDivUsed + curr.monthlyDivUsed
+    }), { cost: 0, totalShares: 0, currentShares: 0, remainingShares: 0, remainingCost: 0, allocation: 0, totalMonthlyDiv: 0, monthlyDivUsed: 0 });
+  }, [fullSimulationResults]);
 
   const handleAddExpense = () => {
     if (!newExpense.description || !newExpense.amount) return;
@@ -169,23 +262,25 @@ const FinanceIndependence: React.FC = () => {
 
   const handleUpdateExpense = () => {
     if (!editingExpense) return;
-    updateExpenseMutation.mutate({
-      id: editingExpense.id,
-      description: editingExpense.description,
-      amount: editingExpense.amount,
-    });
+    updateExpenseMutation.mutate({ id: editingExpense.id, description: editingExpense.description, amount: editingExpense.amount });
   };
 
   const handleAddSimAsset = () => {
     if (!simulationSymbol) return;
-    addSimAssetMutation.mutate({ 
-      symbol: simulationSymbol,
-      allocation: simulationAllocation
-    });
+    addSimAssetMutation.mutate({ symbol: simulationSymbol, allocation: simulationAllocation });
   };
 
   const handleUpdateSimAllocation = (id: number, val: string) => {
     updateSimAssetMutation.mutate({ id, allocation: val });
+  };
+
+  const handleAddFullSimAsset = () => {
+    if (!fullSimSymbol) return;
+    addFullSimAssetMutation.mutate({ symbol: fullSimSymbol, allocation: fullSimAllocation, usagePercent: fullSimUsage });
+  };
+
+  const handleUpdateFullSim = (id: number, updates: { allocation?: string, usagePercent?: string }) => {
+    updateFullSimAssetMutation.mutate({ id, ...updates });
   };
 
   if (holdingsError || expensesError) {
@@ -196,20 +291,11 @@ const FinanceIndependence: React.FC = () => {
         </div>
         <div>
           <h3 className="text-lg font-bold text-slate-800">Failed to load financial data</h3>
-          <p className="text-sm text-slate-500 max-w-sm">
-            {(holdingsError?.message || expensesError?.message || "An unexpected error occurred.")}
-          </p>
-          <Button 
-            variant="outline" 
-            size="sm" 
-            className="mt-4"
-            onClick={() => {
-              if (holdingsError) utils.portfolio.getAllHoldings.refetch();
-              if (expensesError) utils.fi.getExpenses.refetch();
-            }}
-          >
-            Retry Connection
-          </Button>
+          <p className="text-sm text-slate-500 max-w-sm">{(holdingsError?.message || expensesError?.message || "An unexpected error occurred.")}</p>
+          <Button variant="outline" size="sm" className="mt-4" onClick={() => {
+            if (holdingsError) utils.portfolio.getAllHoldings.refetch();
+            if (expensesError) utils.fi.getExpenses.refetch();
+          }}>Retry Connection</Button>
         </div>
       </div>
     );
@@ -228,7 +314,7 @@ const FinanceIndependence: React.FC = () => {
   }
 
   return (
-    <div className="space-y-8 pb-20">
+    <div className="space-y-12 pb-32">
       {/* Header */}
       <div className="flex justify-between items-center bg-white p-6 rounded-lg shadow-sm border border-border">
         <div className="flex items-center gap-4">
@@ -244,7 +330,7 @@ const FinanceIndependence: React.FC = () => {
 
       {/* Income Card */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <Card className="bg-white border-none shadow-md shadow-slate-200/50 overflow-hidden group">
+        <Card className="bg-white border-none shadow-md shadow-slate-200/50 overflow-hidden relative">
           <div className="absolute top-0 left-0 w-1 h-full bg-green-500" />
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
@@ -253,9 +339,7 @@ const FinanceIndependence: React.FC = () => {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-black text-slate-800 tracking-tighter">
-              {formatCurrency(monthlyIncome)}
-            </div>
+            <div className="text-3xl font-black text-slate-800 tracking-tighter">{formatCurrency(monthlyIncome)}</div>
             <p className="text-[10px] text-slate-500 font-medium mt-1 uppercase tracking-tight">Average based on annual projections</p>
           </CardContent>
         </Card>
@@ -268,40 +352,25 @@ const FinanceIndependence: React.FC = () => {
             <ReceiptText className="w-5 h-5 text-blue-600" />
             <CardTitle className="text-sm font-bold uppercase tracking-wider">Monthly Expenses & Coverage</CardTitle>
           </div>
-          
           <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
             <DialogTrigger asChild>
               <Button size="sm" className="bg-[#004a99] hover:bg-[#003d7a] h-8 font-bold uppercase text-[10px] tracking-widest">
-                <Plus className="w-3.5 h-3.5 mr-1.5" />
-                Add Expense
+                <Plus className="w-3.5 h-3.5 mr-1.5" />Add Expense
               </Button>
             </DialogTrigger>
             <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Add Monthly Expense</DialogTitle>
-              </DialogHeader>
+              <DialogHeader><DialogTitle>Add Monthly Expense</DialogTitle></DialogHeader>
               <div className="space-y-4 py-4">
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-slate-500 uppercase">Description</label>
-                  <Input 
-                    placeholder="e.g., Rent, Grocery, Utilities" 
-                    value={newExpense.description}
-                    onChange={(e) => setNewExpense({ ...newExpense, description: e.target.value })}
-                  />
+                  <Input placeholder="e.g., Rent, Grocery, Utilities" value={newExpense.description} onChange={(e) => setNewExpense({ ...newExpense, description: e.target.value })} />
                 </div>
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-slate-500 uppercase">Amount ($)</label>
-                  <Input 
-                    type="number" 
-                    placeholder="0.00" 
-                    value={newExpense.amount}
-                    onChange={(e) => setNewExpense({ ...newExpense, amount: e.target.value })}
-                  />
+                  <Input type="number" placeholder="0.00" value={newExpense.amount} onChange={(e) => setNewExpense({ ...newExpense, amount: e.target.value })} />
                 </div>
               </div>
-              <DialogFooter>
-                <Button onClick={handleAddExpense} className="bg-[#004a99]">Add Expense</Button>
-              </DialogFooter>
+              <DialogFooter><Button onClick={handleAddExpense} className="bg-[#004a99]">Add Expense</Button></DialogFooter>
             </DialogContent>
           </Dialog>
         </CardHeader>
@@ -322,11 +391,7 @@ const FinanceIndependence: React.FC = () => {
               </TableHeader>
               <TableBody>
                 {distributedExpenses.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={8} className="text-center py-12 text-slate-400 italic text-sm">
-                      No expenses defined yet. Add your first monthly expense to see coverage.
-                    </TableCell>
-                  </TableRow>
+                  <TableRow><TableCell colSpan={8} className="text-center py-12 text-slate-400 italic text-sm">No expenses defined yet.</TableCell></TableRow>
                 ) : (
                   distributedExpenses.map((exp) => (
                     <TableRow key={exp.id} className="hover:bg-slate-50/50">
@@ -336,41 +401,18 @@ const FinanceIndependence: React.FC = () => {
                       <TableCell className="text-right font-mono text-green-600 font-bold">{formatCurrency(exp.covered)}</TableCell>
                       <TableCell className="text-right">
                         <div className="flex flex-col items-end">
-                          <span className={`text-[11px] font-black ${exp.coveredPercent >= 100 ? "text-green-600" : "text-orange-600"}`}>
-                            {exp.coveredPercent.toFixed(1)}%
-                          </span>
+                          <span className={`text-[11px] font-black ${exp.coveredPercent >= 100 ? "text-green-600" : "text-orange-600"}`}>{exp.coveredPercent.toFixed(1)}%</span>
                           <div className="w-16 h-1 bg-slate-100 rounded-full mt-1 overflow-hidden">
-                            <div 
-                              className={`h-full transition-all ${exp.coveredPercent >= 100 ? "bg-green-500" : "bg-orange-500"}`}
-                              style={{ width: `${Math.min(100, exp.coveredPercent)}%` }}
-                            />
+                            <div className={`h-full transition-all ${exp.coveredPercent >= 100 ? "bg-green-500" : "bg-orange-500"}`} style={{ width: `${Math.min(100, exp.coveredPercent)}%` }} />
                           </div>
                         </div>
                       </TableCell>
                       <TableCell className="text-right font-mono text-red-500">{formatCurrency(exp.remainingAmount)}</TableCell>
-                      <TableCell className="text-right text-[11px] font-bold text-slate-400">
-                        {exp.remainingPercent.toFixed(1)}%
-                      </TableCell>
+                      <TableCell className="text-right text-[11px] font-bold text-slate-400">{exp.remainingPercent.toFixed(1)}%</TableCell>
                       <TableCell className="text-center">
                         <div className="flex items-center justify-center gap-1">
-                          <Button 
-                            variant="ghost" 
-                            size="icon" 
-                            className="h-8 w-8 text-slate-400 hover:text-blue-600"
-                            onClick={() => setEditingExpense({ id: exp.id, description: exp.description, amount: exp.amount.toString() })}
-                          >
-                            <Edit className="w-3.5 h-3.5" />
-                          </Button>
-                          <Button 
-                            variant="ghost" 
-                            size="icon" 
-                            className="h-8 w-8 text-slate-400 hover:text-red-600"
-                            onClick={() => {
-                              if (confirm("Delete this expense?")) deleteExpenseMutation.mutate({ id: exp.id });
-                            }}
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </Button>
+                          <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-blue-600" onClick={() => setEditingExpense({ id: exp.id, description: exp.description, amount: exp.amount.toString() })}><Edit className="w-3.5 h-3.5" /></Button>
+                          <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-red-600" onClick={() => { if (confirm("Delete this expense?")) deleteExpenseMutation.mutate({ id: exp.id }); }}><Trash2 className="w-3.5 h-3.5" /></Button>
                         </div>
                       </TableCell>
                     </TableRow>
@@ -384,13 +426,9 @@ const FinanceIndependence: React.FC = () => {
                     <TableCell className="text-right font-mono font-black text-slate-900">{formatCurrency(totals.amount)}</TableCell>
                     <TableCell className="text-right font-mono text-slate-500">{formatCurrency(totals.amount * 12)}</TableCell>
                     <TableCell className="text-right font-mono font-black text-green-700">{formatCurrency(totals.covered)}</TableCell>
-                    <TableCell className="text-right font-black text-green-700">
-                      {(totals.amount > 0 ? (totals.covered / totals.amount) * 100 : 0).toFixed(1)}%
-                    </TableCell>
+                    <TableCell className="text-right font-black text-green-700">{(totals.amount > 0 ? (totals.covered / totals.amount) * 100 : 0).toFixed(1)}%</TableCell>
                     <TableCell className="text-right font-mono font-black text-red-700">{formatCurrency(totals.remaining)}</TableCell>
-                    <TableCell className="text-right font-black text-red-700">
-                      {(totals.amount > 0 ? (totals.remaining / totals.amount) * 100 : 0).toFixed(1)}%
-                    </TableCell>
+                    <TableCell className="text-right font-black text-red-700">{(totals.amount > 0 ? (totals.remaining / totals.amount) * 100 : 0).toFixed(1)}%</TableCell>
                     <TableCell />
                   </TableRow>
                 </TableFooter>
@@ -400,98 +438,66 @@ const FinanceIndependence: React.FC = () => {
         </CardContent>
       </Card>
 
-      {/* Summary FI Status */}
+      {/* Progress Status */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <Card className="bg-white border-none shadow-md shadow-slate-200/50">
-          <CardHeader>
-            <CardTitle className="text-xs font-bold uppercase tracking-widest text-slate-400">Financial Independence Progress</CardTitle>
-          </CardHeader>
+          <CardHeader><CardTitle className="text-xs font-bold uppercase tracking-widest text-slate-400">Financial Independence Progress</CardTitle></CardHeader>
           <CardContent>
             <div className="space-y-4">
               <div className="flex justify-between items-end">
                 <div>
-                  <div className="text-4xl font-black text-slate-800 tracking-tighter">
-                    {(totals.amount > 0 ? (monthlyIncome / totals.amount) * 100 : 0).toFixed(1)}%
-                  </div>
+                  <div className="text-4xl font-black text-slate-800 tracking-tighter">{(totals.amount > 0 ? (monthlyIncome / totals.amount) * 100 : 0).toFixed(1)}%</div>
                   <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-1">FI Score (Income / Total Expenses)</div>
                 </div>
                 <div className="text-right">
-                  <div className="text-xl font-bold text-slate-700">
-                    {formatCurrency(Math.max(0, totals.amount - monthlyIncome))}
-                  </div>
+                  <div className="text-xl font-bold text-slate-700">{formatCurrency(Math.max(0, totals.amount - monthlyIncome))}</div>
                   <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Gap to Full FI</div>
                 </div>
               </div>
               <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden">
-                <div 
-                  className="h-full bg-blue-600 transition-all duration-1000"
-                  style={{ width: `${Math.min(100, (totals.amount > 0 ? (monthlyIncome / totals.amount) * 100 : 0))}%` }}
-                />
+                <div className="h-full bg-blue-600 transition-all duration-1000" style={{ width: `${Math.min(100, (totals.amount > 0 ? (monthlyIncome / totals.amount) * 100 : 0))}%` }} />
               </div>
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Asset Simulation */}
+      {/* FI Bridge Simulation (Allocation applies to Capital) */}
       <Card className="bg-white border-none shadow-md shadow-slate-200/50">
         <CardHeader className="flex flex-row items-center justify-between border-b border-slate-50 pb-4">
           <div className="flex items-center gap-2">
             <BarChart className="w-5 h-5 text-purple-600" />
             <CardTitle className="text-sm font-bold uppercase tracking-wider">FI Bridge Simulation</CardTitle>
           </div>
-          
           <div className="flex items-center gap-2">
             <div className="relative">
               <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
-              <Input 
-                placeholder="Asset Symbol (e.g. VOO)" 
-                className="h-8 w-40 pl-8 text-[10px] font-bold uppercase"
-                value={simulationSymbol}
-                onChange={(e) => setSimulationSymbol(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleAddSimAsset()}
-              />
+              <Input placeholder="Symbol" className="h-8 w-24 pl-8 text-[10px] font-bold uppercase" value={simulationSymbol} onChange={(e) => setSimulationSymbol(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleAddSimAsset()} />
             </div>
-            <div className="flex items-center gap-1.5 ml-2">
-              <label className="text-[10px] font-bold text-slate-400 uppercase">Alloc %</label>
-              <Input 
-                type="number"
-                placeholder="%" 
-                className="h-8 w-16 text-[10px] font-bold text-right"
-                value={simulationAllocation}
-                onChange={(e) => setSimulationAllocation(e.target.value)}
-              />
-            </div>
-            <Button 
-              size="sm" 
-              onClick={handleAddSimAsset}
-              className="bg-purple-600 hover:bg-purple-700 h-8 font-bold uppercase text-[10px] tracking-widest ml-2"
-              disabled={addSimAssetMutation.isPending}
-            >
-              <Plus className="w-3.5 h-3.5 mr-1.5" />
-              {addSimAssetMutation.isPending ? "Adding..." : "Add Asset"}
+            <Input type="number" placeholder="Alloc %" className="h-8 w-16 text-[10px] font-bold text-right" value={simulationAllocation} onChange={(e) => setSimulationAllocation(e.target.value)} />
+            <Button size="sm" onClick={handleAddSimAsset} className="bg-purple-600 hover:bg-purple-700 h-8 font-bold uppercase text-[10px] tracking-widest" disabled={addSimAssetMutation.isPending}>
+              <Plus className="w-3.5 h-3.5 mr-1.5" />{addSimAssetMutation.isPending ? "..." : "Add"}
             </Button>
           </div>
         </CardHeader>
         <CardContent className="p-0">
           <div className="p-4 bg-purple-50/30 border-b border-purple-50 flex justify-between items-center">
-            <p className="text-[10px] text-purple-700 font-bold uppercase tracking-widest leading-relaxed">
-              Simulation Strategy: Bridging {formatCurrency(remainingGap)} monthly gap based on defined asset allocations.
+            <p className="text-[10px] text-purple-700 font-bold uppercase tracking-widest">
+              Strategy: Distributing required capital for the {formatCurrency(remainingGap)} gap based on allocation.
             </p>
             {simTotals.allocation !== 100 && (
-              <p className="text-[10px] text-orange-600 font-black uppercase bg-orange-50 px-2 py-1 rounded">
-                Warning: Total Allocation is {simTotals.allocation.toFixed(1)}% (Should be 100%)
-              </p>
+              <p className="text-[10px] text-orange-600 font-black uppercase bg-orange-50 px-2 py-1 rounded">Alloc: {simTotals.allocation.toFixed(1)}%</p>
             )}
           </div>
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
-                <TableRow className="bg-slate-50/50 hover:bg-slate-50/50">
+                <TableRow className="bg-slate-50/50">
                   <TableHead className="font-bold text-[10px] uppercase tracking-widest h-10">Asset</TableHead>
                   <TableHead className="text-right font-bold text-[10px] uppercase tracking-widest h-10">Price</TableHead>
-                  <TableHead className="text-right font-bold text-[10px] uppercase tracking-widest h-10">Allocation %</TableHead>
+                  <TableHead className="text-right font-bold text-[10px] uppercase tracking-widest h-10">Alloc %</TableHead>
                   <TableHead className="text-right font-bold text-[10px] uppercase tracking-widest h-10">Monthly Div/Sh</TableHead>
+                  <TableHead className="text-right font-bold text-[10px] uppercase tracking-widest h-10">Total Monthly Div</TableHead>
                   <TableHead className="text-right font-bold text-[10px] uppercase tracking-widest h-10">Shares Needed</TableHead>
                   <TableHead className="text-right font-bold text-[10px] uppercase tracking-widest h-10">Capital Required</TableHead>
                   <TableHead className="text-center font-bold text-[10px] uppercase tracking-widest h-10">Actions</TableHead>
@@ -499,102 +505,136 @@ const FinanceIndependence: React.FC = () => {
               </TableHeader>
               <TableBody>
                 {simulationResults.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={7} className="text-center py-12 text-slate-400 italic text-sm">
-                      {remainingGap > 0 
-                        ? "Add assets and define allocations to simulate your bridge to full financial independence."
-                        : "Full FI achieved! Current dividends cover all expenses."}
-                    </TableCell>
-                  </TableRow>
+                  <TableRow><TableCell colSpan={8} className="text-center py-8 text-slate-400 italic text-xs">No assets defined.</TableCell></TableRow>
                 ) : (
                   simulationResults.map((asset) => (
                     <TableRow key={asset.id} className="hover:bg-slate-50/50">
-                      <TableCell>
-                        <div className="font-bold text-slate-700">{asset.symbol}</div>
-                        {!asset.success && <div className="text-[8px] text-red-500 uppercase font-black">Market Data Pending</div>}
-                      </TableCell>
-                      <TableCell className="text-right font-mono font-bold text-slate-900">{formatCurrency(asset.price)}</TableCell>
-                      <TableCell className="text-right">
-                        <Input 
-                          type="number"
-                          className="h-7 w-20 text-right font-mono text-[11px] font-bold ml-auto"
-                          value={asset.allocation}
-                          onChange={(e) => handleUpdateSimAllocation(asset.id, e.target.value)}
-                        />
-                      </TableCell>
-                      <TableCell className="text-right font-mono text-green-600 font-bold">{formatCurrency(asset.monthlyDPS)}</TableCell>
-                      <TableCell className="text-right font-mono font-black text-blue-600">
-                        {asset.sharesNeeded.toLocaleString()}
-                      </TableCell>
-                      <TableCell className="text-right font-mono font-black text-slate-900">
-                        {formatCurrency(asset.costNeeded)}
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <Button 
-                          variant="ghost" 
-                          size="icon" 
-                          className="h-8 w-8 text-slate-400 hover:text-red-600"
-                          onClick={() => deleteSimAssetMutation.mutate({ id: asset.id })}
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </Button>
-                      </TableCell>
+                      <TableCell className="font-bold text-slate-700">{asset.symbol}</TableCell>
+                      <TableCell className="text-right font-mono text-xs">{formatCurrency(asset.price)}</TableCell>
+                      <TableCell className="text-right"><Input type="number" className="h-7 w-16 text-right font-mono text-[11px] ml-auto" value={asset.allocation} onChange={(e) => handleUpdateSimAllocation(asset.id, e.target.value)} /></TableCell>
+                      <TableCell className="text-right font-mono text-xs">{formatCurrency(asset.monthlyDPS)}</TableCell>
+                      <TableCell className="text-right font-mono text-xs text-green-600">{formatCurrency(asset.totalMonthlyDiv)}</TableCell>
+                      <TableCell className="text-right font-mono text-xs font-bold text-blue-600">{asset.sharesNeeded.toLocaleString()}</TableCell>
+                      <TableCell className="text-right font-mono text-xs font-bold">{formatCurrency(asset.costNeeded)}</TableCell>
+                      <TableCell className="text-center"><Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-red-600" onClick={() => deleteSimAssetMutation.mutate({ id: asset.id })}><Trash2 className="w-3.5 h-3.5" /></Button></TableCell>
                     </TableRow>
                   ))
                 )}
               </TableBody>
-              {simulationResults.length > 0 && (
-                <TableFooter className="bg-purple-50/50 border-t-2 border-purple-100">
-                  <TableRow className="hover:bg-transparent">
-                    <TableCell className="font-bold text-purple-700 uppercase text-[10px] tracking-widest">Simulation Totals</TableCell>
-                    <TableCell />
-                    <TableCell className={`text-right font-mono font-black ${simTotals.allocation === 100 ? "text-green-700" : "text-orange-700"}`}>
-                      {simTotals.allocation.toFixed(1)}%
-                    </TableCell>
-                    <TableCell />
-                    <TableCell className="text-right font-mono font-black text-blue-700">
-                      —
-                    </TableCell>
-                    <TableCell className="text-right font-mono font-black text-purple-900 text-base">
-                      {formatCurrency(simTotals.cost)}
-                    </TableCell>
-                    <TableCell />
-                  </TableRow>
-                </TableFooter>
-              )}
+              <TableFooter className="bg-purple-50/50">
+                <TableRow>
+                  <TableCell className="font-bold text-purple-700 uppercase text-[10px]">Totals</TableCell>
+                  <TableCell /><TableCell className="text-right font-mono text-xs font-bold">{simTotals.allocation.toFixed(1)}%</TableCell><TableCell />
+                  <TableCell className="text-right font-mono text-xs font-bold text-green-700">{formatCurrency(simTotals.totalMonthlyDiv)}</TableCell><TableCell />
+                  <TableCell className="text-right font-mono text-xs font-bold text-purple-900">{formatCurrency(simTotals.cost)}</TableCell><TableCell />
+                </TableRow>
+              </TableFooter>
             </Table>
           </div>
         </CardContent>
       </Card>
 
-      {/* Edit Dialog */}
+      {/* Full Portfolio Simulation (Allocation applies to Capital) */}
+      <Card className="bg-white border-none shadow-md shadow-slate-200/50">
+        <CardHeader className="flex flex-row items-center justify-between border-b border-slate-50 pb-4">
+          <div className="flex items-center gap-2">
+            <Target className="w-5 h-5 text-indigo-600" />
+            <CardTitle className="text-sm font-bold uppercase tracking-wider">Total Portfolio Simulation</CardTitle>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative">
+              <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+              <Input placeholder="Symbol" className="h-8 w-24 pl-8 text-[10px] font-bold uppercase" value={fullSimSymbol} onChange={(e) => setFullSimSymbol(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleAddFullSimAsset()} />
+            </div>
+            <Input type="number" placeholder="Alloc %" className="h-8 w-16 text-[10px] font-bold text-right" value={fullSimAllocation} onChange={(e) => setFullSimAllocation(e.target.value)} />
+            <div className="flex items-center gap-1 bg-slate-50 px-2 rounded h-8 border border-slate-200">
+               <span className="text-[8px] font-bold text-slate-400 uppercase">Usage %</span>
+               <Input type="number" className="h-6 w-12 border-none bg-transparent text-[10px] font-bold text-right p-0 focus-visible:ring-0" value={fullSimUsage} onChange={(e) => setFullSimUsage(e.target.value)} />
+            </div>
+            <Button size="sm" onClick={handleAddFullSimAsset} className="bg-indigo-600 hover:bg-indigo-700 h-8 font-bold uppercase text-[10px] tracking-widest" disabled={addFullSimAssetMutation.isPending}>
+              <Plus className="w-3.5 h-3.5 mr-1.5" />{addFullSimAssetMutation.isPending ? "..." : "Add"}
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="p-0">
+          <div className="p-4 bg-indigo-50/30 border-b border-indigo-50 flex justify-between items-center">
+            <p className="text-[10px] text-indigo-700 font-bold uppercase tracking-widest leading-relaxed">
+              Target: Cover {formatCurrency(totals.amount)} total monthly expenses. 
+              Capital is distributed based on allocation; "Usage %" defines spendable dividend portion.
+            </p>
+            {fullSimTotals.allocation !== 100 && (
+              <p className="text-[10px] text-orange-600 font-black uppercase bg-orange-50 px-2 py-1 rounded">Alloc: {fullSimTotals.allocation.toFixed(1)}%</p>
+            )}
+          </div>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-slate-50/50">
+                  <TableHead className="font-bold text-[10px] uppercase tracking-widest h-10">Asset</TableHead>
+                  <TableHead className="text-right font-bold text-[10px] uppercase tracking-widest h-10">Price</TableHead>
+                  <TableHead className="text-right font-bold text-[10px] uppercase tracking-widest h-10">Alloc %</TableHead>
+                  <TableHead className="text-right font-bold text-[10px] uppercase tracking-widest h-10">Usage %</TableHead>
+                  <TableHead className="text-right font-bold text-[10px] uppercase tracking-widest h-10">Current Shares</TableHead>
+                  <TableHead className="text-right font-bold text-[10px] uppercase tracking-widest h-10">Total Shares Needed</TableHead>
+                  <TableHead className="text-right font-bold text-[10px] uppercase tracking-widest h-10">Rem. Shares Needed</TableHead>
+                  <TableHead className="text-right font-bold text-[10px] uppercase tracking-widest h-10">Rem. Capital Needed</TableHead>
+                  <TableHead className="text-right font-bold text-[10px] uppercase tracking-widest h-10">Total Capital</TableHead>
+                  <TableHead className="text-center font-bold text-[10px] uppercase tracking-widest h-10">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {fullSimulationResults.length === 0 ? (
+                  <TableRow><TableCell colSpan={10} className="text-center py-8 text-slate-400 italic text-xs">No simulation assets added.</TableCell></TableRow>
+                ) : (
+                  fullSimulationResults.map((asset) => (
+                    <TableRow key={asset.id} className="hover:bg-slate-50/50">
+                      <TableCell className="font-bold text-slate-700">{asset.symbol}</TableCell>
+                      <TableCell className="text-right font-mono text-xs">{formatCurrency(asset.price)}</TableCell>
+                      <TableCell className="text-right"><Input type="number" className="h-7 w-16 text-right font-mono text-[11px] ml-auto" value={asset.allocation} onChange={(e) => handleUpdateFullSim(asset.id, { allocation: e.target.value })} /></TableCell>
+                      <TableCell className="text-right"><Input type="number" className="h-7 w-16 text-right font-mono text-[11px] ml-auto" value={asset.usagePercent} onChange={(e) => handleUpdateFullSim(asset.id, { usagePercent: e.target.value })} /></TableCell>
+                      <TableCell className="text-right font-mono text-xs text-slate-500">{asset.currentShares.toLocaleString()}</TableCell>
+                      <TableCell className="text-right font-mono text-xs font-bold text-slate-700">{asset.totalSharesNeeded.toLocaleString()}</TableCell>
+                      <TableCell className="text-right font-mono text-xs font-bold text-indigo-600">{asset.remainingSharesNeeded.toLocaleString()}</TableCell>
+                      <TableCell className="text-right font-mono text-xs font-bold text-indigo-700">{formatCurrency(asset.remainingCostNeeded)}</TableCell>
+                      <TableCell className="text-right font-mono text-xs text-slate-400">{formatCurrency(asset.costNeeded)}</TableCell>
+                      <TableCell className="text-center"><Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-red-600" onClick={() => deleteFullSimAssetMutation.mutate({ id: asset.id })}><Trash2 className="w-3.5 h-3.5" /></Button></TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+              <TableFooter className="bg-indigo-50/50">
+                <TableRow>
+                  <TableCell className="font-bold text-indigo-700 uppercase text-[10px]">Totals</TableCell>
+                  <TableCell /><TableCell className="text-right font-mono text-xs font-bold">{fullSimTotals.allocation.toFixed(1)}%</TableCell><TableCell /><TableCell />
+                  <TableCell className="text-right font-mono text-xs font-bold text-slate-700">{fullSimTotals.totalShares.toLocaleString()}</TableCell>
+                  <TableCell className="text-right font-mono text-xs font-bold text-indigo-700">{fullSimTotals.remainingShares.toLocaleString()}</TableCell>
+                  <TableCell className="text-right font-mono text-xs font-bold text-indigo-900">{formatCurrency(fullSimTotals.remainingCost)}</TableCell>
+                  <TableCell className="text-right font-mono text-xs font-bold text-slate-500">{formatCurrency(fullSimTotals.cost)}</TableCell>
+                  <TableCell />
+                </TableRow>
+              </TableFooter>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Edit Expense Dialog */}
       <Dialog open={!!editingExpense} onOpenChange={(open) => !open && setEditingExpense(null)}>
         <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Edit Expense</DialogTitle>
-          </DialogHeader>
+          <DialogHeader><DialogTitle>Edit Expense</DialogTitle></DialogHeader>
           {editingExpense && (
             <div className="space-y-4 py-4">
               <div className="space-y-2">
                 <label className="text-xs font-bold text-slate-500 uppercase">Description</label>
-                <Input 
-                  value={editingExpense.description}
-                  onChange={(e) => setEditingExpense({ ...editingExpense, description: e.target.value })}
-                />
+                <Input value={editingExpense.description} onChange={(e) => setEditingExpense({ ...editingExpense, description: e.target.value })} />
               </div>
               <div className="space-y-2">
                 <label className="text-xs font-bold text-slate-500 uppercase">Amount ($)</label>
-                <Input 
-                  type="number" 
-                  value={editingExpense.amount}
-                  onChange={(e) => setEditingExpense({ ...editingExpense, amount: e.target.value })}
-                />
+                <Input type="number" value={editingExpense.amount} onChange={(e) => setEditingExpense({ ...editingExpense, amount: e.target.value })} />
               </div>
             </div>
           )}
-          <DialogFooter>
-            <Button onClick={handleUpdateExpense} className="bg-[#004a99]">Save Changes</Button>
-          </DialogFooter>
+          <DialogFooter><Button onClick={handleUpdateExpense} className="bg-[#004a99]">Save Changes</Button></DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

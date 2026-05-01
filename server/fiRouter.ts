@@ -1,7 +1,7 @@
 import { router, protectedProcedure } from "./_core/trpc";
 import { z } from "zod";
 import { getDb, eq, and } from "./db";
-import { expenses, fiSimulationAssets } from "../drizzle/schema";
+import { expenses, fiSimulationAssets, fiFullSimulationAssets } from "../drizzle/schema";
 import { TRPCError } from "@trpc/server";
 import { fetchEtfPrice, calculateAnnualDPS } from "./financialApi";
 
@@ -182,6 +182,119 @@ export const fiRouter = router({
           id: asset.id,
           symbol: asset.symbol,
           allocation: asset.allocation,
+          price: 0,
+          annualDPS: 0,
+          success: false
+        };
+      }
+    }));
+
+    return results;
+  }),
+
+  // Full Simulation Procedures
+  getFullSimulationAssets: protectedProcedure.query(async ({ ctx }) => {
+    const db = await getDb();
+    if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database unavailable" });
+
+    return db
+      .select()
+      .from(fiFullSimulationAssets)
+      .where(eq(fiFullSimulationAssets.userId, ctx.user.id));
+  }),
+
+  addFullSimulationAsset: protectedProcedure
+    .input(z.object({ 
+      symbol: z.string().min(1),
+      allocation: z.string().optional(),
+      usagePercent: z.string().optional()
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database unavailable" });
+
+      const symbol = input.symbol.toUpperCase();
+
+      const existing = await db
+        .select()
+        .from(fiFullSimulationAssets)
+        .where(and(eq(fiFullSimulationAssets.userId, ctx.user.id), eq(fiFullSimulationAssets.symbol, symbol)))
+        .then(rows => rows[0]);
+
+      if (existing) return { success: true, id: existing.id };
+
+      const result = await db.insert(fiFullSimulationAssets).values({
+        userId: ctx.user.id,
+        symbol: symbol,
+        allocation: input.allocation || "0",
+        usagePercent: input.usagePercent || "100",
+        createdAt: new Date(),
+      });
+
+      return { success: true, id: (result as any).lastInsertRowid };
+    }),
+
+  updateFullSimulationAsset: protectedProcedure
+    .input(z.object({
+      id: z.number(),
+      allocation: z.string().optional(),
+      usagePercent: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database unavailable" });
+
+      const updates: any = {};
+      if (input.allocation !== undefined) updates.allocation = input.allocation;
+      if (input.usagePercent !== undefined) updates.usagePercent = input.usagePercent;
+
+      await db.update(fiFullSimulationAssets)
+        .set(updates)
+        .where(and(eq(fiFullSimulationAssets.id, input.id), eq(fiFullSimulationAssets.userId, ctx.user.id)));
+
+      return { success: true };
+    }),
+
+  deleteFullSimulationAsset: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database unavailable" });
+
+      await db.delete(fiFullSimulationAssets)
+        .where(and(eq(fiFullSimulationAssets.id, input.id), eq(fiFullSimulationAssets.userId, ctx.user.id)));
+
+      return { success: true };
+    }),
+
+  getFullSimulationData: protectedProcedure.query(async ({ ctx }) => {
+    const db = await getDb();
+    if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database unavailable" });
+
+    const assets = await db
+      .select()
+      .from(fiFullSimulationAssets)
+      .where(eq(fiFullSimulationAssets.userId, ctx.user.id));
+
+    const results = await Promise.all(assets.map(async (asset) => {
+      try {
+        const priceData = await fetchEtfPrice(asset.symbol);
+        const annualDPS = await calculateAnnualDPS(asset.symbol);
+        return {
+          id: asset.id,
+          symbol: asset.symbol,
+          allocation: asset.allocation,
+          usagePercent: asset.usagePercent,
+          price: priceData?.price || 0,
+          annualDPS: annualDPS,
+          success: !!priceData
+        };
+      } catch (e) {
+        return {
+          id: asset.id,
+          symbol: asset.symbol,
+          allocation: asset.allocation,
+          usagePercent: asset.usagePercent,
           price: 0,
           annualDPS: 0,
           success: false
