@@ -155,7 +155,6 @@ const FinanceIndependence: React.FC = () => {
   const simulationResults = useMemo(() => {
     if (!simulationData || simulationData.length === 0 || remainingGap <= 0) return [];
 
-    // Calculate weighted yield of the simulated portfolio
     let weightedYieldSum = 0;
     simulationData.forEach(asset => {
       const alloc = parseFloat(asset.allocation) || 0;
@@ -164,8 +163,6 @@ const FinanceIndependence: React.FC = () => {
     });
 
     if (weightedYieldSum <= 0) return [];
-
-    // Total capital needed to cover the gap
     const totalCapitalNeeded = remainingGap / weightedYieldSum;
 
     return simulationData.map(asset => {
@@ -174,25 +171,32 @@ const FinanceIndependence: React.FC = () => {
       const sharesNeeded = asset.price > 0 ? Math.ceil(costNeeded / asset.price) : 0;
       const monthlyDPS = asset.annualDPS / 12;
       const totalMonthlyDiv = sharesNeeded * monthlyDPS;
+      
+      const currentShares = holdings
+        ? holdings
+            .filter(h => h.symbol.toUpperCase() === asset.symbol.toUpperCase())
+            .reduce((sum, h) => sum + parseFloat(h.quantity.toString()), 0)
+        : 0;
+      const currentMonthlyDiv = currentShares * monthlyDPS;
 
-      return { ...asset, monthlyDPS, sharesNeeded, costNeeded, allocationPercent, totalMonthlyDiv };
+      return { ...asset, monthlyDPS, sharesNeeded, costNeeded, allocationPercent, totalMonthlyDiv, currentMonthlyDiv };
     });
-  }, [simulationData, remainingGap]);
+  }, [simulationData, remainingGap, holdings]);
 
   const simTotals = useMemo(() => {
     return simulationResults.reduce((acc, curr) => ({
       cost: acc.cost + curr.costNeeded,
       shares: acc.shares + curr.sharesNeeded,
       allocation: acc.allocation + curr.allocationPercent,
+      currentMonthlyDiv: acc.currentMonthlyDiv + curr.currentMonthlyDiv,
       totalMonthlyDiv: acc.totalMonthlyDiv + curr.totalMonthlyDiv
-    }), { cost: 0, shares: 0, allocation: 0, totalMonthlyDiv: 0 });
+    }), { cost: 0, shares: 0, allocation: 0, currentMonthlyDiv: 0, totalMonthlyDiv: 0 });
   }, [simulationResults]);
 
   // Full Simulation Calculation (Allocation applies to Capital Required)
   const fullSimulationResults = useMemo(() => {
     if (!fullSimData || fullSimData.length === 0 || totals.amount <= 0) return [];
 
-    // Calculate weighted yield considering usage percent
     let weightedYieldSum = 0;
     fullSimData.forEach(asset => {
       const alloc = parseFloat(asset.allocation) || 0;
@@ -202,8 +206,6 @@ const FinanceIndependence: React.FC = () => {
     });
 
     if (weightedYieldSum <= 0) return [];
-
-    // Total capital needed to cover all expenses
     const totalCapitalNeeded = totals.amount / weightedYieldSum;
 
     return fullSimData.map(asset => {
@@ -212,20 +214,21 @@ const FinanceIndependence: React.FC = () => {
       const costNeeded = totalCapitalNeeded * (allocationPercent / 100);
       const totalSharesNeeded = asset.price > 0 ? Math.ceil(costNeeded / asset.price) : 0;
       
-      // Calculate current shares owned
       const currentShares = holdings
         ? holdings
             .filter(h => h.symbol.toUpperCase() === asset.symbol.toUpperCase())
             .reduce((sum, h) => sum + parseFloat(h.quantity.toString()), 0)
         : 0;
 
+      const currentValue = currentShares * asset.price;
       const remainingSharesNeeded = Math.max(0, totalSharesNeeded - currentShares);
       const remainingCostNeeded = remainingSharesNeeded * asset.price;
-      const progressPercent = totalSharesNeeded > 0 ? (currentShares / totalSharesNeeded) * 100 : 0;
+      const progressPercent = costNeeded > 0 ? (currentValue / costNeeded) * 100 : 0;
 
       const monthlyDPS = asset.annualDPS / 12;
-      const totalMonthlyDiv = totalSharesNeeded * monthlyDPS;
-      const monthlyDivUsed = (totalMonthlyDiv * usagePercent) / 100;
+      const currentMonthlyDiv = currentShares * monthlyDPS;
+      const desiredMonthlyDiv = totalSharesNeeded * monthlyDPS;
+      const monthlyDivUsed = (desiredMonthlyDiv * usagePercent) / 100;
 
       return { 
         ...asset, 
@@ -233,12 +236,14 @@ const FinanceIndependence: React.FC = () => {
         totalSharesNeeded, 
         costNeeded, 
         currentShares,
+        currentValue,
         remainingSharesNeeded,
         remainingCostNeeded,
         progressPercent,
         allocationPercent, 
         usagePercent, 
-        totalMonthlyDiv, 
+        currentMonthlyDiv, 
+        desiredMonthlyDiv,
         monthlyDivUsed 
       };
     });
@@ -249,12 +254,14 @@ const FinanceIndependence: React.FC = () => {
       cost: acc.cost + curr.costNeeded,
       totalShares: acc.totalShares + curr.totalSharesNeeded,
       currentShares: acc.currentShares + curr.currentShares,
+      currentValue: acc.currentValue + curr.currentValue,
       remainingShares: acc.remainingShares + curr.remainingSharesNeeded,
       remainingCost: acc.remainingCost + curr.remainingCostNeeded,
       allocation: acc.allocation + curr.allocationPercent,
-      totalMonthlyDiv: acc.totalMonthlyDiv + curr.totalMonthlyDiv,
+      currentMonthlyDiv: acc.currentMonthlyDiv + curr.currentMonthlyDiv,
+      desiredMonthlyDiv: acc.desiredMonthlyDiv + curr.desiredMonthlyDiv,
       monthlyDivUsed: acc.monthlyDivUsed + curr.monthlyDivUsed
-    }), { cost: 0, totalShares: 0, currentShares: 0, remainingShares: 0, remainingCost: 0, allocation: 0, totalMonthlyDiv: 0, monthlyDivUsed: 0 });
+    }), { cost: 0, totalShares: 0, currentShares: 0, currentValue: 0, remainingShares: 0, remainingCost: 0, allocation: 0, currentMonthlyDiv: 0, desiredMonthlyDiv: 0, monthlyDivUsed: 0 });
   }, [fullSimulationResults]);
 
   const handleAddExpense = () => {
@@ -464,7 +471,7 @@ const FinanceIndependence: React.FC = () => {
         </Card>
       </div>
 
-      {/* FI Bridge Simulation (Allocation applies to Capital) */}
+      {/* FI Bridge Simulation */}
       <Card className="bg-white border-none shadow-md shadow-slate-200/50">
         <CardHeader className="flex flex-row items-center justify-between border-b border-slate-50 pb-4">
           <div className="flex items-center gap-2">
@@ -496,10 +503,9 @@ const FinanceIndependence: React.FC = () => {
               <TableHeader>
                 <TableRow className="bg-slate-50/50">
                   <TableHead className="font-bold text-[10px] uppercase tracking-widest h-10">Asset</TableHead>
-                  <TableHead className="text-right font-bold text-[10px] uppercase tracking-widest h-10">Price</TableHead>
                   <TableHead className="text-right font-bold text-[10px] uppercase tracking-widest h-10">Alloc %</TableHead>
-                  <TableHead className="text-right font-bold text-[10px] uppercase tracking-widest h-10">Monthly Div/Sh</TableHead>
-                  <TableHead className="text-right font-bold text-[10px] uppercase tracking-widest h-10">Total Monthly Div</TableHead>
+                  <TableHead className="text-right font-bold text-[10px] uppercase tracking-widest h-10">Cur. Monthly Div</TableHead>
+                  <TableHead className="text-right font-bold text-[10px] uppercase tracking-widest h-10">Des. Monthly Div</TableHead>
                   <TableHead className="text-right font-bold text-[10px] uppercase tracking-widest h-10">Shares Needed</TableHead>
                   <TableHead className="text-right font-bold text-[10px] uppercase tracking-widest h-10">Capital Required</TableHead>
                   <TableHead className="text-center font-bold text-[10px] uppercase tracking-widest h-10">Actions</TableHead>
@@ -507,15 +513,14 @@ const FinanceIndependence: React.FC = () => {
               </TableHeader>
               <TableBody>
                 {simulationResults.length === 0 ? (
-                  <TableRow><TableCell colSpan={8} className="text-center py-8 text-slate-400 italic text-xs">No assets defined.</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={7} className="text-center py-8 text-slate-400 italic text-xs">No assets defined.</TableCell></TableRow>
                 ) : (
                   simulationResults.map((asset) => (
                     <TableRow key={asset.id} className="hover:bg-slate-50/50">
                       <TableCell className="font-bold text-slate-700">{asset.symbol}</TableCell>
-                      <TableCell className="text-right font-mono text-xs">{formatCurrency(asset.price)}</TableCell>
                       <TableCell className="text-right"><Input type="number" className="h-7 w-16 text-right font-mono text-[11px] ml-auto" value={asset.allocation} onChange={(e) => handleUpdateSimAllocation(asset.id, e.target.value)} /></TableCell>
-                      <TableCell className="text-right font-mono text-xs">{formatCurrency(asset.monthlyDPS)}</TableCell>
-                      <TableCell className="text-right font-mono text-xs text-green-600">{formatCurrency(asset.totalMonthlyDiv)}</TableCell>
+                      <TableCell className="text-right font-mono text-xs text-slate-500">{formatCurrency(asset.currentMonthlyDiv)}</TableCell>
+                      <TableCell className="text-right font-mono text-xs font-bold text-green-600">{formatCurrency(asset.totalMonthlyDiv)}</TableCell>
                       <TableCell className="text-right font-mono text-xs font-bold text-blue-600">{asset.sharesNeeded.toLocaleString()}</TableCell>
                       <TableCell className="text-right font-mono text-xs font-bold">{formatCurrency(asset.costNeeded)}</TableCell>
                       <TableCell className="text-center"><Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-red-600" onClick={() => deleteSimAssetMutation.mutate({ id: asset.id })}><Trash2 className="w-3.5 h-3.5" /></Button></TableCell>
@@ -526,9 +531,10 @@ const FinanceIndependence: React.FC = () => {
               <TableFooter className="bg-purple-50/50">
                 <TableRow>
                   <TableCell className="font-bold text-purple-700 uppercase text-[10px]">Totals</TableCell>
-                  <TableCell /><TableCell className="text-right font-mono text-xs font-bold">{simTotals.allocation.toFixed(1)}%</TableCell><TableCell />
-                  <TableCell className="text-right font-mono text-xs font-bold text-green-700">{formatCurrency(simTotals.totalMonthlyDiv)}</TableCell><TableCell />
-                  <TableCell className="text-right font-mono text-xs font-bold text-purple-900">{formatCurrency(simTotals.cost)}</TableCell><TableCell />
+                  <TableCell className="text-right font-mono text-xs font-bold">{simTotals.allocation.toFixed(1)}%</TableCell>
+                  <TableCell className="text-right font-mono text-xs font-bold text-slate-500">{formatCurrency(simTotals.currentMonthlyDiv)}</TableCell>
+                  <TableCell className="text-right font-mono text-xs font-bold text-green-700">{formatCurrency(simTotals.totalMonthlyDiv)}</TableCell>
+                  <TableCell /><TableCell className="text-right font-mono text-xs font-bold text-purple-900">{formatCurrency(simTotals.cost)}</TableCell><TableCell />
                 </TableRow>
               </TableFooter>
             </Table>
@@ -536,7 +542,7 @@ const FinanceIndependence: React.FC = () => {
         </CardContent>
       </Card>
 
-      {/* Full Portfolio Simulation (Allocation applies to Capital) */}
+      {/* Total Portfolio Simulation */}
       <Card className="bg-white border-none shadow-md shadow-slate-200/50">
         <CardHeader className="flex flex-row items-center justify-between border-b border-slate-50 pb-4">
           <div className="flex items-center gap-2">
@@ -573,13 +579,16 @@ const FinanceIndependence: React.FC = () => {
               <TableHeader>
                 <TableRow className="bg-slate-50/50">
                   <TableHead className="font-bold text-[10px] uppercase tracking-widest h-10">Asset</TableHead>
-                  <TableHead className="text-right font-bold text-[10px] uppercase tracking-widest h-10">Price</TableHead>
                   <TableHead className="text-right font-bold text-[10px] uppercase tracking-widest h-10">Alloc %</TableHead>
                   <TableHead className="text-right font-bold text-[10px] uppercase tracking-widest h-10">Usage %</TableHead>
+                  <TableHead className="text-right font-bold text-[10px] uppercase tracking-widest h-10">Cur. Monthly Div</TableHead>
+                  <TableHead className="text-right font-bold text-[10px] uppercase tracking-widest h-10">Des. Monthly Div (Used)</TableHead>
+                  <TableHead className="text-right font-bold text-[10px] uppercase tracking-widest h-10">Des. Monthly Div (Gross)</TableHead>
                   <TableHead className="text-right font-bold text-[10px] uppercase tracking-widest h-10">Current Shares</TableHead>
                   <TableHead className="text-right font-bold text-[10px] uppercase tracking-widest h-10">Total Shares Needed</TableHead>
-                  <TableHead className="text-right font-bold text-[10px] uppercase tracking-widest h-10">Progress %</TableHead>
                   <TableHead className="text-right font-bold text-[10px] uppercase tracking-widest h-10">Rem. Shares Needed</TableHead>
+                  <TableHead className="text-right font-bold text-[10px] uppercase tracking-widest h-10">Current Value</TableHead>
+                  <TableHead className="text-right font-bold text-[10px] uppercase tracking-widest h-10">Progress %</TableHead>
                   <TableHead className="text-right font-bold text-[10px] uppercase tracking-widest h-10">Rem. Capital Needed</TableHead>
                   <TableHead className="text-right font-bold text-[10px] uppercase tracking-widest h-10">Total Capital</TableHead>
                   <TableHead className="text-center font-bold text-[10px] uppercase tracking-widest h-10">Actions</TableHead>
@@ -587,16 +596,20 @@ const FinanceIndependence: React.FC = () => {
               </TableHeader>
               <TableBody>
                 {fullSimulationResults.length === 0 ? (
-                  <TableRow><TableCell colSpan={11} className="text-center py-8 text-slate-400 italic text-xs">No simulation assets added.</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={14} className="text-center py-8 text-slate-400 italic text-xs">No simulation assets added.</TableCell></TableRow>
                 ) : (
                   fullSimulationResults.map((asset) => (
                     <TableRow key={asset.id} className="hover:bg-slate-50/50">
                       <TableCell className="font-bold text-slate-700">{asset.symbol}</TableCell>
-                      <TableCell className="text-right font-mono text-xs">{formatCurrency(asset.price)}</TableCell>
                       <TableCell className="text-right"><Input type="number" className="h-7 w-16 text-right font-mono text-[11px] ml-auto" value={asset.allocation} onChange={(e) => handleUpdateFullSim(asset.id, { allocation: e.target.value })} /></TableCell>
                       <TableCell className="text-right"><Input type="number" className="h-7 w-16 text-right font-mono text-[11px] ml-auto" value={asset.usagePercent} onChange={(e) => handleUpdateFullSim(asset.id, { usagePercent: e.target.value })} /></TableCell>
+                      <TableCell className="text-right font-mono text-xs text-slate-500">{formatCurrency(asset.currentMonthlyDiv)}</TableCell>
+                      <TableCell className="text-right font-mono text-xs font-bold text-green-600">{formatCurrency(asset.monthlyDivUsed)}</TableCell>
+                      <TableCell className="text-right font-mono text-xs text-slate-400">{formatCurrency(asset.desiredMonthlyDiv)}</TableCell>
                       <TableCell className="text-right font-mono text-xs text-slate-500">{asset.currentShares.toLocaleString()}</TableCell>
                       <TableCell className="text-right font-mono text-xs font-bold text-slate-700">{asset.totalSharesNeeded.toLocaleString()}</TableCell>
+                      <TableCell className="text-right font-mono text-xs font-bold text-indigo-600">{asset.remainingSharesNeeded.toLocaleString()}</TableCell>
+                      <TableCell className="text-right font-mono text-xs text-slate-500">{formatCurrency(asset.currentValue)}</TableCell>
                       <TableCell className="text-right">
                         <div className="flex flex-col items-end">
                           <span className={`text-[10px] font-black ${asset.progressPercent >= 100 ? "text-green-600" : "text-blue-600"}`}>{asset.progressPercent.toFixed(1)}%</span>
@@ -605,7 +618,6 @@ const FinanceIndependence: React.FC = () => {
                           </div>
                         </div>
                       </TableCell>
-                      <TableCell className="text-right font-mono text-xs font-bold text-indigo-600">{asset.remainingSharesNeeded.toLocaleString()}</TableCell>
                       <TableCell className="text-right font-mono text-xs font-bold text-indigo-700">{formatCurrency(asset.remainingCostNeeded)}</TableCell>
                       <TableCell className="text-right font-mono text-xs text-slate-400">{formatCurrency(asset.costNeeded)}</TableCell>
                       <TableCell className="text-center"><Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-red-600" onClick={() => deleteFullSimAssetMutation.mutate({ id: asset.id })}><Trash2 className="w-3.5 h-3.5" /></Button></TableCell>
@@ -616,12 +628,17 @@ const FinanceIndependence: React.FC = () => {
               <TableFooter className="bg-indigo-50/50">
                 <TableRow>
                   <TableCell className="font-bold text-indigo-700 uppercase text-[10px]">Totals</TableCell>
-                  <TableCell /><TableCell className="text-right font-mono text-xs font-bold">{fullSimTotals.allocation.toFixed(1)}%</TableCell><TableCell /><TableCell />
+                  <TableCell className="text-right font-mono text-xs font-bold">{fullSimTotals.allocation.toFixed(1)}%</TableCell><TableCell />
+                  <TableCell className="text-right font-mono text-xs font-bold text-slate-500">{formatCurrency(fullSimTotals.currentMonthlyDiv)}</TableCell>
+                  <TableCell className="text-right font-mono text-xs font-bold text-green-700">{formatCurrency(fullSimTotals.monthlyDivUsed)}</TableCell>
+                  <TableCell className="text-right font-mono text-xs font-bold text-slate-400">{formatCurrency(fullSimTotals.desiredMonthlyDiv)}</TableCell>
+                  <TableCell className="text-right font-mono text-xs font-bold text-slate-700">{fullSimTotals.currentShares.toLocaleString()}</TableCell>
                   <TableCell className="text-right font-mono text-xs font-bold text-slate-700">{fullSimTotals.totalShares.toLocaleString()}</TableCell>
-                  <TableCell className="text-right font-mono text-xs font-bold text-green-700">
-                    {(fullSimTotals.totalShares > 0 ? (fullSimTotals.currentShares / fullSimTotals.totalShares) * 100 : 0).toFixed(1)}%
-                  </TableCell>
                   <TableCell className="text-right font-mono text-xs font-bold text-indigo-700">{fullSimTotals.remainingShares.toLocaleString()}</TableCell>
+                  <TableCell className="text-right font-mono text-xs font-bold text-slate-500">{formatCurrency(fullSimTotals.currentValue)}</TableCell>
+                  <TableCell className="text-right font-mono text-xs font-bold text-green-700">
+                    {(fullSimTotals.cost > 0 ? (fullSimTotals.currentValue / fullSimTotals.cost) * 100 : 0).toFixed(1)}%
+                  </TableCell>
                   <TableCell className="text-right font-mono text-xs font-bold text-indigo-900">{formatCurrency(fullSimTotals.remainingCost)}</TableCell>
                   <TableCell className="text-right font-mono text-xs font-bold text-slate-500">{formatCurrency(fullSimTotals.cost)}</TableCell>
                   <TableCell />
