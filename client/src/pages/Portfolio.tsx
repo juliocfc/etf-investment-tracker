@@ -3333,10 +3333,26 @@ function CashHistoryTable({
   portfolioId: number
 }) {
   const utils = trpc.useUtils();
+  const [editingTransaction, setEditingTransaction] = useState<any | null>(null);
+  const [editFormData, setEditFormData] = useState({ amount: "", description: "" });
+  
   const { data: history, isLoading, refetch } = trpc.etf.getCashActivities.useQuery(
     { portfolioId, range: "1y" }, // Show last year by default
     { enabled: !!portfolioId }
   );
+
+  const editCashTransactionMutation = trpc.etf.editCashTransaction.useMutation({
+    onSuccess: () => {
+      toast.success("Transaction updated!");
+      setEditingTransaction(null);
+      refetch();
+      utils.etf.getPortfolioSummary.invalidate();
+      utils.portfolio.getConsolidatedSummary.invalidate();
+    },
+    onError: (error) => {
+      toast.error(error.message || "Failed to update transaction");
+    },
+  });
 
   const deleteCashTransactionMutation = trpc.etf.deleteCashTransaction.useMutation({
     onSuccess: () => {
@@ -3371,6 +3387,25 @@ function CashHistoryTable({
         return b.id - a.id; // DESC: newest ID first for same timestamp
       });
   }, [history, accountId]);
+
+  const handleEditClick = (activity: any) => {
+    setEditingTransaction(activity);
+    setEditFormData({
+      amount: activity.transactionAmount || activity.amount,
+      description: activity.description || ""
+    });
+  };
+
+  const handleEditSubmit = () => {
+    if (!editingTransaction) return;
+    editCashTransactionMutation.mutate({
+      portfolioId,
+      accountId,
+      transactionId: editingTransaction.id,
+      amount: editFormData.amount,
+      description: editFormData.description
+    });
+  };
 
   if (isLoading) {
     return (
@@ -3416,14 +3451,24 @@ function CashHistoryTable({
                   {formatCurrency(truncateNumber(parseFloat(activity.amount || "0")))}
                 </td>
                 <td className="py-3 px-4 text-center">
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => handleDeleteTransaction(activity.id)}
-                    className="h-7 w-7 p-0 text-slate-300 hover:text-red-600 hover:bg-red-50"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
+                  <div className="flex items-center justify-center gap-1">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => handleEditClick(activity)}
+                      className="h-7 w-7 p-0 text-slate-300 hover:text-blue-600 hover:bg-blue-50"
+                    >
+                      <Edit2 className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => handleDeleteTransaction(activity.id)}
+                      className="h-7 w-7 p-0 text-slate-300 hover:text-red-600 hover:bg-red-50"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
                 </td>
               </tr>
             ))}
@@ -3437,6 +3482,39 @@ function CashHistoryTable({
           </tbody>
         </table>
       </div>
+
+      <Dialog open={!!editingTransaction} onOpenChange={() => setEditingTransaction(null)}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Edit Cash Transaction</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-4">
+            <div className="grid gap-2">
+              <label className="text-xs font-bold text-slate-500 uppercase">Amount</label>
+              <Input 
+                type="number" 
+                step="0.01"
+                value={editFormData.amount} 
+                onChange={(e) => setEditFormData(prev => ({ ...prev, amount: e.target.value }))} 
+              />
+            </div>
+            <div className="grid gap-2">
+              <label className="text-xs font-bold text-slate-500 uppercase">Description</label>
+              <Input 
+                value={editFormData.description} 
+                onChange={(e) => setEditFormData(prev => ({ ...prev, description: e.target.value }))} 
+              />
+            </div>
+            <div className="flex justify-end gap-3 pt-4">
+              <Button variant="outline" onClick={() => setEditingTransaction(null)}>Cancel</Button>
+              <Button onClick={handleEditSubmit} disabled={editCashTransactionMutation.isPending}>
+                {editCashTransactionMutation.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-2" /> : null}
+                Save Changes
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

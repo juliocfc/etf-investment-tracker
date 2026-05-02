@@ -678,6 +678,8 @@ export async function deleteCashTransaction(userId: number, portfolioId: number,
       currentBalance = transAmount;
     }
     
+    currentBalance = truncateNumber(currentBalance);
+
     // Update the record with the recalculated balance
     await db.update(cashBalanceHistory)
       .set({ amount: currentBalance.toString() })
@@ -685,6 +687,59 @@ export async function deleteCashTransaction(userId: number, portfolioId: number,
   }
   
   // 3. Update the main cashBalance table with the final result
+  const finalBalance = currentBalance.toString();
+  const existing = await getCashBalance(userId, portfolioId, accountId);
+  if (existing) {
+    await db.update(cashBalance)
+      .set({ amount: finalBalance, updatedAt: new Date() })
+      .where(eq(cashBalance.id, existing.id));
+  }
+  
+  return { success: true };
+}
+
+export async function editCashTransaction(userId: number, portfolioId: number, accountId: number, transactionId: number, data: { amount: string, description?: string }) {
+  const db = await getDb();
+  
+  // 1. Update the record
+  await db.update(cashBalanceHistory)
+    .set({ 
+      transactionAmount: data.amount,
+      description: data.description !== undefined ? data.description : sql`description`
+    })
+    .where(and(
+      eq(cashBalanceHistory.id, transactionId),
+      eq(cashBalanceHistory.userId, userId)
+    ));
+  
+  // 2. Recalculate all subsequent balances for this specific account
+  const accountHistory = await db.select()
+    .from(cashBalanceHistory)
+    .where(and(
+      eq(cashBalanceHistory.userId, userId),
+      eq(cashBalanceHistory.accountId, accountId)
+    ))
+    .orderBy(cashBalanceHistory.date, cashBalanceHistory.id);
+  
+  let currentBalance = 0;
+  for (const record of accountHistory) {
+    const transAmount = parseFloat(record.transactionAmount || record.amount);
+    if (record.transactionType === "deposit") {
+      currentBalance += transAmount;
+    } else if (record.transactionType === "withdrawal") {
+      currentBalance -= transAmount;
+    } else {
+      currentBalance = transAmount;
+    }
+    
+    currentBalance = truncateNumber(currentBalance);
+
+    await db.update(cashBalanceHistory)
+      .set({ amount: currentBalance.toString() })
+      .where(eq(cashBalanceHistory.id, record.id));
+  }
+  
+  // 3. Update the main cashBalance table
   const finalBalance = currentBalance.toString();
   const existing = await getCashBalance(userId, portfolioId, accountId);
   if (existing) {
@@ -890,16 +945,12 @@ export async function markTransactionsAsImported(userId: number, externalIds: st
 
 /**
  * Truncates a number to a fixed number of decimal places without rounding up.
- * Handles floating-point precision issues (e.g., 1070 * 30.56) by normalizing
- * the value first.
+ * Uses a tiny epsilon to handle floating-point precision issues.
  */
 export function truncateNumber(value: number, decimals: number = 2): number {
-  // 1. Fix floating point noise (e.g. 32699.199999999997 -> 32699.2)
-  const normalized = Math.round(value * 1e10) / 1e10;
-  
-  // 2. Truncate towards zero
   const factor = Math.pow(10, decimals);
-  return normalized < 0 
-    ? Math.ceil(normalized * factor) / factor 
-    : Math.floor(normalized * factor) / factor;
+  const epsilon = 1e-9;
+  return value < 0 
+    ? Math.ceil(value * factor - epsilon) / factor 
+    : Math.floor(value * factor + epsilon) / factor;
 }

@@ -14,6 +14,7 @@ import {
   recalculateCashBalances,
   getCashBalanceHistory,
   deleteCashTransaction,
+  editCashTransaction,
   addBalanceHistory,
   getBalanceHistory,
   getDividendHistory,
@@ -548,6 +549,21 @@ export const etfRouter = router({
     }))
     .mutation(async ({ ctx, input }) => {
       return deleteCashTransaction(ctx.user.id, input.portfolioId, input.accountId, input.transactionId);
+    }),
+
+  editCashTransaction: protectedProcedure
+    .input(z.object({
+      portfolioId: z.number(),
+      accountId: z.number(),
+      transactionId: z.number(),
+      amount: z.string(),
+      description: z.string().optional()
+    }))
+    .mutation(async ({ ctx, input }) => {
+      return editCashTransaction(ctx.user.id, input.portfolioId, input.accountId, input.transactionId, {
+        amount: input.amount,
+        description: input.description
+      });
     }),
 
   getBalanceHistory: protectedProcedure
