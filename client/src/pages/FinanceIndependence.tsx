@@ -325,28 +325,39 @@ const FinanceIndependence: React.FC = () => {
   // Retirement Simulation Calculation
   const retirementResults = useMemo(() => {
     const annualExpenses = totals.amount * 12;
-    const currentPortfolioValue = totalPortfolioValue;
+    let currentPortfolioValue = totalPortfolioValue;
 
     if (currentPortfolioValue <= 0 || annualExpenses <= 0) return null;
 
-    // 1. Calculate Initial Withdrawal
+    const returnRate = parseFloat(retirementReturnRate) / 100;
+    const inflationRate = parseFloat(retirementInflationRate) / 100 || 0;
+    const now = new Date();
+
+    // 1. Project growth and expense inflation if retirement is in the future
+    let projectedPortfolioAtStart = currentPortfolioValue;
+    let projectedExpensesAtStart = annualExpenses;
+    
+    if (retirementStartDate > now) {
+      const yearsToRetirement = (retirementStartDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24 * 365.25);
+      projectedPortfolioAtStart = currentPortfolioValue * Math.pow(1 + returnRate, yearsToRetirement);
+      projectedExpensesAtStart = annualExpenses * Math.pow(1 + inflationRate, yearsToRetirement);
+    }
+
+    // 2. Calculate Initial Withdrawal Rate based on PROJECTED expenses
     const informedRate = parseFloat(retirementWithdrawalRate);
     const effectiveInitialRate = !isNaN(informedRate) && informedRate > 0 
       ? informedRate / 100 
-      : annualExpenses / currentPortfolioValue;
+      : projectedExpensesAtStart / projectedPortfolioAtStart;
 
-    const initialWithdrawal = currentPortfolioValue * effectiveInitialRate;
-
-    // 2. Estimate Years with Inflation Adjustment
-    const returnRate = parseFloat(retirementReturnRate) / 100;
-    const inflationRate = parseFloat(retirementInflationRate) / 100 || 0;
+    const initialWithdrawal = projectedPortfolioAtStart * effectiveInitialRate;
     
+    // 3. Estimate Years with Inflation Adjustment
     // Calculate factor for the remainder of the start year
     const startMonth = retirementStartDate.getMonth(); // 0 = Jan, 4 = May
     const remainingMonthsFactor = (12 - startMonth) / 12;
 
     let years = 0;
-    let balance = currentPortfolioValue;
+    let balance = projectedPortfolioAtStart;
     let currentWithdrawal = initialWithdrawal;
     const maxSimulationYears = 100;
     const maxTableYears = 50;
@@ -389,8 +400,9 @@ const FinanceIndependence: React.FC = () => {
     return {
       withdrawalRate: (effectiveInitialRate * 100).toFixed(2),
       years: years >= maxSimulationYears ? "100+" : years,
-      annualExpenses,
+      annualExpenses: projectedExpensesAtStart,
       currentPortfolioValue,
+      projectedPortfolioAtStart,
       isSustainable: years >= 30,
       evolution
     };
@@ -782,6 +794,9 @@ const FinanceIndependence: React.FC = () => {
                     mode="single"
                     selected={retirementStartDate}
                     onSelect={(date) => date && setRetirementStartDate(date)}
+                    captionLayout="dropdown"
+                    fromYear={new Date().getFullYear()}
+                    toYear={new Date().getFullYear() + 50}
                     initialFocus
                   />
                 </PopoverContent>
@@ -823,31 +838,35 @@ const FinanceIndependence: React.FC = () => {
               Define expenses and portfolios to see longevity estimates.
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-6">
               <div className="space-y-1">
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Current Portfolio</p>
-                <p className="text-2xl font-black text-slate-800 font-mono">{formatCurrency(retirementResults.currentPortfolioValue)}</p>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Current Value</p>
+                <p className="text-xl font-black text-slate-500 font-mono">{formatCurrency(retirementResults.currentPortfolioValue)}</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Value at Retirement</p>
+                <p className="text-xl font-black text-slate-800 font-mono">{formatCurrency(retirementResults.projectedPortfolioAtStart)}</p>
+                {retirementResults.projectedPortfolioAtStart > retirementResults.currentPortfolioValue && (
+                  <p className="text-[9px] text-green-600 font-bold uppercase mt-1 leading-none">
+                    Includes projected growth
+                  </p>
+                )}
               </div>
               <div className="space-y-1">
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Annual Outflow</p>
-                <p className="text-2xl font-black text-slate-700 font-mono">{formatCurrency(retirementResults.annualExpenses)}</p>
+                <p className="text-xl font-black text-slate-700 font-mono">{formatCurrency(retirementResults.annualExpenses)}</p>
               </div>
               <div className="space-y-1">
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Withdrawal Rate</p>
-                <p className={`text-2xl font-black font-mono ${parseFloat(retirementResults.withdrawalRate) <= 4 ? "text-green-600" : "text-orange-600"}`}>
+                <p className={`text-xl font-black font-mono ${parseFloat(retirementResults.withdrawalRate) <= 4 ? "text-green-600" : "text-orange-600"}`}>
                   {retirementResults.withdrawalRate}%
                 </p>
               </div>
               <div className="bg-slate-900 rounded-xl p-4 flex flex-col items-center justify-center text-center shadow-xl shadow-slate-200">
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Est. Portfolio Longevity</p>
-                <div className={`text-4xl font-black tracking-tighter ${retirementResults.isSustainable ? "text-green-400" : "text-orange-400"}`}>
-                  {retirementResults.years} <span className="text-sm uppercase tracking-normal">Years</span>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Est. Longevity</p>
+                <div className={`text-3xl font-black tracking-tighter ${retirementResults.isSustainable ? "text-green-400" : "text-orange-400"}`}>
+                  {retirementResults.years} <span className="text-xs uppercase tracking-normal">Years</span>
                 </div>
-                <p className="text-[9px] text-slate-500 mt-2 leading-tight uppercase font-bold">
-                  {retirementResults.isSustainable 
-                    ? "Portfolio is considered sustainable (>30 yrs)" 
-                    : "Caution: High withdrawal rate for current balance"}
-                </p>
               </div>
             </div>
           )}
