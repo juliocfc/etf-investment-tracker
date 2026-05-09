@@ -21,8 +21,24 @@ import {
   DialogTrigger,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Plus, Trash2, Edit, Calculator, Wallet, ReceiptText, BarChart, Search, Target } from "lucide-react";
+import { 
+  Plus, 
+  Trash2, 
+  Edit, 
+  Calculator, 
+  Wallet, 
+  ReceiptText, 
+  BarChart, 
+  Search, 
+  Target, 
+  BarChart3, 
+  Calendar as CalendarIcon 
+} from "lucide-react";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { format } from "date-fns";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 
 const FinanceIndependence: React.FC = () => {
   const utils = trpc.useUtils();
@@ -39,11 +55,25 @@ const FinanceIndependence: React.FC = () => {
   const [fullSimAllocation, setFullSimAllocation] = useState("0");
   const [fullSimUsage, setFullSimUsage] = useState("100");
 
+  // Retirement Longevity State
+  const [retirementWithdrawalRate, setRetirementWithdrawalRate] = useState<string>("");
+  const [retirementReturnRate, setRetirementReturnRate] = useState<string>("5"); // Default 5%
+  const [retirementInflationRate, setRetirementInflationRate] = useState<string>("3"); // Default 3%
+  const [retirementStartDate, setRetirementStartDate] = useState<Date>(new Date());
+
   // Data fetching
   const { data: holdings, isPending: isHoldingsPending, error: holdingsError } = trpc.portfolio.getAllHoldings.useQuery();
   const { data: expenses, isPending: isExpensesPending, error: expensesError } = trpc.fi.getExpenses.useQuery();
   const { data: simulationData, isPending: isSimPending } = trpc.fi.getSimulationData.useQuery();
   const { data: fullSimData, isPending: isFullSimPending } = trpc.fi.getFullSimulationData.useQuery();
+  const { data: portfolios } = trpc.portfolio.getDetailedAll.useQuery();
+
+  const totalPortfolioValue = useMemo(() => {
+    if (!portfolios) return 0;
+    const cash = portfolios.reduce((acc, p) => acc + parseFloat(p.cashValue), 0);
+    const investment = portfolios.reduce((acc, p) => acc + parseFloat(p.investmentValue), 0);
+    return cash + investment;
+  }, [portfolios]);
 
   // Mutations
   const addExpenseMutation = trpc.fi.addExpense.useMutation({
@@ -151,7 +181,7 @@ const FinanceIndependence: React.FC = () => {
 
   const remainingGap = Math.max(0, totals.amount - monthlyIncome);
 
-  // Bridge Simulation Calculation (Allocation applies to Capital Required)
+  // Bridge Simulation Calculation
   const simulationResults = useMemo(() => {
     if (!simulationData || simulationData.length === 0 || remainingGap <= 0) return [];
 
@@ -193,7 +223,7 @@ const FinanceIndependence: React.FC = () => {
     }), { cost: 0, shares: 0, allocation: 0, currentMonthlyDiv: 0, totalMonthlyDiv: 0 });
   }, [simulationResults]);
 
-  // Full Simulation Calculation (Allocation applies to Capital Required)
+  // Full Simulation Calculation
   const fullSimulationResults = useMemo(() => {
     if (!fullSimData || fullSimData.length === 0 || totals.amount <= 0) return [];
 
@@ -291,6 +321,80 @@ const FinanceIndependence: React.FC = () => {
   const handleUpdateFullSim = (id: number, updates: { allocation?: string, usagePercent?: string }) => {
     updateFullSimAssetMutation.mutate({ id, ...updates });
   };
+
+  // Retirement Simulation Calculation
+  const retirementResults = useMemo(() => {
+    const annualExpenses = totals.amount * 12;
+    const currentPortfolioValue = totalPortfolioValue;
+
+    if (currentPortfolioValue <= 0 || annualExpenses <= 0) return null;
+
+    // 1. Calculate Initial Withdrawal
+    const informedRate = parseFloat(retirementWithdrawalRate);
+    const effectiveInitialRate = !isNaN(informedRate) && informedRate > 0 
+      ? informedRate / 100 
+      : annualExpenses / currentPortfolioValue;
+
+    const initialWithdrawal = currentPortfolioValue * effectiveInitialRate;
+
+    // 2. Estimate Years with Inflation Adjustment
+    const returnRate = parseFloat(retirementReturnRate) / 100;
+    const inflationRate = parseFloat(retirementInflationRate) / 100 || 0;
+    
+    // Calculate factor for the remainder of the start year
+    const startMonth = retirementStartDate.getMonth(); // 0 = Jan, 4 = May
+    const remainingMonthsFactor = (12 - startMonth) / 12;
+
+    let years = 0;
+    let balance = currentPortfolioValue;
+    let currentWithdrawal = initialWithdrawal;
+    const maxSimulationYears = 100;
+    const maxTableYears = 50;
+    const evolution: any[] = [];
+
+    while (balance > 0 && years < maxSimulationYears) {
+      const isFirstYear = years === 0;
+      const yearStartPortfolio = balance;
+      
+      // Proportional withdrawal for the first year
+      const targetWithdrawal = isFirstYear ? currentWithdrawal * remainingMonthsFactor : currentWithdrawal;
+      const actualWithdrawal = Math.min(balance, targetWithdrawal);
+      const remainingBalanceAfterWithdrawal = balance - actualWithdrawal;
+      
+      // Proportional return for the first year
+      const effectiveReturnRate = isFirstYear ? returnRate * remainingMonthsFactor : returnRate;
+      const earnings = remainingBalanceAfterWithdrawal * effectiveReturnRate;
+      const yearEndBalance = remainingBalanceAfterWithdrawal + earnings;
+
+      if (years < maxTableYears) {
+        evolution.push({
+          year: retirementStartDate.getFullYear() + years,
+          startBalance: yearStartPortfolio,
+          withdrawal: actualWithdrawal,
+          earnings: earnings,
+          endBalance: yearEndBalance,
+          isProportional: isFirstYear && remainingMonthsFactor < 1
+        });
+      }
+      
+      balance = yearEndBalance;
+      if (balance <= 0 && years < maxSimulationYears - 1) {
+        break;
+      }
+      
+      currentWithdrawal = currentWithdrawal * (1 + inflationRate);
+      years++;
+    }
+
+    return {
+      withdrawalRate: (effectiveInitialRate * 100).toFixed(2),
+      years: years >= maxSimulationYears ? "100+" : years,
+      annualExpenses,
+      currentPortfolioValue,
+      isSustainable: years >= 30,
+      evolution
+    };
+  }, [totals.amount, totalPortfolioValue, retirementWithdrawalRate, retirementReturnRate, retirementInflationRate, retirementStartDate]);
 
   if (holdingsError || expensesError) {
     return (
@@ -646,6 +750,162 @@ const FinanceIndependence: React.FC = () => {
               </TableFooter>
             </Table>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Retirement Longevity Simulation */}
+      <Card className="bg-white border-none shadow-md shadow-slate-200/50 overflow-hidden">
+        <div className="absolute top-0 left-0 w-1 h-full bg-orange-500" />
+        <CardHeader className="flex flex-row items-center justify-between border-b border-slate-50 pb-4">
+          <div className="flex items-center gap-2">
+            <Target className="w-5 h-5 text-orange-600" />
+            <CardTitle className="text-sm font-bold uppercase tracking-wider">Retirement Longevity Simulation</CardTitle>
+          </div>
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="flex flex-col gap-1">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">Retirement Start</span>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant={"outline"}
+                    className={cn(
+                      "h-8 w-[160px] justify-start text-left font-bold text-[10px] uppercase",
+                      !retirementStartDate && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-3.5 w-3.5" />
+                    {retirementStartDate ? format(retirementStartDate, "PPP") : <span>Pick a date</span>}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="end">
+                  <Calendar
+                    mode="single"
+                    selected={retirementStartDate}
+                    onSelect={(date) => date && setRetirementStartDate(date)}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+            <div className="flex flex-col gap-1">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">Withdrawal Rate (%)</span>
+              <Input 
+                type="number" 
+                placeholder={`Auto: ${retirementResults?.withdrawalRate}%`}
+                className="h-8 w-32 text-[10px] font-bold text-right"
+                value={retirementWithdrawalRate}
+                onChange={(e) => setRetirementWithdrawalRate(e.target.value)}
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">Est. Return Rate (%/yr)</span>
+              <Input 
+                type="number" 
+                className="h-8 w-24 text-[10px] font-bold text-right"
+                value={retirementReturnRate}
+                onChange={(e) => setRetirementReturnRate(e.target.value)}
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">Annual Inflation (%)</span>
+              <Input 
+                type="number" 
+                className="h-8 w-24 text-[10px] font-bold text-right"
+                value={retirementInflationRate}
+                onChange={(e) => setRetirementInflationRate(e.target.value)}
+              />
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="p-6">
+          {!retirementResults ? (
+            <div className="py-8 text-center text-slate-400 italic text-sm">
+              Define expenses and portfolios to see longevity estimates.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+              <div className="space-y-1">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Current Portfolio</p>
+                <p className="text-2xl font-black text-slate-800 font-mono">{formatCurrency(retirementResults.currentPortfolioValue)}</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Annual Outflow</p>
+                <p className="text-2xl font-black text-slate-700 font-mono">{formatCurrency(retirementResults.annualExpenses)}</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Withdrawal Rate</p>
+                <p className={`text-2xl font-black font-mono ${parseFloat(retirementResults.withdrawalRate) <= 4 ? "text-green-600" : "text-orange-600"}`}>
+                  {retirementResults.withdrawalRate}%
+                </p>
+              </div>
+              <div className="bg-slate-900 rounded-xl p-4 flex flex-col items-center justify-center text-center shadow-xl shadow-slate-200">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Est. Portfolio Longevity</p>
+                <div className={`text-4xl font-black tracking-tighter ${retirementResults.isSustainable ? "text-green-400" : "text-orange-400"}`}>
+                  {retirementResults.years} <span className="text-sm uppercase tracking-normal">Years</span>
+                </div>
+                <p className="text-[9px] text-slate-500 mt-2 leading-tight uppercase font-bold">
+                  {retirementResults.isSustainable 
+                    ? "Portfolio is considered sustainable (>30 yrs)" 
+                    : "Caution: High withdrawal rate for current balance"}
+                </p>
+              </div>
+            </div>
+          )}
+          
+          <div className="mt-8 p-4 bg-slate-50 rounded-lg border border-slate-100">
+            <p className="text-[10px] text-slate-500 leading-relaxed">
+              <span className="font-bold text-slate-700 mr-1">Simulation Methodology:</span> 
+              This model assumes annual withdrawals at the beginning of each period. 
+              Returns are calculated based on the remaining balance after withdrawal.
+              The withdrawal amount is adjusted annually for inflation. 
+              Actual longevity may vary based on market volatility (Sequence of Returns risk).
+            </p>
+          </div>
+
+          {retirementResults && retirementResults.evolution.length > 0 && (
+            <div className="mt-10 space-y-4">
+              <div className="flex items-center gap-2 border-b border-slate-100 pb-2">
+                <BarChart3 className="w-4 h-4 text-slate-400" />
+                <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Retirement Evolution (50 Year Projection)</h3>
+              </div>
+              <div className="overflow-x-auto rounded-xl border border-slate-100 shadow-inner">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-slate-50/80 hover:bg-slate-50/80 h-10">
+                      <TableHead className="font-bold text-[9px] uppercase tracking-tighter">Year</TableHead>
+                      <TableHead className="text-right font-bold text-[9px] uppercase tracking-tighter">Start Balance</TableHead>
+                      <TableHead className="text-right font-bold text-[9px] uppercase tracking-tighter text-blue-600">Annual Return</TableHead>
+                      <TableHead className="text-right font-bold text-[9px] uppercase tracking-tighter text-red-600">Withdrawal</TableHead>
+                      <TableHead className="text-right font-bold text-[9px] uppercase tracking-tighter">End Balance</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {retirementResults.evolution.map((step: any) => (
+                      <TableRow key={step.year} className="hover:bg-slate-50/40 h-8 border-slate-50">
+                        <TableCell className="font-bold text-slate-600 text-xs py-1.5">
+                          <div className="flex flex-col">
+                            <span>{step.year}</span>
+                            {step.isProportional && <span className="text-[8px] text-blue-500 font-bold uppercase tracking-tighter leading-none mt-0.5">est. rem. months</span>}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-[11px] py-1.5">{formatCurrency(step.startBalance)}</TableCell>
+                        <TableCell className="text-right font-mono text-[11px] text-green-600 py-1.5">+{formatCurrency(step.earnings)}</TableCell>
+                        <TableCell className="text-right font-mono text-[11px] text-red-500 py-1.5">
+                          <div className="flex flex-col items-end">
+                            <span>-{formatCurrency(step.withdrawal)}</span>
+                            {step.isProportional && <span className="text-[8px] text-slate-400 font-medium lowercase italic leading-none">proportional</span>}
+                          </div>
+                        </TableCell>
+                        <TableCell className={`text-right font-mono text-[11px] font-bold py-1.5 ${step.endBalance > 0 ? "text-slate-800" : "text-red-700"}`}>
+                          {formatCurrency(step.endBalance)}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
