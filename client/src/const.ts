@@ -2,7 +2,7 @@ export { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
 
 // Generate Google OAuth login URL at runtime
 export const getGoogleLoginUrl = () => {
-  const clientId = "788032713656-hh2e82tq5ga1f03chfeullhddg6c79ds.apps.googleusercontent.com";
+  const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || "788032713656-hh2e82tq5ga1f03chfeullhddg6c79ds.apps.googleusercontent.com";
   const redirectUri = `${window.location.origin}/api/oauth/google/callback`;
   const state = btoa(redirectUri);
 
