@@ -1,6 +1,6 @@
 import { router, protectedProcedure } from "./_core/trpc";
 import { z } from "zod";
-import { getDb, eq, and } from "./db";
+import { getDb, eq, and, updateRetirementSettings } from "./db";
 import { expenses, fiSimulationAssets, fiFullSimulationAssets } from "../drizzle/schema";
 import { TRPCError } from "@trpc/server";
 import { fetchEtfPrice, calculateAnnualDPS } from "./financialApi";
@@ -304,4 +304,19 @@ export const fiRouter = router({
 
     return results;
   }),
+
+  updateRetirementSettings: protectedProcedure
+    .input(z.object({
+      withdrawalRate: z.string().optional(),
+      returnRate: z.string().optional(),
+      inflationRate: z.string().optional(),
+      startDate: z.date().optional(),
+      birthDate: z.date().optional(),
+      ssAmount: z.string().optional(),
+      ssAge: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await updateRetirementSettings(ctx.user.id, input);
+      return { success: true };
+    }),
 });

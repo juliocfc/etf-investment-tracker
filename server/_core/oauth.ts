@@ -2,6 +2,7 @@
 import { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
 import type { Express, Request, Response } from "express";
 import * as db from "../db";
+import { saveTokens } from "../tokenStore";
 import { getSessionCookieOptions } from "./cookies";
 import { sdk } from "./sdk";
 import { getGoogleOAuthService } from "./googleOAuth";
@@ -66,6 +67,12 @@ export function registerOAuthRoutes(app: Express) {
         loginMethod: "google",
         lastSignedIn: new Date(),
       });
+
+      // Save tokens in memory for Google Sheets export
+      const savedUser = await db.getUserByOpenId(openId);
+      if (savedUser) {
+        saveTokens(savedUser.id, tokenResponse.access_token, tokenResponse.refresh_token, tokenResponse.expires_in);
+      }
 
       console.log("[Google OAuth] Creating session token");
       const sessionToken = await sdk.createSessionToken(openId, {

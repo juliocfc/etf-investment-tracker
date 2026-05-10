@@ -8,6 +8,13 @@ export const users = sqliteTable("users", {
   email: text("email"),
   loginMethod: text("loginMethod"),
   role: text("role").default("user").notNull(), // "user" or "admin"
+  retirementWithdrawalRate: text("retirementWithdrawalRate"),
+  retirementReturnRate: text("retirementReturnRate"),
+  retirementInflationRate: text("retirementInflationRate"),
+  retirementStartDate: integer("retirementStartDate", { mode: "timestamp" }),
+  userBirthDate: integer("userBirthDate", { mode: "timestamp" }),
+  ssAmount: text("ssAmount"),
+  ssAge: text("ssAge"),
   createdAt: integer("createdAt", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
   updatedAt: integer("updatedAt", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
   lastSignedIn: integer("lastSignedIn", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),

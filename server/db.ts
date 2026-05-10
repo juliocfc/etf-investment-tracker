@@ -304,18 +304,47 @@ export async function createUser(user: InsertUser) {
 
 export async function upsertUser(user: InsertUser) {
   const db = await getDb();
+  const updateData: any = {
+    name: user.name,
+    email: user.email,
+    lastSignedIn: user.lastSignedIn,
+    updatedAt: sql`CURRENT_TIMESTAMP`,
+  };
+
   return db
     .insert(users)
     .values(user)
     .onConflictDoUpdate({
       target: users.openId,
-      set: {
-        name: user.name,
-        email: user.email,
-        lastSignedIn: user.lastSignedIn,
-        updatedAt: sql`CURRENT_TIMESTAMP`,
-      },
+      set: updateData,
     });
+}
+
+export async function updateRetirementSettings(userId: number, settings: {
+  withdrawalRate?: string,
+  returnRate?: string,
+  inflationRate?: string,
+  startDate?: Date,
+  birthDate?: Date,
+  ssAmount?: string,
+  ssAge?: string
+}) {
+  const db = await getDb();
+  const updateData: any = {
+    updatedAt: sql`CURRENT_TIMESTAMP`,
+  };
+
+  if (settings.withdrawalRate !== undefined) updateData.retirementWithdrawalRate = settings.withdrawalRate;
+  if (settings.returnRate !== undefined) updateData.retirementReturnRate = settings.returnRate;
+  if (settings.inflationRate !== undefined) updateData.retirementInflationRate = settings.inflationRate;
+  if (settings.startDate !== undefined) updateData.retirementStartDate = settings.startDate;
+  if (settings.birthDate !== undefined) updateData.userBirthDate = settings.birthDate;
+  if (settings.ssAmount !== undefined) updateData.ssAmount = settings.ssAmount;
+  if (settings.ssAge !== undefined) updateData.ssAge = settings.ssAge;
+
+  return db.update(users)
+    .set(updateData)
+    .where(eq(users.id, userId));
 }
 
 // Account queries

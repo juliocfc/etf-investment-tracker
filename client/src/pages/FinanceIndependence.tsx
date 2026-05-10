@@ -60,13 +60,32 @@ const FinanceIndependence: React.FC = () => {
   const [retirementReturnRate, setRetirementReturnRate] = useState<string>("5"); // Default 5%
   const [retirementInflationRate, setRetirementInflationRate] = useState<string>("3"); // Default 3%
   const [retirementStartDate, setRetirementStartDate] = useState<Date>(new Date());
+  const [userBirthDate, setUserBirthDate] = useState<Date | undefined>(undefined);
+  const [ssAmount, setSsAmount] = useState<string>("0");
+  const [ssAge, setSsAge] = useState<string>("67");
 
   // Data fetching
+  const { data: user } = trpc.auth.me.useQuery();
   const { data: holdings, isPending: isHoldingsPending, error: holdingsError } = trpc.portfolio.getAllHoldings.useQuery();
   const { data: expenses, isPending: isExpensesPending, error: expensesError } = trpc.fi.getExpenses.useQuery();
   const { data: simulationData, isPending: isSimPending } = trpc.fi.getSimulationData.useQuery();
   const { data: fullSimData, isPending: isFullSimPending } = trpc.fi.getFullSimulationData.useQuery();
   const { data: portfolios } = trpc.portfolio.getDetailedAll.useQuery();
+
+  // Initialize retirement settings from user data
+  React.useEffect(() => {
+    if (user) {
+      if (user.retirementWithdrawalRate) setRetirementWithdrawalRate(user.retirementWithdrawalRate);
+      if (user.retirementReturnRate) setRetirementReturnRate(user.retirementReturnRate);
+      if (user.retirementInflationRate) setRetirementInflationRate(user.retirementInflationRate);
+      if (user.retirementStartDate) setRetirementStartDate(new Date(user.retirementStartDate));
+      if (user.userBirthDate) setUserBirthDate(new Date(user.userBirthDate));
+      if (user.ssAmount) setSsAmount(user.ssAmount);
+      if (user.ssAge) setSsAge(user.ssAge);
+    }
+  }, [user]);
+
+  const updateRetirementSettingsMutation = trpc.fi.updateRetirementSettings.useMutation();
 
   const totalPortfolioValue = useMemo(() => {
     if (!portfolios) return 0;
@@ -343,7 +362,7 @@ const FinanceIndependence: React.FC = () => {
       projectedExpensesAtStart = annualExpenses * Math.pow(1 + inflationRate, yearsToRetirement);
     }
 
-    // 2. Calculate Initial Withdrawal Rate based on PROJECTED expenses
+    // 2. Calculate Initial Withdrawal Rate
     const informedRate = parseFloat(retirementWithdrawalRate);
     const effectiveInitialRate = !isNaN(informedRate) && informedRate > 0 
       ? informedRate / 100 
@@ -351,47 +370,73 @@ const FinanceIndependence: React.FC = () => {
 
     const initialWithdrawal = projectedPortfolioAtStart * effectiveInitialRate;
     
-    // 3. Estimate Years with Inflation Adjustment
-    // Calculate factor for the remainder of the start year
-    const startMonth = retirementStartDate.getMonth(); // 0 = Jan, 4 = May
+    // 3. Social Security Projection
+    const baseSS = parseFloat(ssAmount) || 0;
+    const ssStartAge = parseInt(ssAge) || 67;
+
+    // 4. Estimate Years with Age and SS
+    const startMonth = retirementStartDate.getMonth();
     const remainingMonthsFactor = (12 - startMonth) / 12;
 
     let years = 0;
     let balance = projectedPortfolioAtStart;
     let currentWithdrawal = initialWithdrawal;
-    const maxSimulationYears = 100;
-    const maxTableYears = 50;
     const evolution: any[] = [];
+    
+    // Max age for simulation is 100
+    const currentYear = new Date().getFullYear();
+    const retirementYear = retirementStartDate.getFullYear();
+    
+    // Calculate user age at retirement
+    let ageAtRetirement = 0;
+    if (userBirthDate) {
+      ageAtRetirement = retirementYear - userBirthDate.getFullYear();
+    }
 
-    while (balance > 0 && years < maxSimulationYears) {
+    const maxSimulationYears = userBirthDate ? (100 - ageAtRetirement) : 50;
+    let lastAge = ageAtRetirement;
+
+    while (balance > 0 && years <= maxSimulationYears) {
       const isFirstYear = years === 0;
       const yearStartPortfolio = balance;
+      const currentSimYear = retirementYear + years;
+      const currentAge = ageAtRetirement + years;
       
-      // Proportional withdrawal for the first year
-      const targetWithdrawal = isFirstYear ? currentWithdrawal * remainingMonthsFactor : currentWithdrawal;
-      const actualWithdrawal = Math.min(balance, targetWithdrawal);
+      // Calculate SS for this year
+      let yearSS = 0;
+      if (currentAge >= ssStartAge) {
+        // Adjust base SS by inflation for the number of years since NOW
+        const yearsFromNow = currentSimYear - currentYear;
+        yearSS = baseSS * Math.pow(1 + inflationRate, yearsFromNow);
+        if (isFirstYear) yearSS *= remainingMonthsFactor;
+      }
+
+      // Net withdrawal needed from portfolio (Expenses - SS)
+      const targetTotalWithdrawal = isFirstYear ? currentWithdrawal * remainingMonthsFactor : currentWithdrawal;
+      const netWithdrawalFromPortfolio = Math.max(0, targetTotalWithdrawal - yearSS);
+      
+      const actualWithdrawal = Math.min(balance, netWithdrawalFromPortfolio);
       const remainingBalanceAfterWithdrawal = balance - actualWithdrawal;
       
-      // Proportional return for the first year
       const effectiveReturnRate = isFirstYear ? returnRate * remainingMonthsFactor : returnRate;
       const earnings = remainingBalanceAfterWithdrawal * effectiveReturnRate;
       const yearEndBalance = remainingBalanceAfterWithdrawal + earnings;
 
-      if (years < maxTableYears) {
-        evolution.push({
-          year: retirementStartDate.getFullYear() + years,
-          startBalance: yearStartPortfolio,
-          withdrawal: actualWithdrawal,
-          earnings: earnings,
-          endBalance: yearEndBalance,
-          isProportional: isFirstYear && remainingMonthsFactor < 1
-        });
-      }
+      evolution.push({
+        year: currentSimYear,
+        age: currentAge,
+        startBalance: yearStartPortfolio,
+        withdrawal: targetTotalWithdrawal,
+        ssIncome: yearSS,
+        netWithdrawal: actualWithdrawal,
+        earnings: earnings,
+        endBalance: yearEndBalance,
+        isProportional: isFirstYear && remainingMonthsFactor < 1
+      });
       
       balance = yearEndBalance;
-      if (balance <= 0 && years < maxSimulationYears - 1) {
-        break;
-      }
+      lastAge = currentAge;
+      if (balance <= 0) break;
       
       currentWithdrawal = currentWithdrawal * (1 + inflationRate);
       years++;
@@ -399,14 +444,15 @@ const FinanceIndependence: React.FC = () => {
 
     return {
       withdrawalRate: (effectiveInitialRate * 100).toFixed(2),
-      years: years >= maxSimulationYears ? "100+" : years,
+      years: evolution.length - (evolution[evolution.length-1].endBalance <= 0 ? 1 : 0),
+      lastAge,
       annualExpenses: projectedExpensesAtStart,
       currentPortfolioValue,
       projectedPortfolioAtStart,
-      isSustainable: years >= 30,
+      isSustainable: lastAge >= 85,
       evolution
     };
-  }, [totals.amount, totalPortfolioValue, retirementWithdrawalRate, retirementReturnRate, retirementInflationRate, retirementStartDate]);
+  }, [totals.amount, totalPortfolioValue, retirementWithdrawalRate, retirementReturnRate, retirementInflationRate, retirementStartDate, userBirthDate, ssAmount, ssAge]);
 
   if (holdingsError || expensesError) {
     return (
@@ -773,61 +819,127 @@ const FinanceIndependence: React.FC = () => {
             <Target className="w-5 h-5 text-orange-600" />
             <CardTitle className="text-sm font-bold uppercase tracking-wider">Retirement Longevity Simulation</CardTitle>
           </div>
-          <div className="flex flex-wrap items-center gap-4">
+          <div className="flex flex-wrap items-end gap-4">
+            <div className="flex flex-col gap-1">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">Your Birth Date</span>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className={cn("h-8 w-[160px] justify-start text-left font-bold text-[10px] uppercase", !userBirthDate && "text-muted-foreground")}>
+                    <CalendarIcon className="mr-2 h-3.5 w-3.5" />
+                    {userBirthDate ? format(userBirthDate, "PPP") : <span>Select Date</span>}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="end">
+                  <Calendar 
+                    mode="single" 
+                    selected={userBirthDate} 
+                    onSelect={(date) => {
+                      setUserBirthDate(date);
+                      if (date) updateRetirementSettingsMutation.mutate({ birthDate: date });
+                    }} 
+                    captionLayout="dropdown" 
+                    fromYear={1940} 
+                    toYear={new Date().getFullYear()} 
+                    initialFocus 
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+
             <div className="flex flex-col gap-1">
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">Retirement Start</span>
               <Popover>
                 <PopoverTrigger asChild>
-                  <Button
-                    variant={"outline"}
-                    className={cn(
-                      "h-8 w-[160px] justify-start text-left font-bold text-[10px] uppercase",
-                      !retirementStartDate && "text-muted-foreground"
-                    )}
-                  >
+                  <Button variant="outline" className={cn("h-8 w-[160px] justify-start text-left font-bold text-[10px] uppercase", !retirementStartDate && "text-muted-foreground")}>
                     <CalendarIcon className="mr-2 h-3.5 w-3.5" />
                     {retirementStartDate ? format(retirementStartDate, "PPP") : <span>Pick a date</span>}
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0" align="end">
-                  <Calendar
-                    mode="single"
-                    selected={retirementStartDate}
-                    onSelect={(date) => date && setRetirementStartDate(date)}
-                    captionLayout="dropdown"
-                    fromYear={new Date().getFullYear()}
-                    toYear={new Date().getFullYear() + 50}
-                    initialFocus
+                  <Calendar 
+                    mode="single" 
+                    selected={retirementStartDate} 
+                    onSelect={(date) => {
+                      if (date) {
+                        setRetirementStartDate(date);
+                        updateRetirementSettingsMutation.mutate({ startDate: date });
+                      }
+                    }} 
+                    captionLayout="dropdown" 
+                    fromYear={new Date().getFullYear()} 
+                    toYear={new Date().getFullYear() + 50} 
+                    initialFocus 
                   />
                 </PopoverContent>
               </Popover>
             </div>
+
+            <div className="flex flex-col gap-1">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">SS Annual Benefit</span>
+              <Input 
+                type="number" 
+                placeholder="$0.00" 
+                className="h-8 w-28 text-[10px] font-bold text-right" 
+                value={ssAmount} 
+                onChange={(e) => {
+                  setSsAmount(e.target.value);
+                  updateRetirementSettingsMutation.mutate({ ssAmount: e.target.value });
+                }} 
+              />
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">SS Start Age</span>
+              <Input 
+                type="number" 
+                min="62" 
+                max="70" 
+                className="h-8 w-20 text-[10px] font-bold text-right" 
+                value={ssAge} 
+                onChange={(e) => {
+                  setSsAge(e.target.value);
+                  updateRetirementSettingsMutation.mutate({ ssAge: e.target.value });
+                }} 
+              />
+            </div>
+
             <div className="flex flex-col gap-1">
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">Withdrawal Rate (%)</span>
               <Input 
                 type="number" 
-                placeholder={`Auto: ${retirementResults?.withdrawalRate}%`}
-                className="h-8 w-32 text-[10px] font-bold text-right"
-                value={retirementWithdrawalRate}
-                onChange={(e) => setRetirementWithdrawalRate(e.target.value)}
+                placeholder={`Auto: ${retirementResults?.withdrawalRate}%`} 
+                className="h-8 w-40 text-[10px] font-bold text-right" 
+                value={retirementWithdrawalRate} 
+                onChange={(e) => {
+                  setRetirementWithdrawalRate(e.target.value);
+                  updateRetirementSettingsMutation.mutate({ withdrawalRate: e.target.value });
+                }} 
               />
             </div>
+
             <div className="flex flex-col gap-1">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">Est. Return Rate (%/yr)</span>
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">Return Rate (%)</span>
               <Input 
                 type="number" 
-                className="h-8 w-24 text-[10px] font-bold text-right"
-                value={retirementReturnRate}
-                onChange={(e) => setRetirementReturnRate(e.target.value)}
+                className="h-8 w-20 text-[10px] font-bold text-right" 
+                value={retirementReturnRate} 
+                onChange={(e) => {
+                  setRetirementReturnRate(e.target.value);
+                  updateRetirementSettingsMutation.mutate({ returnRate: e.target.value });
+                }} 
               />
             </div>
+
             <div className="flex flex-col gap-1">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">Annual Inflation (%)</span>
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">Inflation (%)</span>
               <Input 
                 type="number" 
-                className="h-8 w-24 text-[10px] font-bold text-right"
-                value={retirementInflationRate}
-                onChange={(e) => setRetirementInflationRate(e.target.value)}
+                className="h-8 w-20 text-[10px] font-bold text-right" 
+                value={retirementInflationRate} 
+                onChange={(e) => {
+                  setRetirementInflationRate(e.target.value);
+                  updateRetirementSettingsMutation.mutate({ inflationRate: e.target.value });
+                }} 
               />
             </div>
           </div>
@@ -863,10 +975,15 @@ const FinanceIndependence: React.FC = () => {
                 </p>
               </div>
               <div className="bg-slate-900 rounded-xl p-4 flex flex-col items-center justify-center text-center shadow-xl shadow-slate-200">
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Est. Longevity</p>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Sustainable Until</p>
                 <div className={`text-3xl font-black tracking-tighter ${retirementResults.isSustainable ? "text-green-400" : "text-orange-400"}`}>
-                  {retirementResults.years} <span className="text-xs uppercase tracking-normal">Years</span>
+                  Age {retirementResults.lastAge}
                 </div>
+                <p className="text-[9px] text-slate-500 mt-2 leading-tight uppercase font-bold">
+                  {retirementResults.isSustainable 
+                    ? "Plan is Green (Age >85)" 
+                    : "Caution: Shortfall Before Age 85"}
+                </p>
               </div>
             </div>
           )}
@@ -892,9 +1009,11 @@ const FinanceIndependence: React.FC = () => {
                   <TableHeader>
                     <TableRow className="bg-slate-50/80 hover:bg-slate-50/80 h-10">
                       <TableHead className="font-bold text-[9px] uppercase tracking-tighter">Year</TableHead>
+                      <TableHead className="font-bold text-[9px] uppercase tracking-tighter">Age</TableHead>
                       <TableHead className="text-right font-bold text-[9px] uppercase tracking-tighter">Start Balance</TableHead>
                       <TableHead className="text-right font-bold text-[9px] uppercase tracking-tighter text-blue-600">Annual Return</TableHead>
-                      <TableHead className="text-right font-bold text-[9px] uppercase tracking-tighter text-red-600">Withdrawal</TableHead>
+                      <TableHead className="text-right font-bold text-[9px] uppercase tracking-tighter text-green-600">Soc. Security</TableHead>
+                      <TableHead className="text-right font-bold text-[9px] uppercase tracking-tighter text-red-600">Total Withdrawal</TableHead>
                       <TableHead className="text-right font-bold text-[9px] uppercase tracking-tighter">End Balance</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -907,8 +1026,10 @@ const FinanceIndependence: React.FC = () => {
                             {step.isProportional && <span className="text-[8px] text-blue-500 font-bold uppercase tracking-tighter leading-none mt-0.5">est. rem. months</span>}
                           </div>
                         </TableCell>
+                        <TableCell className="font-bold text-slate-500 text-xs py-1.5">{step.age}</TableCell>
                         <TableCell className="text-right font-mono text-[11px] py-1.5">{formatCurrency(step.startBalance)}</TableCell>
                         <TableCell className="text-right font-mono text-[11px] text-green-600 py-1.5">+{formatCurrency(step.earnings)}</TableCell>
+                        <TableCell className="text-right font-mono text-[11px] text-green-700 py-1.5">{step.ssIncome > 0 ? `+${formatCurrency(step.ssIncome)}` : "—"}</TableCell>
                         <TableCell className="text-right font-mono text-[11px] text-red-500 py-1.5">
                           <div className="flex flex-col items-end">
                             <span>-{formatCurrency(step.withdrawal)}</span>
