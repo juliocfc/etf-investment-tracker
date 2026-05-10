@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
 import { formatCurrency } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -34,7 +34,7 @@ import {
   BarChart3, 
   Calendar as CalendarIcon,
   TrendingUp,
-  Info
+  RefreshCw
 } from "lucide-react";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -50,12 +50,13 @@ import {
   Tooltip as ChartTooltip, 
   ResponsiveContainer, 
   Legend,
-  ReferenceLine,
-  Label
+  ReferenceLine
 } from "recharts";
 
 const FinanceIndependence: React.FC = () => {
   const utils = trpc.useUtils();
+  
+  // Dialog States
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<{ id: number; description: string; amount: string } | null>(null);
   const [newExpense, setNewExpense] = useState({ description: "", amount: "" });
@@ -86,8 +87,76 @@ const FinanceIndependence: React.FC = () => {
   const { data: fullSimData, isPending: isFullSimPending } = trpc.fi.getFullSimulationData.useQuery();
   const { data: portfolios } = trpc.portfolio.getDetailedAll.useQuery();
 
-  // Initialize retirement settings from user data
-  React.useEffect(() => {
+  // Mutations
+  const addExpenseMutation = trpc.fi.addExpense.useMutation({
+    onSuccess: () => {
+      toast.success("Expense added");
+      utils.fi.getExpenses.invalidate();
+      setIsAddDialogOpen(false);
+      setNewExpense({ description: "", amount: "" });
+    },
+  });
+
+  const updateExpenseMutation = trpc.fi.updateExpense.useMutation({
+    onSuccess: () => {
+      toast.success("Expense updated");
+      utils.fi.getExpenses.invalidate();
+      setEditingExpense(null);
+    },
+  });
+
+  const deleteExpenseMutation = trpc.fi.deleteExpense.useMutation({
+    onSuccess: () => {
+      toast.success("Expense deleted");
+      utils.fi.getExpenses.invalidate();
+    },
+  });
+
+  const addSimAssetMutation = trpc.fi.addSimulationAsset.useMutation({
+    onSuccess: () => {
+      toast.success("Asset added to bridge simulation");
+      utils.fi.getSimulationData.invalidate();
+      setSimulationSymbol("");
+      setSimulationAllocation("0");
+    },
+  });
+
+  const updateSimAssetMutation = trpc.fi.updateSimulationAsset.useMutation({
+    onSuccess: () => utils.fi.getSimulationData.invalidate(),
+  });
+
+  const deleteSimAssetMutation = trpc.fi.deleteSimulationAsset.useMutation({
+    onSuccess: () => {
+      toast.success("Asset removed from bridge simulation");
+      utils.fi.getSimulationData.invalidate();
+    },
+  });
+
+  const addFullSimAssetMutation = trpc.fi.addFullSimulationAsset.useMutation({
+    onSuccess: () => {
+      toast.success("Asset added to full simulation");
+      utils.fi.getFullSimulationData.invalidate();
+      setFullSimSymbol("");
+      setFullSimAllocation("0");
+      setFullSimUsage("100");
+    },
+  });
+
+  const updateFullSimAssetMutation = trpc.fi.updateFullSimulationAsset.useMutation({
+    onSuccess: () => utils.fi.getFullSimulationData.invalidate(),
+  });
+
+  const deleteFullSimAssetMutation = trpc.fi.deleteFullSimulationAsset.useMutation({
+    onSuccess: () => {
+      toast.success("Asset removed from full simulation");
+      utils.fi.getFullSimulationData.invalidate();
+    },
+  });
+
+  const updateRetirementSettingsMutation = trpc.fi.updateRetirementSettings.useMutation();
+
+  // Lifecycle
+  useEffect(() => {
     if (user) {
       if (user.retirementWithdrawalRate) setRetirementWithdrawalRate(user.retirementWithdrawalRate);
       if (user.retirementReturnRate) setRetirementReturnRate(user.retirementReturnRate);
@@ -99,8 +168,40 @@ const FinanceIndependence: React.FC = () => {
     }
   }, [user]);
 
-  const updateRetirementSettingsMutation = trpc.fi.updateRetirementSettings.useMutation();
+  // Handlers
+  const handleAddExpense = () => {
+    if (!newExpense.description || !newExpense.amount) return;
+    addExpenseMutation.mutate(newExpense);
+  };
 
+  const handleUpdateExpense = () => {
+    if (!editingExpense) return;
+    updateExpenseMutation.mutate({
+      id: editingExpense.id,
+      description: editingExpense.description,
+      amount: editingExpense.amount,
+    });
+  };
+
+  const handleAddSimAsset = () => {
+    if (!simulationSymbol) return;
+    addSimAssetMutation.mutate({ symbol: simulationSymbol, allocation: simulationAllocation });
+  };
+
+  const handleUpdateSimAllocation = (id: number, val: string) => {
+    updateSimAssetMutation.mutate({ id, allocation: val });
+  };
+
+  const handleAddFullSimAsset = () => {
+    if (!fullSimSymbol) return;
+    addFullSimAssetMutation.mutate({ symbol: fullSimSymbol, allocation: fullSimAllocation, usagePercent: fullSimUsage });
+  };
+
+  const handleUpdateFullSim = (id: number, updates: { allocation?: string, usagePercent?: string }) => {
+    updateFullSimAssetMutation.mutate({ id, ...updates });
+  };
+
+  // Memos
   const totalPortfolioValue = useMemo(() => {
     if (!portfolios) return 0;
     const cash = portfolios.reduce((acc, p) => acc + parseFloat(p.cashValue), 0);
@@ -108,7 +209,6 @@ const FinanceIndependence: React.FC = () => {
     return cash + investment;
   }, [portfolios]);
 
-  // Calculations
   const monthlyIncome = useMemo(() => {
     if (!holdings) return 0;
     const totalAnnual = holdings.reduce((sum, h) => {
@@ -145,7 +245,6 @@ const FinanceIndependence: React.FC = () => {
 
   const remainingGap = Math.max(0, totals.amount - monthlyIncome);
 
-  // Bridge Simulation
   const simulationResults = useMemo(() => {
     if (!simulationData || simulationData.length === 0 || remainingGap <= 0) return [];
     let weightedYieldSum = 0;
@@ -178,7 +277,6 @@ const FinanceIndependence: React.FC = () => {
     }), { cost: 0, shares: 0, allocation: 0, currentMonthlyDiv: 0, totalMonthlyDiv: 0 });
   }, [simulationResults]);
 
-  // Full Simulation
   const fullSimulationResults = useMemo(() => {
     if (!fullSimData || fullSimData.length === 0 || totals.amount <= 0) return [];
     let weightedYieldSum = 0;
@@ -223,26 +321,6 @@ const FinanceIndependence: React.FC = () => {
     }), { cost: 0, totalShares: 0, currentShares: 0, currentValue: 0, remainingShares: 0, remainingCost: 0, allocation: 0, currentMonthlyDiv: 0, desiredMonthlyDiv: 0, monthlyDivUsed: 0 });
   }, [fullSimulationResults]);
 
-  // CRUD handlers
-  const handleAddExpense = () => { if (!newExpense.description || !newExpense.amount) return; addExpenseMutation.mutate(newExpense); };
-  const handleUpdateExpense = () => { if (!editingExpense) return; updateExpenseMutation.mutate({ id: editingExpense.id, description: editingExpense.description, amount: editingExpense.amount }); };
-  const handleAddSimAsset = () => { if (!simulationSymbol) return; addSimAssetMutation.mutate({ symbol: simulationSymbol, allocation: simulationAllocation }); };
-  const handleUpdateSimAllocation = (id: number, val: string) => { updateSimAssetMutation.mutate({ id, allocation: val }); };
-  const handleAddFullSimAsset = () => { if (!fullSimSymbol) return; addFullSimAssetMutation.mutate({ symbol: fullSimSymbol, allocation: fullSimAllocation, usagePercent: fullSimUsage }); };
-  const handleUpdateFullSim = (id: number, updates: { allocation?: string, usagePercent?: string }) => { updateFullSimAssetMutation.mutate({ id, ...updates }); };
-
-  // Mutations
-  const addExpenseMutation = trpc.fi.addExpense.useMutation({ onSuccess: () => { toast.success("Expense added"); utils.fi.getExpenses.invalidate(); setIsAddDialogOpen(false); setNewExpense({ description: "", amount: "" }); } });
-  const updateExpenseMutation = trpc.fi.updateExpense.useMutation({ onSuccess: () => { toast.success("Expense updated"); utils.fi.getExpenses.invalidate(); setEditingExpense(null); } });
-  const deleteExpenseMutation = trpc.fi.deleteExpense.useMutation({ onSuccess: () => { toast.success("Expense deleted"); utils.fi.getExpenses.invalidate(); } });
-  const addSimAssetMutation = trpc.fi.addSimulationAsset.useMutation({ onSuccess: () => { toast.success("Asset added to bridge simulation"); utils.fi.getSimulationData.invalidate(); setSimulationSymbol(""); setSimulationAllocation("0"); } });
-  const updateSimAssetMutation = trpc.fi.updateSimulationAsset.useMutation({ onSuccess: () => utils.fi.getSimulationData.invalidate() });
-  const deleteSimAssetMutation = trpc.fi.deleteSimulationAsset.useMutation({ onSuccess: () => { toast.success("Asset removed from bridge simulation"); utils.fi.getSimulationData.invalidate(); } });
-  const addFullSimAssetMutation = trpc.fi.addFullSimulationAsset.useMutation({ onSuccess: () => { toast.success("Asset added to full simulation"); utils.fi.getFullSimulationData.invalidate(); setFullSimSymbol(""); setFullSimAllocation("0"); setFullSimUsage("100"); } });
-  const updateFullSimAssetMutation = trpc.fi.updateFullSimulationAsset.useMutation({ onSuccess: () => utils.fi.getFullSimulationData.invalidate() });
-  const deleteFullSimAssetMutation = trpc.fi.deleteFullSimulationAsset.useMutation({ onSuccess: () => { toast.success("Asset removed from full simulation"); utils.fi.getFullSimulationData.invalidate(); } });
-
-  // Retirement Simulation Calculation
   const retirementResults = useMemo(() => {
     const annualExpenses = totals.amount * 12;
     let currentPortfolioValue = totalPortfolioValue;
@@ -254,7 +332,6 @@ const FinanceIndependence: React.FC = () => {
     const currentYear = now.getFullYear();
     const retirementYear = retirementStartDate.getFullYear();
 
-    // Calculate user age today and at retirement
     let ageToday = 0;
     let ageAtRetirement = 0;
     if (userBirthDate) {
@@ -263,8 +340,6 @@ const FinanceIndependence: React.FC = () => {
     }
 
     const yearsUntilRetirement = Math.max(0, retirementYear - currentYear);
-
-    // 1. Project growth and expense inflation if retirement is in the future
     let projectedPortfolioAtStart = currentPortfolioValue;
     let projectedExpensesAtStart = annualExpenses;
     
@@ -280,16 +355,14 @@ const FinanceIndependence: React.FC = () => {
     
     const baseSS = parseFloat(ssAmount) || 0;
     const ssStartAge = parseInt(ssAge) || 67;
-
     const startMonth = retirementStartDate.getMonth();
     const remainingMonthsFactor = (12 - startMonth) / 12;
 
     const evolution: any[] = [];
     let deterministicBalance = currentPortfolioValue;
-    let deterministicWithdrawal = annualExpenses; // Start with current annual expenses
+    let deterministicWithdrawal = annualExpenses;
     let deterministicLastAge = ageToday;
 
-    // Simulation loop from TODAY until age 100
     const maxAge = 100;
     const yearsToSimulate = userBirthDate ? (maxAge - ageToday) : 50;
 
@@ -297,28 +370,19 @@ const FinanceIndependence: React.FC = () => {
       const currentSimYear = currentYear + years;
       const currentAge = ageToday + years;
       const isRetirementStarted = currentSimYear >= retirementYear;
-      
       const yearStartPortfolio = deterministicBalance;
       let actualWithdrawal = 0;
       let yearSS = 0;
 
       if (isRetirementStarted) {
         const isFirstRetirementYear = currentSimYear === retirementYear;
-        
-        // Calculate SS for this year
         if (currentAge >= ssStartAge) {
           yearSS = baseSS * Math.pow(1 + inflationRate, years);
           if (isFirstRetirementYear) yearSS *= remainingMonthsFactor;
         }
-
-        // Use the withdrawal rate logic once retirement starts
-        // If it's the very first retirement year, we start with initialWithdrawal (already projected)
-        // If not, we use deterministicWithdrawal (which we increase by inflation below)
         const targetTotalWithdrawal = isFirstRetirementYear ? initialWithdrawal : deterministicWithdrawal;
-        
         let netWithdrawal = Math.max(0, targetTotalWithdrawal - yearSS);
         if (isFirstRetirementYear) netWithdrawal *= remainingMonthsFactor;
-        
         actualWithdrawal = Math.min(deterministicBalance, netWithdrawal);
       }
 
@@ -330,7 +394,7 @@ const FinanceIndependence: React.FC = () => {
         year: currentSimYear,
         age: currentAge,
         startBalance: yearStartPortfolio,
-        withdrawal: isRetirementStarted ? (isRetirementStarted ? (currentSimYear === retirementYear ? initialWithdrawal * remainingMonthsFactor : deterministicWithdrawal) : 0) : 0,
+        withdrawal: isRetirementStarted ? (currentSimYear === retirementYear ? initialWithdrawal * remainingMonthsFactor : deterministicWithdrawal) : 0,
         ssIncome: yearSS,
         netWithdrawal: actualWithdrawal,
         earnings: earnings,
@@ -340,21 +404,15 @@ const FinanceIndependence: React.FC = () => {
 
       deterministicBalance = yearEndBalance;
       deterministicLastAge = currentAge;
-      
-      // Increase withdrawal for next year's logic
       if (isRetirementStarted) {
-        if (currentSimYear === retirementYear) {
-           deterministicWithdrawal = initialWithdrawal * (1 + inflationRate);
-        } else {
-           deterministicWithdrawal = deterministicWithdrawal * (1 + inflationRate);
-        }
+        if (currentSimYear === retirementYear) { deterministicWithdrawal = initialWithdrawal * (1 + inflationRate); }
+        else { deterministicWithdrawal = deterministicWithdrawal * (1 + inflationRate); }
       }
-      
       if (deterministicBalance <= 0 && isRetirementStarted) break;
     }
 
-    // 5. Monte Carlo Simulation (Start from Today)
-    const numTrials = 1000;
+    // Monte Carlo
+    const numTrials = 5000;
     const stdDev = 0.15;
     const monteCarloResults: number[][] = [];
     let successes = 0;
@@ -368,7 +426,6 @@ const FinanceIndependence: React.FC = () => {
         const currentSimYear = currentYear + y;
         const currentAge = ageToday + y;
         const isRetirementStarted = currentSimYear >= retirementYear;
-        
         let actualWithdrawal = 0;
         let yearSS = 0;
 
@@ -378,7 +435,6 @@ const FinanceIndependence: React.FC = () => {
             yearSS = baseSS * Math.pow(1 + inflationRate, y);
             if (isFirstRetirementYear) yearSS *= remainingMonthsFactor;
           }
-
           const targetTotalWithdrawal = isFirstRetirementYear ? initialWithdrawal : trialWithdrawal;
           let netWithdrawal = Math.max(0, targetTotalWithdrawal - yearSS);
           if (isFirstRetirementYear) netWithdrawal *= remainingMonthsFactor;
@@ -386,30 +442,18 @@ const FinanceIndependence: React.FC = () => {
         }
 
         trialBalance -= actualWithdrawal;
-        
-        const u1 = Math.random();
-        const u2 = Math.random();
+        const u1 = Math.random(); const u2 = Math.random();
         const z = Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2);
         const randomReturn = returnRate + (z * stdDev);
-        
         trialBalance = Math.max(0, trialBalance * (1 + randomReturn));
         trialPath.push(trialBalance);
-        
         if (isRetirementStarted) {
-          if (currentSimYear === retirementYear) {
-            trialWithdrawal = initialWithdrawal * (1 + inflationRate);
-          } else {
-            trialWithdrawal = trialWithdrawal * (1 + inflationRate);
-          }
+          if (currentSimYear === retirementYear) { trialWithdrawal = initialWithdrawal * (1 + inflationRate); }
+          else { trialWithdrawal = trialWithdrawal * (1 + inflationRate); }
         }
         if (trialBalance <= 0 && isRetirementStarted) break;
       }
-      
-      const targetSuccessAge = 85;
-      const yearsToTarget = targetSuccessAge - ageToday;
-      if (trialPath.length > yearsToTarget && trialPath[yearsToTarget] > 0) {
-        successes++;
-      }
+      if (trialPath.length > (85 - ageToday) && trialPath[Math.max(0, 85 - ageToday)] > 0) successes++;
       monteCarloResults.push(trialPath);
     }
 
@@ -417,14 +461,7 @@ const FinanceIndependence: React.FC = () => {
     for (let y = 0; y <= yearsToSimulate; y++) {
       const yearValues = monteCarloResults.map(path => path[y] ?? 0).sort((a, b) => a - b);
       const getPercentile = (p: number) => yearValues[Math.floor((yearValues.length - 1) * p)];
-      chartData.push({
-        year: currentYear + y,
-        p90: getPercentile(0.9),
-        p75: getPercentile(0.75),
-        median: getPercentile(0.5),
-        p25: getPercentile(0.25),
-        p10: getPercentile(0.1),
-      });
+      chartData.push({ year: currentYear + y, p90: getPercentile(0.9), p75: getPercentile(0.75), median: getPercentile(0.5), p25: getPercentile(0.25), p10: getPercentile(0.1) });
       if (yearValues.every(v => v === 0) && y > yearsUntilRetirement) break;
     }
 
@@ -444,6 +481,7 @@ const FinanceIndependence: React.FC = () => {
     };
   }, [totals.amount, totalPortfolioValue, retirementWithdrawalRate, retirementReturnRate, retirementInflationRate, retirementStartDate, userBirthDate, ssAmount, ssAge, holdings]);
 
+  // View States
   if (holdingsError || expensesError) {
     return (
       <div className="flex items-center justify-center h-64 flex-col gap-4 text-center">
@@ -471,6 +509,7 @@ const FinanceIndependence: React.FC = () => {
 
   return (
     <div className="space-y-12 pb-32">
+      {/* Header */}
       <div className="flex justify-between items-center bg-white p-6 rounded-lg shadow-sm border border-border">
         <div className="flex items-center gap-4">
           <div className="p-2 bg-blue-100 rounded-lg text-blue-700"><Calculator className="w-6 h-6" /></div>
@@ -481,22 +520,7 @@ const FinanceIndependence: React.FC = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <Card className="bg-white border-none shadow-md shadow-slate-200/50 overflow-hidden relative">
-          <div className="absolute top-0 left-0 w-1 h-full bg-green-500" />
-          <CardHeader className="pb-2">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Est. Monthly Dividend Income</CardTitle>
-              <Wallet className="w-4 h-4 text-green-500" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-black text-slate-800 tracking-tighter">{formatCurrency(monthlyIncome)}</div>
-            <p className="text-[10px] text-slate-500 font-medium mt-1 uppercase tracking-tight">Average based on annual projections</p>
-          </CardContent>
-        </Card>
-      </div>
-
+      {/* Monthly Expenses Section */}
       <Card className="bg-white border-none shadow-md shadow-slate-200/50">
         <CardHeader className="flex flex-row items-center justify-between border-b border-slate-50 pb-4">
           <div className="flex items-center gap-2"><ReceiptText className="w-5 h-5 text-blue-600" /><CardTitle className="text-sm font-bold uppercase tracking-wider">Monthly Expenses & Coverage</CardTitle></div>
@@ -505,7 +529,7 @@ const FinanceIndependence: React.FC = () => {
             <DialogContent>
               <DialogHeader><DialogTitle>Add Monthly Expense</DialogTitle></DialogHeader>
               <div className="space-y-4 py-4">
-                <div className="space-y-2"><label className="text-xs font-bold text-slate-500 uppercase">Description</label><Input placeholder="e.g., Rent, Grocery, Utilities" value={newExpense.description} onChange={(e) => setNewExpense({ ...newExpense, description: e.target.value })} /></div>
+                <div className="space-y-2"><label className="text-xs font-bold text-slate-500 uppercase">Description</label><Input placeholder="e.g., Rent" value={newExpense.description} onChange={(e) => setNewExpense({ ...newExpense, description: e.target.value })} /></div>
                 <div className="space-y-2"><label className="text-xs font-bold text-slate-500 uppercase">Amount ($)</label><Input type="number" placeholder="0.00" value={newExpense.amount} onChange={(e) => setNewExpense({ ...newExpense, amount: e.target.value })} /></div>
               </div>
               <DialogFooter><Button onClick={handleAddExpense} className="bg-[#004a99]">Add Expense</Button></DialogFooter>
@@ -516,170 +540,127 @@ const FinanceIndependence: React.FC = () => {
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
-                <TableRow className="bg-slate-50/50 hover:bg-slate-50/50">
-                  <TableHead className="font-bold text-[10px] uppercase tracking-widest h-10">Description</TableHead>
-                  <TableHead className="text-right font-bold text-[10px] uppercase tracking-widest h-10">Monthly Amount</TableHead>
-                  <TableHead className="text-right font-bold text-[10px] uppercase tracking-widest h-10">Annual Amount</TableHead>
-                  <TableHead className="text-right font-bold text-[10px] uppercase tracking-widest h-10">Covered</TableHead>
-                  <TableHead className="text-right font-bold text-[10px] uppercase tracking-widest h-10">Covered %</TableHead>
-                  <TableHead className="text-right font-bold text-[10px] uppercase tracking-widest h-10">Remaining</TableHead>
-                  <TableHead className="text-right font-bold text-[10px] uppercase tracking-widest h-10">Remaining %</TableHead>
-                  <TableHead className="text-center font-bold text-[10px] uppercase tracking-widest h-10">Actions</TableHead>
+                <TableRow className="bg-slate-50/50">
+                  <TableHead className="font-bold text-[10px] uppercase h-10">Description</TableHead>
+                  <TableHead className="text-right font-bold text-[10px] uppercase h-10">Monthly</TableHead>
+                  <TableHead className="text-right font-bold text-[10px] uppercase h-10">Annual</TableHead>
+                  <TableHead className="text-right font-bold text-[10px] uppercase h-10">Covered</TableHead>
+                  <TableHead className="text-right font-bold text-[10px] uppercase h-10">Covered %</TableHead>
+                  <TableHead className="text-right font-bold text-[10px] uppercase h-10">Remaining</TableHead>
+                  <TableHead className="text-right font-bold text-[10px] uppercase h-10">Remaining %</TableHead>
+                  <TableHead className="text-center font-bold text-[10px] uppercase h-10">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {distributedExpenses.length === 0 ? (<TableRow><TableCell colSpan={8} className="text-center py-12 text-slate-400 italic text-sm">No expenses defined yet.</TableCell></TableRow>) : (distributedExpenses.map((exp) => (
+                {distributedExpenses.length === 0 ? (<TableRow><TableCell colSpan={8} className="text-center py-12 text-slate-400 italic">No expenses.</TableCell></TableRow>) : (
+                  distributedExpenses.map((exp) => (
                     <TableRow key={exp.id} className="hover:bg-slate-50/50">
-                      <TableCell className="font-bold text-slate-700">{exp.description}</TableCell>
-                      <TableCell className="text-right font-mono font-bold text-slate-900">{formatCurrency(exp.amount)}</TableCell>
-                      <TableCell className="text-right font-mono text-slate-500">{formatCurrency(exp.amount * 12)}</TableCell>
-                      <TableCell className="text-right font-mono text-green-600 font-bold">{formatCurrency(exp.covered)}</TableCell>
-                      <TableCell className="text-right"><div className="flex flex-col items-end"><span className={`text-[11px] font-black ${exp.coveredPercent >= 100 ? "text-green-600" : "text-orange-600"}`}>{exp.coveredPercent.toFixed(1)}%</span><div className="w-16 h-1 bg-slate-100 rounded-full mt-1 overflow-hidden"><div className={`h-full transition-all ${exp.coveredPercent >= 100 ? "bg-green-500" : "bg-orange-500"}`} style={{ width: `${Math.min(100, exp.coveredPercent)}%` }} /></div></div></TableCell>
+                      <TableCell className="font-bold">{exp.description}</TableCell>
+                      <TableCell className="text-right font-mono">{formatCurrency(exp.amount)}</TableCell>
+                      <TableCell className="text-right font-mono">{formatCurrency(exp.amount * 12)}</TableCell>
+                      <TableCell className="text-right font-mono text-green-600">{formatCurrency(exp.covered)}</TableCell>
+                      <TableCell className="text-right font-black">{exp.coveredPercent.toFixed(1)}%</TableCell>
                       <TableCell className="text-right font-mono text-red-500">{formatCurrency(exp.remainingAmount)}</TableCell>
-                      <TableCell className="text-right text-[11px] font-bold text-slate-400">{exp.remainingPercent.toFixed(1)}%</TableCell>
-                      <TableCell className="text-center"><div className="flex items-center justify-center gap-1"><Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-blue-600" onClick={() => setEditingExpense({ id: exp.id, description: exp.description, amount: exp.amount.toString() })}><Edit className="w-3.5 h-3.5" /></Button><Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-red-600" onClick={() => { if (confirm("Delete this expense?")) deleteExpenseMutation.mutate({ id: exp.id }); }}><Trash2 className="w-3.5 h-3.5" /></Button></div></TableCell>
+                      <TableCell className="text-right">{exp.remainingPercent.toFixed(1)}%</TableCell>
+                      <TableCell className="text-center">
+                        <div className="flex items-center justify-center gap-1">
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setEditingExpense({ id: exp.id, description: exp.description, amount: exp.amount.toString() })}><Edit className="w-3" /></Button>
+                          <Button variant="ghost" size="icon" className="h-7 w-7 text-red-400" onClick={() => deleteExpenseMutation.mutate({ id: exp.id })}><Trash2 className="w-3" /></Button>
+                        </div>
+                      </TableCell>
                     </TableRow>
                   ))
                 )}
               </TableBody>
-              {distributedExpenses.length > 0 && (<TableFooter className="bg-slate-50/50 border-t-2 border-slate-100"><TableRow className="hover:bg-transparent"><TableCell className="font-bold text-slate-600 uppercase text-[10px] tracking-widest">Total</TableCell><TableCell className="text-right font-mono font-black text-slate-900">{formatCurrency(totals.amount)}</TableCell><TableCell className="text-right font-mono text-slate-500">{formatCurrency(totals.amount * 12)}</TableCell><TableCell className="text-right font-mono font-black text-green-700">{formatCurrency(totals.covered)}</TableCell><TableCell className="text-right font-black text-green-700">{(totals.amount > 0 ? (totals.covered / totals.amount) * 100 : 0).toFixed(1)}%</TableCell><TableCell className="text-right font-mono font-black text-red-700">{formatCurrency(totals.remaining)}</TableCell><TableCell className="text-right font-black text-red-700">{(totals.amount > 0 ? (totals.remaining / totals.amount) * 100 : 0).toFixed(1)}%</TableCell><TableCell /></TableRow></TableFooter>)}
             </Table>
           </div>
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <Card className="bg-white border-none shadow-md shadow-slate-200/50">
-          <CardHeader><CardTitle className="text-xs font-bold uppercase tracking-widest text-slate-400">Financial Independence Progress</CardTitle></CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div className="flex justify-between items-end">
-                <div><div className="text-4xl font-black text-slate-800 tracking-tighter">{(totals.amount > 0 ? (monthlyIncome / totals.amount) * 100 : 0).toFixed(1)}%</div><div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-1">FI Score (Income / Total Expenses)</div></div>
-                <div className="text-right"><div className="text-xl font-bold text-slate-700">{formatCurrency(Math.max(0, totals.amount - monthlyIncome))}</div><div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Gap to Full FI</div></div>
-              </div>
-              <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden"><div className="h-full bg-blue-600 transition-all duration-1000" style={{ width: `${Math.min(100, (totals.amount > 0 ? (monthlyIncome / totals.amount) * 100 : 0))}%` }} /></div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Retirement Longevity Simulation */}
+      {/* Longevity Simulation Section */}
       <Card className="bg-white border-none shadow-md shadow-slate-200/50 overflow-hidden relative">
         <div className="absolute top-0 left-0 w-1 h-full bg-orange-500" />
         <CardHeader className="flex flex-row items-center justify-between border-b border-slate-50 pb-4">
           <div className="flex items-center gap-2"><Target className="w-5 h-5 text-orange-600" /><CardTitle className="text-sm font-bold uppercase tracking-wider">Retirement Longevity Simulation</CardTitle></div>
           <div className="flex flex-wrap items-end gap-4">
             <div className="flex flex-col gap-1">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">Birth Date</span>
-              <Popover><PopoverTrigger asChild><Button variant="outline" className={cn("h-8 w-[160px] justify-start text-left font-bold text-[10px] uppercase", !userBirthDate && "text-muted-foreground")}><CalendarIcon className="mr-2 h-3.5 w-3.5" />{userBirthDate ? format(userBirthDate, "PPP") : <span>Select Date</span>}</Button></PopoverTrigger><PopoverContent className="w-auto p-0" align="end"><Calendar mode="single" selected={userBirthDate} onSelect={(date) => { setUserBirthDate(date); if (date) updateRetirementSettingsMutation.mutate({ birthDate: date }); }} captionLayout="dropdown" fromYear={1940} toYear={new Date().getFullYear()} initialFocus /></PopoverContent></Popover>
+              <span className="text-[10px] font-bold text-slate-400 uppercase">Birth Date</span>
+              <Popover><PopoverTrigger asChild><Button variant="outline" className="h-8 w-[160px] text-[10px] font-bold">{userBirthDate ? format(userBirthDate, "PPP") : "Select Date"}</Button></PopoverTrigger><PopoverContent className="w-auto p-0"><Calendar mode="single" selected={userBirthDate} onSelect={(d) => { setUserBirthDate(date); if (d) updateRetirementSettingsMutation.mutate({ birthDate: d }); }} captionLayout="dropdown" fromYear={1940} toYear={new Date().getFullYear()} /></PopoverContent></Popover>
             </div>
             <div className="flex flex-col gap-1">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">Retirement Start</span>
-              <Popover><PopoverTrigger asChild><Button variant="outline" className={cn("h-8 w-[160px] justify-start text-left font-bold text-[10px] uppercase", !retirementStartDate && "text-muted-foreground")}><CalendarIcon className="mr-2 h-3.5 w-3.5" />{retirementStartDate ? format(retirementStartDate, "PPP") : <span>Pick a date</span>}</Button></PopoverTrigger><PopoverContent className="w-auto p-0" align="end"><Calendar mode="single" selected={retirementStartDate} onSelect={(date) => { if (date) { setRetirementStartDate(date); updateRetirementSettingsMutation.mutate({ startDate: date }); } }} captionLayout="dropdown" fromYear={new Date().getFullYear()} toYear={new Date().getFullYear() + 50} initialFocus /></PopoverContent></Popover>
+              <span className="text-[10px] font-bold text-slate-400 uppercase">Retirement Start</span>
+              <Popover><PopoverTrigger asChild><Button variant="outline" className="h-8 w-[160px] text-[10px] font-bold">{retirementStartDate ? format(retirementStartDate, "PPP") : "Pick Date"}</Button></PopoverTrigger><PopoverContent className="w-auto p-0"><Calendar mode="single" selected={retirementStartDate} onSelect={(d) => { if (d) { setRetirementStartDate(d); updateRetirementSettingsMutation.mutate({ startDate: d }); } }} captionLayout="dropdown" fromYear={new Date().getFullYear()} toYear={new Date().getFullYear()+50} /></PopoverContent></Popover>
             </div>
-            <div className="flex flex-col gap-1"><span className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">SS Annual</span><Input type="number" className="h-8 w-24 text-[10px] font-bold text-right" value={ssAmount} onChange={(e) => { setSsAmount(e.target.value); updateRetirementSettingsMutation.mutate({ ssAmount: e.target.value }); }} /></div>
-            <div className="flex flex-col gap-1"><span className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">SS Age</span><Input type="number" min="62" max="70" className="h-8 w-16 text-[10px] font-bold text-right" value={ssAge} onChange={(e) => { setSsAge(e.target.value); updateRetirementSettingsMutation.mutate({ ssAge: e.target.value }); }} /></div>
-            <div className="flex flex-col gap-1"><span className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">Withdrawal Rate (%)</span><Input type="number" placeholder={`Auto: ${retirementResults?.withdrawalRate}%`} className="h-8 w-32 text-[10px] font-bold text-right" value={retirementWithdrawalRate} onChange={(e) => { setRetirementWithdrawalRate(e.target.value); updateRetirementSettingsMutation.mutate({ withdrawalRate: e.target.value }); }} /></div>
-            <div className="flex flex-col gap-1"><span className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">Return (%)</span><Input type="number" className="h-8 w-16 text-[10px] font-bold text-right" value={retirementReturnRate} onChange={(e) => { setRetirementReturnRate(e.target.value); updateRetirementSettingsMutation.mutate({ returnRate: e.target.value }); }} /></div>
-            <div className="flex flex-col gap-1"><span className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">Inflation (%)</span><Input type="number" className="h-8 w-16 text-[10px] font-bold text-right" value={retirementInflationRate} onChange={(e) => { setRetirementInflationRate(e.target.value); updateRetirementSettingsMutation.mutate({ inflationRate: e.target.value }); }} /></div>
+            <div className="flex flex-col gap-1"><span className="text-[10px] font-bold text-slate-400 uppercase">SS Annual</span><Input type="number" className="h-8 w-24 text-right" value={ssAmount} onChange={(e) => { setSsAmount(e.target.value); updateRetirementSettingsMutation.mutate({ ssAmount: e.target.value }); }} /></div>
+            <div className="flex flex-col gap-1"><span className="text-[10px] font-bold text-slate-400 uppercase">Withdrawal %</span><Input type="number" className="h-8 w-24 text-right" value={retirementWithdrawalRate} onChange={(e) => { setRetirementWithdrawalRate(e.target.value); updateRetirementSettingsMutation.mutate({ withdrawalRate: e.target.value }); }} /></div>
+            <div className="flex flex-col gap-1"><span className="text-[10px] font-bold text-slate-400 uppercase">Return %</span><Input type="number" className="h-8 w-16 text-right" value={retirementReturnRate} onChange={(e) => { setRetirementReturnRate(e.target.value); updateRetirementSettingsMutation.mutate({ returnRate: e.target.value }); }} /></div>
+            <div className="flex flex-col gap-1"><span className="text-[10px] font-bold text-slate-400 uppercase">Inflation %</span><Input type="number" className="h-8 w-16 text-right" value={retirementInflationRate} onChange={(e) => { setRetirementInflationRate(e.target.value); updateRetirementSettingsMutation.mutate({ inflationRate: e.target.value }); }} /></div>
           </div>
         </CardHeader>
         <CardContent className="p-6">
-          {!retirementResults ? (<div className="py-8 text-center text-slate-400 italic text-sm">Define expenses and portfolios.</div>) : (
+          {retirementResults && (
             <div className="space-y-10">
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-6">
-                <div className="space-y-1"><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Current Value</p><p className="text-xl font-black text-slate-500 font-mono">{formatCurrency(retirementResults.currentPortfolioValue)}</p></div>
-                <div className="space-y-1"><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Value at Retirement</p><p className="text-xl font-black text-slate-800 font-mono">{formatCurrency(retirementResults.projectedPortfolioAtStart)}</p>{retirementResults.projectedPortfolioAtStart > retirementResults.currentPortfolioValue && (<p className="text-[9px] text-green-600 font-bold uppercase mt-1 leading-none">Projected Growth Included</p>)}</div>
-                <div className="space-y-1"><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Annual Outflow</p><p className="text-xl font-black text-slate-700 font-mono">{formatCurrency(retirementResults.annualExpenses)}</p></div>
-                <div className="space-y-1"><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Withdrawal Rate</p><p className={`text-xl font-black font-mono ${parseFloat(retirementResults.withdrawalRate) <= 4 ? "text-green-600" : "text-orange-600"}`}>{retirementResults.withdrawalRate}%</p></div>
-                <div className="bg-slate-900 rounded-xl p-4 flex flex-col items-center justify-center text-center shadow-xl shadow-slate-200">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Sustainable Until</p>
-                  <div className={`text-3xl font-black tracking-tighter ${retirementResults.isSustainable ? "text-green-400" : "text-orange-400"}`}>Age {retirementResults.lastAge}</div>
-                  <p className="text-[9px] text-slate-500 mt-2 leading-tight uppercase font-bold">{retirementResults.isSustainable ? "Plan is Green (Age >85)" : "Caution: Shortfall Before Age 85"}</p>
-                </div>
+                <div className="space-y-1"><p className="text-[10px] font-bold text-slate-400 uppercase">Current Value</p><p className="text-xl font-black">{formatCurrency(retirementResults.currentPortfolioValue)}</p></div>
+                <div className="space-y-1"><p className="text-[10px] font-bold text-slate-400 uppercase">Value at Start</p><p className="text-xl font-black">{formatCurrency(retirementResults.projectedPortfolioAtStart)}</p></div>
+                <div className="space-y-1"><p className="text-[10px] font-bold text-slate-400 uppercase">Annual Outflow</p><p className="text-xl font-black">{formatCurrency(retirementResults.annualExpenses)}</p></div>
+                <div className="space-y-1"><p className="text-[10px] font-bold text-slate-400 uppercase">Initial Rate</p><p className="text-xl font-black">{retirementResults.withdrawalRate}%</p></div>
+                <div className="bg-slate-900 rounded-xl p-4 text-center text-white"><p className="text-[10px] font-bold uppercase opacity-60">Sustainable Until</p><div className="text-3xl font-black">Age {retirementResults.lastAge}</div><p className="text-[9px] font-bold uppercase mt-1">{retirementResults.isSustainable ? "Green (Age 85+)" : "Warning"}</p></div>
               </div>
 
-              {/* Monte Carlo Info */}
-              <div className={cn("p-4 rounded-xl border flex items-center justify-between shadow-sm", parseFloat(retirementResults.successRate) > 90 ? "bg-green-50 border-green-100" : parseFloat(retirementResults.successRate) > 70 ? "bg-orange-50 border-orange-100" : "bg-red-50 border-red-100")}>
-                <div className="flex items-center gap-3">
-                  <div className={cn("p-2 rounded-lg", parseFloat(retirementResults.successRate) > 90 ? "bg-green-100 text-green-700" : parseFloat(retirementResults.successRate) > 70 ? "bg-orange-100 text-orange-700" : "bg-red-100 text-red-700")}><TrendingUp className="w-5 h-5" /></div>
-                  <div>
-                    <h4 className="text-sm font-bold text-slate-800 uppercase tracking-tight">Monte Carlo Success Rate: {retirementResults.successRate}%</h4>
-                    <p className="text-[10px] text-slate-500 font-medium">Based on 5,000 simulations considering {retirementReturnRate}% return and 15% volatility through Age 85.</p>
-                  </div>
-                </div>
+              {/* Monte Carlo Results */}
+              <div className="p-4 bg-slate-50 rounded-xl border flex items-center justify-between">
+                <div><h4 className="text-sm font-bold uppercase">Monte Carlo Success Rate: {retirementResults.successRate}%</h4><p className="text-[10px] opacity-60">Based on 5,000 simulations through Age 85.</p></div>
+                <TrendingUp className="w-5 h-5 text-green-500" />
               </div>
 
               {/* Chart */}
-              {retirementResults.chartData.length > 0 && (
-                <div className="space-y-4">
-                  <div className="flex items-center gap-2 border-b border-slate-100 pb-2"><BarChart3 className="w-4 h-4 text-slate-400" /><h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Portfolio Projections (Percentiles)</h3></div>
-                  <div className="h-[400px] w-full mt-4">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={retirementResults.chartData} margin={{ top: 10, right: 30, left: 20, bottom: 0 }}>
-                        <defs>
-                          <linearGradient id="colorP90" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#4ade80" stopOpacity={0.1}/><stop offset="95%" stopColor="#4ade80" stopOpacity={0}/></linearGradient>
-                          <linearGradient id="colorP75" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#60a5fa" stopOpacity={0.1}/><stop offset="95%" stopColor="#60a5fa" stopOpacity={0}/></linearGradient>
-                          <linearGradient id="colorMedian" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#facc15" stopOpacity={0.1}/><stop offset="95%" stopColor="#facc15" stopOpacity={0}/></linearGradient>
-                        </defs>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                        <XAxis dataKey="year" tick={{fontSize: 10, fill: '#94a3b8', fontWeight: 600}} axisLine={false} tickLine={false} />
-                        <YAxis tick={{fontSize: 10, fill: '#94a3b8', fontWeight: 600}} axisLine={false} tickLine={false} tickFormatter={(v) => `$${(v / 1000000).toFixed(1)}M`} />
-                        <ReferenceLine x={retirementResults.retirementYear} stroke="#3b82f6" strokeDasharray="3 3" label={{ value: 'Retirement', position: 'insideTopLeft', fontSize: 9, fill: '#3b82f6', fontWeight: 'bold' }} />
-                        <ReferenceLine x={retirementResults.age85Year} stroke="#10b981" strokeDasharray="3 3" label={{ value: 'Age 85', position: 'insideTopRight', fontSize: 9, fill: '#10b981', fontWeight: 'bold' }} />
-                        <ChartTooltip formatter={(v: any) => formatCurrency(v as number)} labelStyle={{ fontWeight: 'bold', fontSize: '12px' }} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                        <Legend iconType="circle" wrapperStyle={{ fontSize: '10px', fontWeight: 'bold', textTransform: 'uppercase', paddingTop: '20px' }} />
-                        <Area type="monotone" dataKey="p90" name="90th %" stroke="#4ade80" fillOpacity={1} fill="url(#colorP90)" />
-                        <Area type="monotone" dataKey="p75" name="75th %" stroke="#60a5fa" fillOpacity={1} fill="url(#colorP75)" />
-                        <Area type="monotone" dataKey="median" name="Median" stroke="#facc15" fillOpacity={1} fill="url(#colorMedian)" />
-                        <Area type="monotone" dataKey="p25" name="25th %" stroke="#fb923c" fillOpacity={0} />
-                        <Area type="monotone" dataKey="p10" name="10th %" stroke="#f87171" fillOpacity={0} />
-                      </AreaChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
-              )}
-
-              <div className="mt-8 p-4 bg-slate-50 rounded-lg border border-slate-100">
-                <p className="text-[10px] text-slate-500 leading-relaxed"><span className="font-bold text-slate-700 mr-1">Methodology:</span> Model starts from today. Portfolio grows at the return rate until retirement date, then transitions to withdrawals. Social Security kicks in at the defined age, adjusted for inflation. Monte Carlo runs 5,000 trials with 15% volatility.</p>
+              <div className="h-[400px] w-full mt-4">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={retirementResults.chartData}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                    <XAxis dataKey="year" tick={{fontSize: 10}} />
+                    <YAxis tick={{fontSize: 10}} tickFormatter={(v) => `$${(v / 1000000).toFixed(1)}M`} />
+                    <ChartTooltip formatter={(v: any) => formatCurrency(v as number)} />
+                    <Legend />
+                    <ReferenceLine x={retirementResults.retirementYear} stroke="#3b82f6" strokeDasharray="3 3" label={{ value: 'Retired', position: 'top', fontSize: 10 }} />
+                    <ReferenceLine x={retirementResults.age85Year} stroke="#10b981" strokeDasharray="3 3" label={{ value: 'Age 85', position: 'top', fontSize: 10 }} />
+                    <Area type="monotone" dataKey="p90" name="90th %" stroke="#4ade80" fill="#4ade80" fillOpacity={0.1} />
+                    <Area type="monotone" dataKey="median" name="Median" stroke="#facc15" fill="#facc15" fillOpacity={0.1} />
+                    <Area type="monotone" dataKey="p10" name="10th %" stroke="#f87171" fill="#f87171" fillOpacity={0.1} />
+                  </AreaChart>
+                </ResponsiveContainer>
               </div>
 
               {/* Evolution Table */}
-              <div className="mt-10 space-y-4">
-                <div className="flex items-center gap-2 border-b border-slate-100 pb-2"><BarChart3 className="w-4 h-4 text-slate-400" /><h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Retirement Evolution (Current → Age 100)</h3></div>
-                <div className="overflow-x-auto rounded-xl border border-slate-100 shadow-inner">
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="bg-slate-50/80 hover:bg-slate-50/80 h-10">
-                        <TableHead className="font-bold text-[9px] uppercase tracking-tighter">Year</TableHead>
-                        <TableHead className="font-bold text-[9px] uppercase tracking-tighter">Age</TableHead>
-                        <TableHead className="text-right font-bold text-[9px] uppercase tracking-tighter">Start Balance</TableHead>
-                        <TableHead className="text-right font-bold text-[9px] uppercase tracking-tighter text-blue-600">Annual Return</TableHead>
-                        <TableHead className="text-right font-bold text-[9px] uppercase tracking-tighter text-green-600">Soc. Security</TableHead>
-                        <TableHead className="text-right font-bold text-[9px] uppercase tracking-tighter text-red-600">Withdrawal</TableHead>
-                        <TableHead className="text-right font-bold text-[9px] uppercase tracking-tighter">End Balance</TableHead>
+              <div className="overflow-x-auto rounded-xl border">
+                <Table>
+                  <TableHeader><TableRow className="bg-slate-50 h-10"><TableHead className="font-bold text-[9px] uppercase">Year</TableHead><TableHead className="font-bold text-[9px] uppercase">Age</TableHead><TableHead className="text-right font-bold text-[9px] uppercase">Start</TableHead><TableHead className="text-right font-bold text-[9px] uppercase">Return</TableHead><TableHead className="text-right font-bold text-[9px] uppercase">SS</TableHead><TableHead className="text-right font-bold text-[9px] uppercase">Withdrawal</TableHead><TableHead className="text-right font-bold text-[9px] uppercase">End</TableHead></TableRow></TableHeader>
+                  <TableBody>
+                    {retirementResults.evolution.map((step: any) => (
+                      <TableRow key={step.year} className={cn("h-8", !step.isRetirement && "opacity-60")}>
+                        <TableCell className="font-bold text-xs">{step.year}</TableCell><TableCell className="text-xs">{step.age}</TableCell><TableCell className="text-right font-mono text-[11px]">{formatCurrency(step.startBalance)}</TableCell><TableCell className="text-right font-mono text-[11px] text-green-600">+{formatCurrency(step.earnings)}</TableCell><TableCell className="text-right font-mono text-[11px] text-green-700">{step.ssIncome > 0 ? formatCurrency(step.ssIncome) : "—"}</TableCell><TableCell className="text-right font-mono text-[11px] text-red-500">{step.withdrawal > 0 ? formatCurrency(step.withdrawal) : "—"}</TableCell><TableCell className="text-right font-mono text-[11px] font-bold">{formatCurrency(step.endBalance)}</TableCell>
                       </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {retirementResults.evolution.map((step: any) => (
-                        <TableRow key={step.year} className={cn("h-8 border-slate-50", !step.isRetirement ? "bg-slate-50/30" : "hover:bg-slate-50/40")}>
-                          <TableCell className="font-bold text-slate-600 text-xs py-1.5">{step.year}</TableCell>
-                          <TableCell className="font-bold text-slate-500 text-xs py-1.5">{step.age}</TableCell>
-                          <TableCell className="text-right font-mono text-[11px] py-1.5">{formatCurrency(step.startBalance)}</TableCell>
-                          <TableCell className="text-right font-mono text-[11px] text-green-600 py-1.5">+{formatCurrency(step.earnings)}</TableCell>
-                          <TableCell className="text-right font-mono text-[11px] text-green-700 py-1.5">{step.ssIncome > 0 ? `+${formatCurrency(step.ssIncome)}` : "—"}</TableCell>
-                          <TableCell className="text-right font-mono text-[11px] text-red-500 py-1.5">{step.withdrawal > 0 ? `-${formatCurrency(step.withdrawal)}` : "—"}</TableCell>
-                          <TableCell className={`text-right font-mono text-[11px] font-bold py-1.5 ${step.endBalance > 0 ? "text-slate-800" : "text-red-700"}`}>{formatCurrency(step.endBalance)}</TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
+                    ))}
+                  </TableBody>
+                </Table>
               </div>
             </div>
           )}
         </CardContent>
       </Card>
+
+      {/* Edit Expense Dialog */}
+      <Dialog open={!!editingExpense} onOpenChange={() => setEditingExpense(null)}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader><DialogTitle>Edit Monthly Expense</DialogTitle></DialogHeader>
+          <div className="space-y-4 pt-4">
+            <div className="grid gap-2"><label className="text-xs font-bold uppercase opacity-60">Description</label><Input value={editingExpense?.description || ""} onChange={(e) => setEditingExpense(prev => prev ? ({ ...prev, description: e.target.value }) : null)} /></div>
+            <div className="grid gap-2"><label className="text-xs font-bold uppercase opacity-60">Amount ($)</label><Input type="number" step="0.01" value={editingExpense?.amount || ""} onChange={(e) => setEditingExpense(prev => prev ? ({ ...prev, amount: e.target.value }) : null)} /></div>
+            <div className="flex justify-end gap-3 pt-4"><Button variant="outline" onClick={() => setEditingExpense(null)}>Cancel</Button><Button onClick={handleUpdateExpense} disabled={updateExpenseMutation.isPending}>Save Changes</Button></div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
