@@ -625,8 +625,10 @@ const FinanceIndependence: React.FC = () => {
                     <Legend />
                     <ReferenceLine x={retirementResults.retirementYear} stroke="#3b82f6" strokeDasharray="3 3" label={{ value: 'Retired', position: 'top', fontSize: 10 }} />
                     <ReferenceLine x={retirementResults.age85Year} stroke="#10b981" strokeDasharray="3 3" label={{ value: 'Age 85', position: 'top', fontSize: 10 }} />
-                    <Area type="monotone" dataKey="p90" name="90th %" stroke="#4ade80" fill="#4ade80" fillOpacity={0.1} />
+                    <Area type="monotone" dataKey="p90" name="90th %" stroke="#4ade80" fill="#4ade80" fillOpacity={0.05} />
+                    <Area type="monotone" dataKey="p75" name="75th %" stroke="#60a5fa" fill="#60a5fa" fillOpacity={0.1} />
                     <Area type="monotone" dataKey="median" name="Median" stroke="#facc15" fill="#facc15" fillOpacity={0.1} />
+                    <Area type="monotone" dataKey="p25" name="25th %" stroke="#fb923c" fill="#fb923c" fillOpacity={0.1} />
                     <Area type="monotone" dataKey="p10" name="10th %" stroke="#f87171" fill="#f87171" fillOpacity={0.1} />
                   </AreaChart>
                 </ResponsiveContainer>
