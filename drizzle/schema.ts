@@ -15,6 +15,7 @@ export const users = sqliteTable("users", {
   userBirthDate: integer("userBirthDate", { mode: "timestamp" }),
   ssAmount: text("ssAmount"),
   ssAge: text("ssAge"),
+  lifeExpectancy: text("lifeExpectancy").default("85"),
   createdAt: integer("createdAt", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
   updatedAt: integer("updatedAt", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
   lastSignedIn: integer("lastSignedIn", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),

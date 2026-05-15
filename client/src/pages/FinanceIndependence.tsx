@@ -78,6 +78,7 @@ const FinanceIndependence: React.FC = () => {
   const [userBirthDate, setUserBirthDate] = useState<Date | undefined>(undefined);
   const [ssAmount, setSsAmount] = useState<string>("0");
   const [ssAge, setSsAge] = useState<string>("67");
+  const [lifeExpectancy, setLifeExpectancy] = useState<string>("85");
 
   // Data fetching
   const { data: user } = trpc.auth.me.useQuery();
@@ -165,6 +166,7 @@ const FinanceIndependence: React.FC = () => {
       if (user.userBirthDate) setUserBirthDate(new Date(user.userBirthDate));
       if (user.ssAmount) setSsAmount(user.ssAmount);
       if (user.ssAge) setSsAge(user.ssAge);
+      if (user.lifeExpectancy) setLifeExpectancy(user.lifeExpectancy);
     }
   }, [user]);
 
@@ -453,7 +455,8 @@ const FinanceIndependence: React.FC = () => {
         }
         if (trialBalance <= 0 && isRetirementStarted) break;
       }
-      if (trialPath.length > (85 - ageToday) && trialPath[Math.max(0, 85 - ageToday)] > 0) successes++;
+      const targetLifeYear = parseInt(lifeExpectancy) || 85;
+      if (trialPath.length > (targetLifeYear - ageToday) && trialPath[Math.max(0, targetLifeYear - ageToday)] > 0) successes++;
       monteCarloResults.push(trialPath);
     }
 
@@ -465,21 +468,34 @@ const FinanceIndependence: React.FC = () => {
       if (yearValues.every(v => v === 0) && y > yearsUntilRetirement) break;
     }
 
+    // Find when 25th percentile is depleted
+    let p25DepletionYear = currentYear + yearsToSimulate;
+    const p25Path = chartData.map(d => d.p25);
+    for (let i = 0; i < chartData.length; i++) {
+      if (chartData[i].p25 <= 0) {
+        p25DepletionYear = chartData[i].year;
+        break;
+      }
+    }
+    const p25LastAge = userBirthDate ? (p25DepletionYear - userBirthDate.getFullYear()) : deterministicLastAge;
+
+    const targetLifeExpectancy = parseInt(lifeExpectancy) || 85;
+
     return {
       withdrawalRate: (effectiveInitialRate * 100).toFixed(2),
       years: evolution.length - (evolution[evolution.length-1].endBalance <= 0 ? 1 : 0),
-      lastAge: deterministicLastAge,
+      lastAge: p25LastAge,
       successRate: (successes / numTrials * 100).toFixed(2),
       annualExpenses: projectedExpensesAtStart,
       currentPortfolioValue,
       projectedPortfolioAtStart,
       retirementYear,
-      age85Year: currentYear + (85 - ageToday),
-      isSustainable: deterministicLastAge >= 85,
+      age85Year: currentYear + (targetLifeExpectancy - ageToday),
+      isSustainable: deterministicLastAge >= targetLifeExpectancy,
       evolution,
       chartData
     };
-  }, [totals.amount, totalPortfolioValue, retirementWithdrawalRate, retirementReturnRate, retirementInflationRate, retirementStartDate, userBirthDate, ssAmount, ssAge, holdings]);
+  }, [totals.amount, totalPortfolioValue, retirementWithdrawalRate, retirementReturnRate, retirementInflationRate, retirementStartDate, userBirthDate, ssAmount, ssAge, lifeExpectancy, holdings]);
 
   // View States
   if (holdingsError || expensesError) {
@@ -595,6 +611,7 @@ const FinanceIndependence: React.FC = () => {
             <div className="flex flex-col gap-1"><span className="text-[10px] font-bold text-slate-400 uppercase">Withdrawal %</span><Input type="number" className="h-8 w-24 text-right" value={retirementWithdrawalRate} onChange={(e) => { setRetirementWithdrawalRate(e.target.value); updateRetirementSettingsMutation.mutate({ withdrawalRate: e.target.value }); }} /></div>
             <div className="flex flex-col gap-1"><span className="text-[10px] font-bold text-slate-400 uppercase">Return %</span><Input type="number" className="h-8 w-16 text-right" value={retirementReturnRate} onChange={(e) => { setRetirementReturnRate(e.target.value); updateRetirementSettingsMutation.mutate({ returnRate: e.target.value }); }} /></div>
             <div className="flex flex-col gap-1"><span className="text-[10px] font-bold text-slate-400 uppercase">Inflation %</span><Input type="number" className="h-8 w-16 text-right" value={retirementInflationRate} onChange={(e) => { setRetirementInflationRate(e.target.value); updateRetirementSettingsMutation.mutate({ inflationRate: e.target.value }); }} /></div>
+            <div className="flex flex-col gap-1"><span className="text-[10px] font-bold text-slate-400 uppercase">Life Exp.</span><Input type="number" className="h-8 w-16 text-right" value={lifeExpectancy} onChange={(e) => { setLifeExpectancy(e.target.value); updateRetirementSettingsMutation.mutate({ lifeExpectancy: e.target.value }); }} /></div>
           </div>
         </CardHeader>
         <CardContent className="p-6">
@@ -605,12 +622,26 @@ const FinanceIndependence: React.FC = () => {
                 <div className="space-y-1"><p className="text-[10px] font-bold text-slate-400 uppercase">Value at Start</p><p className="text-xl font-black">{formatCurrency(retirementResults.projectedPortfolioAtStart)}</p></div>
                 <div className="space-y-1"><p className="text-[10px] font-bold text-slate-400 uppercase">Annual Outflow</p><p className="text-xl font-black">{formatCurrency(retirementResults.annualExpenses)}</p></div>
                 <div className="space-y-1"><p className="text-[10px] font-bold text-slate-400 uppercase">Initial Rate</p><p className="text-xl font-black">{retirementResults.withdrawalRate}%</p></div>
-                <div className="bg-slate-900 rounded-xl p-4 text-center text-white"><p className="text-[10px] font-bold uppercase opacity-60">Sustainable Until</p><div className="text-3xl font-black">Age {retirementResults.lastAge}</div><p className="text-[9px] font-bold uppercase mt-1">{retirementResults.isSustainable ? "Green (Age 85+)" : "Warning"}</p></div>
+                <div className="bg-slate-900 rounded-xl p-4 text-center">
+                  <p className="text-[10px] font-bold uppercase text-slate-400">Sustainable Until</p>
+                  <div className={cn(
+                    "text-3xl font-black tracking-tighter",
+                    parseFloat(retirementResults.successRate) >= 75 ? "text-green-400" : "text-orange-400"
+                  )}>
+                    Age {retirementResults.lastAge}
+                  </div>
+                  <p className={cn(
+                    "text-[9px] font-bold uppercase mt-1",
+                    parseFloat(retirementResults.successRate) >= 75 ? "text-green-500" : "text-orange-500"
+                  )}>
+                    {parseFloat(retirementResults.successRate) >= 75 ? `Success Rate ${retirementResults.successRate}%` : `Warning: Success Rate ${retirementResults.successRate}%`}
+                  </p>
+                </div>
               </div>
 
               {/* Monte Carlo Results */}
               <div className="p-4 bg-slate-50 rounded-xl border flex items-center justify-between">
-                <div><h4 className="text-sm font-bold uppercase">Monte Carlo Success Rate: {retirementResults.successRate}%</h4><p className="text-[10px] opacity-60">Based on 5,000 simulations through Age 85.</p></div>
+                <div><h4 className="text-sm font-bold uppercase">Monte Carlo Success Rate: {retirementResults.successRate}%</h4><p className="text-[10px] opacity-60">Based on 5,000 simulations through Age {lifeExpectancy}.</p></div>
                 <TrendingUp className="w-5 h-5 text-green-500" />
               </div>
 
@@ -624,7 +655,7 @@ const FinanceIndependence: React.FC = () => {
                     <ChartTooltip formatter={(v: any) => formatCurrency(v as number)} />
                     <Legend />
                     <ReferenceLine x={retirementResults.retirementYear} stroke="#3b82f6" strokeDasharray="3 3" label={{ value: 'Retired', position: 'top', fontSize: 10 }} />
-                    <ReferenceLine x={retirementResults.age85Year} stroke="#10b981" strokeDasharray="3 3" label={{ value: 'Age 85', position: 'top', fontSize: 10 }} />
+                    <ReferenceLine x={retirementResults.age85Year} stroke="#10b981" strokeDasharray="3 3" label={{ value: `Age ${lifeExpectancy}`, position: 'top', fontSize: 10 }} />
                     <Area type="monotone" dataKey="p90" name="90th %" stroke="#4ade80" fill="#4ade80" fillOpacity={0.05} />
                     <Area type="monotone" dataKey="p75" name="75th %" stroke="#60a5fa" fill="#60a5fa" fillOpacity={0.1} />
                     <Area type="monotone" dataKey="median" name="Median" stroke="#facc15" fill="#facc15" fillOpacity={0.1} />
