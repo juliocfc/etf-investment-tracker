@@ -2149,7 +2149,7 @@ export const etfRouter = router({
   getInvestmentActivities: protectedProcedure
     .input(
       z.object({
-        portfolioId: z.number(),
+        portfolioId: z.number().optional(),
         range: z.string(), // Changed to string to support dynamic quarterly keys
         accountType: z.string().optional(),
       })
@@ -2159,13 +2159,17 @@ export const etfRouter = router({
       
       if (input.accountType) {
         const db = await getDb();
+        const accountConditions = [
+          eq(accounts.userId, ctx.user.id),
+          eq(accounts.accountType, input.accountType)
+        ];
+        if (input.portfolioId) {
+          accountConditions.push(eq(accounts.portfolioId, input.portfolioId));
+        }
+        
         const matchingAccounts = await db.select({ id: accounts.id })
           .from(accounts)
-          .where(and(
-            eq(accounts.userId, ctx.user.id),
-            eq(accounts.portfolioId, input.portfolioId),
-            eq(accounts.accountType, input.accountType)
-          ));
+          .where(and(...accountConditions));
         const matchingIds = matchingAccounts.map((a: any) => a.id);
         holdings = holdings.filter((h: any) => matchingIds.includes(h.accountId));
       }
@@ -2235,7 +2239,7 @@ export const etfRouter = router({
 
   getCashActivities: protectedProcedure
     .input(z.object({ 
-      portfolioId: z.number(), 
+      portfolioId: z.number().optional(), 
       range: z.string(),
       accountType: z.string().optional()
     }))
@@ -2245,19 +2249,26 @@ export const etfRouter = router({
       
       const conditions = [
         eq(cashBalanceHistory.userId, ctx.user.id),
-        eq(cashBalanceHistory.portfolioId, input.portfolioId),
         gte(cashBalanceHistory.date, startDate),
         lte(cashBalanceHistory.date, endDate)
       ];
 
+      if (input.portfolioId) {
+        conditions.push(eq(cashBalanceHistory.portfolioId, input.portfolioId));
+      }
+
       if (input.accountType) {
+        const accountConditions = [
+          eq(accounts.userId, ctx.user.id),
+          eq(accounts.accountType, input.accountType)
+        ];
+        if (input.portfolioId) {
+          accountConditions.push(eq(accounts.portfolioId, input.portfolioId));
+        }
+
         const matchingAccounts = await db.select({ id: accounts.id })
           .from(accounts)
-          .where(and(
-            eq(accounts.userId, ctx.user.id),
-            eq(accounts.portfolioId, input.portfolioId),
-            eq(accounts.accountType, input.accountType)
-          ));
+          .where(and(...accountConditions));
         const matchingIds = matchingAccounts.map((a: any) => a.id);
         if (matchingIds.length > 0) {
           conditions.push(sql`${cashBalanceHistory.accountId} IN (${sql.join(matchingIds, sql`, `)})`);
@@ -2604,7 +2615,9 @@ function calculateDateRange(range: string) {
   let endDate = new Date();
   endDate.setHours(23, 59, 59, 999);
 
-  if (range === "3d") {
+  if (range === "cm") {
+    startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+  } else if (range === "3d") {
     startDate.setDate(now.getDate() - 3);
   } else if (range === "10d") {
     startDate.setDate(now.getDate() - 10);

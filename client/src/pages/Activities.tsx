@@ -21,15 +21,15 @@ export default function Activities({
   selectedPortfolioId: number, 
   selectedAccountType?: string 
 }) {
-  const [investmentRange, setInvestmentRange] = useState<string>("3d");
-  const [cashRange, setCashRange] = useState<string>("3d");
+  const [investmentRange, setInvestmentRange] = useState<string>("cm");
+  const [cashRange, setCashRange] = useState<string>("cm");
   const [cashAccountId, setCashAccountId] = useState<string>("");
   const [viewingPurchases, setViewingPurchases] = useState<any | null>(null);
   const [filterAccountId, setFilterAccountId] = useState<string>("");
 
   const rangeOptions = useMemo(() => {
     const options = [
-      { label: "Past 3 Days", value: "3d" },
+      { label: "Current Month", value: "cm" },
       { label: "Past 10 Days", value: "10d" },
       { label: "Past 30 Days", value: "30d" },
       { label: "Past 60 Days", value: "60d" },

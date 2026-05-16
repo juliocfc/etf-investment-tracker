@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
-import { Briefcase, ChevronDown, ChevronRight, Edit2, Trash2, PieChart, Wallet, DollarSign, Plus, BarChart3, CalendarPlus, List, RefreshCw, TrendingUp } from "lucide-react";
+import { Briefcase, ChevronDown, ChevronRight, Edit2, Trash2, PieChart, Wallet, DollarSign, Plus, BarChart3, CalendarPlus, List, RefreshCw, TrendingUp, ArrowRightLeft } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import { motion, AnimatePresence } from "framer-motion";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, Legend } from "recharts";
@@ -29,7 +29,32 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
   const { data: allHoldings } = trpc.portfolio.getAllHoldings.useQuery();
   const [expandedPortfolios, setExpandedPortfolios] = useState<Set<number>>(new Set());
   const [portfolioFilter, setPortfolioFilter] = useState<string>("all");
+  const [dashboardRange, setDashboardRange] = useState<string>("cm");
   const [isAddPortfolioOpen, setIsAddPortfolioOpen] = useState(false);
+
+  const rangeOptions = useMemo(() => {
+    const options = [
+      { label: "Current Month", value: "cm" },
+      { label: "Past 10 Days", value: "10d" },
+      { label: "Past 30 Days", value: "30d" },
+      { label: "Past 60 Days", value: "60d" },
+      { label: "Past 90 Days", value: "90d" },
+      { label: "Year to Date", value: "ytd" },
+      { label: "Past 1 Year", value: "1y" },
+    ];
+    const prevYear = new Date().getFullYear() - 1;
+    for (let q = 4; q >= 1; q--) {
+      options.push({ label: `Q${q} ${prevYear}`, value: `${prevYear}Q${q}` });
+    }
+    return options;
+  }, []);
+
+  const { data: dashboardActivities, isLoading: isActivitiesLoading } = trpc.etf.getInvestmentActivities.useQuery(
+    { 
+      portfolioId: portfolioFilter === "all" ? undefined : parseInt(portfolioFilter),
+      range: dashboardRange
+    }
+  );
   const [newPortfolioName, setNewPortfolioName] = useState("");
 
   const createPortfolioMutation = trpc.portfolio.create.useMutation({
@@ -1099,6 +1124,127 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
           </div>
         </Card>
       )}
+
+      {/* Accumulation & Performance Summary */}
+      <Card className="bg-white shadow-sm border border-border overflow-hidden">
+        <div className="px-6 py-4 border-b border-border bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-2">
+            <ArrowRightLeft className="w-5 h-5 text-primary" />
+            <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Accumulation & Performance Summary</h3>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest hidden sm:block">Timeframe:</span>
+            <Select value={dashboardRange} onValueChange={setDashboardRange}>
+              <SelectTrigger className="w-[160px] h-9 bg-white text-xs font-bold uppercase border-slate-200">
+                <SelectValue placeholder="Select range" />
+              </SelectTrigger>
+              <SelectContent>
+                {rangeOptions.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value} className="text-xs font-bold uppercase">
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
+          {isActivitiesLoading ? (
+            <div className="py-20 text-center">
+              <RefreshCw className="w-8 h-8 animate-spin text-primary mx-auto mb-4 opacity-50" />
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Auditing Investment Ledger...</p>
+            </div>
+          ) : dashboardActivities && dashboardActivities.length > 0 ? (
+            <table className="w-full">
+              <thead>
+                <tr className="bg-slate-50 border-b border-border">
+                  <th className="text-left py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Investment</th>
+                  <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Qty Bought</th>
+                  <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Avg Buy Price</th>
+                  <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Total Outlay</th>
+                  <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Mkt Price</th>
+                  <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Mkt Value</th>
+                  <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Gain/Loss</th>
+                  <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Return</th>
+                </tr>
+              </thead>
+              <tbody>
+                {dashboardActivities.map((activity) => {
+                  const isGain = parseFloat(activity.gain) >= 0;
+                  return (
+                    <tr key={activity.symbol} className="border-b border-border hover:bg-slate-50 transition-colors">
+                      <td className="py-4 px-4">
+                        <div className="font-bold text-primary text-sm">{activity.symbol}</div>
+                        <div className="text-slate-500 text-[10px] truncate max-w-[150px]">{activity.name}</div>
+                      </td>
+                      <td className="text-right py-4 px-4 font-mono text-xs font-medium">
+                        {parseFloat(activity.totalQuantity).toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
+                      </td>
+                      <td className="text-right py-4 px-4 font-mono text-xs text-slate-600">
+                        {formatCurrency(activity.averagePrice)}
+                      </td>
+                      <td className="text-right py-4 px-4 font-mono text-xs font-bold text-slate-700">
+                        {formatCurrency(activity.totalCost)}
+                      </td>
+                      <td className="text-right py-4 px-4 font-mono text-xs text-slate-500">
+                        {formatCurrency(activity.currentPrice)}
+                      </td>
+                      <td className="text-right py-4 px-4 font-mono text-xs font-bold text-primary">
+                        {formatCurrency(activity.currentValue)}
+                      </td>
+                      <td className={`text-right py-4 px-4 font-mono text-xs font-bold ${isGain ? "text-green-600" : "text-red-600"}`}>
+                        {isGain ? "+" : ""}{formatCurrency(activity.gain)}
+                      </td>
+                      <td className="text-right py-4 px-4">
+                        <span className={`px-2 py-1 rounded text-[10px] font-bold font-mono ${isGain ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
+                          {isGain ? "+" : ""}{activity.gainPercent}%
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot className="bg-slate-50/80 font-bold border-t-2 border-slate-200">
+                <tr>
+                  <td colSpan={3} className="py-4 px-4 uppercase text-[10px] tracking-widest text-slate-500">Period Totals</td>
+                  <td className="text-right py-4 px-4 font-mono text-sm text-slate-700">
+                    {formatCurrency(dashboardActivities.reduce((sum, a) => sum + parseFloat(a.totalCost), 0))}
+                  </td>
+                  <td className="text-right py-4 px-4"></td>
+                  <td className="text-right py-4 px-4 font-mono text-sm text-primary">
+                    {formatCurrency(dashboardActivities.reduce((sum, a) => sum + parseFloat(a.currentValue), 0))}
+                  </td>
+                  <td className={`text-right py-4 px-4 font-mono text-sm ${dashboardActivities.reduce((sum, a) => sum + parseFloat(a.gain), 0) >= 0 ? "text-green-700" : "text-red-700"}`}>
+                    {dashboardActivities.reduce((sum, a) => sum + parseFloat(a.gain), 0) >= 0 ? "+" : ""}
+                    {formatCurrency(dashboardActivities.reduce((sum, a) => sum + parseFloat(a.gain), 0))}
+                  </td>
+                  <td className="text-right py-4 px-4">
+                    <span className={`px-3 py-1 rounded text-xs font-bold font-mono ${
+                      dashboardActivities.reduce((sum, a) => sum + parseFloat(a.totalCost), 0) > 0 &&
+                      (dashboardActivities.reduce((sum, a) => sum + parseFloat(a.gain), 0) / dashboardActivities.reduce((sum, a) => sum + parseFloat(a.totalCost), 0)) >= 0
+                        ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
+                    }`}>
+                      {dashboardActivities.reduce((sum, a) => sum + parseFloat(a.totalCost), 0) > 0 
+                        ? (((dashboardActivities.reduce((sum, a) => sum + parseFloat(a.gain), 0) / dashboardActivities.reduce((sum, a) => sum + parseFloat(a.totalCost), 0)) * 100).toFixed(2))
+                        : "0.00"}%
+                    </span>
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          ) : (
+            <div className="py-20 text-center">
+              <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Calendar className="w-8 h-8 text-slate-300" />
+              </div>
+              <p className="text-sm font-bold text-slate-400 uppercase tracking-widest">No activities in this period</p>
+              <p className="text-[10px] text-slate-400 mt-1 uppercase tracking-tight">Try selecting a broader timeframe to review your history</p>
+            </div>
+          )}
+        </div>
+      </Card>
 
       {/* Rename Dialog */}
       <Dialog open={!!editingPortfolio} onOpenChange={() => setEditingPortfolio(null)}>
