@@ -396,7 +396,7 @@ const FinanceIndependence: React.FC = () => {
         year: currentSimYear,
         age: currentAge,
         startBalance: yearStartPortfolio,
-        withdrawal: isRetirementStarted ? (currentSimYear === retirementYear ? initialWithdrawal * remainingMonthsFactor : deterministicWithdrawal) : 0,
+        expenses: isRetirementStarted ? (currentSimYear === retirementYear ? initialWithdrawal * remainingMonthsFactor : deterministicWithdrawal) : annualExpenses * Math.pow(1 + inflationRate, years),
         ssIncome: yearSS,
         netWithdrawal: actualWithdrawal,
         earnings: earnings,
@@ -490,6 +490,7 @@ const FinanceIndependence: React.FC = () => {
       currentPortfolioValue,
       projectedPortfolioAtStart,
       retirementYear,
+      p25DepletionYear,
       age85Year: currentYear + (targetLifeExpectancy - ageToday),
       isSustainable: deterministicLastAge >= targetLifeExpectancy,
       evolution,
@@ -654,8 +655,25 @@ const FinanceIndependence: React.FC = () => {
                     <YAxis tick={{fontSize: 10}} tickFormatter={(v) => `$${(v / 1000000).toFixed(1)}M`} />
                     <ChartTooltip formatter={(v: any) => formatCurrency(v as number)} />
                     <Legend />
-                    <ReferenceLine x={retirementResults.retirementYear} stroke="#3b82f6" strokeDasharray="3 3" label={{ value: 'Retired', position: 'top', fontSize: 10 }} />
-                    <ReferenceLine x={retirementResults.age85Year} stroke="#10b981" strokeDasharray="3 3" label={{ value: `Age ${lifeExpectancy}`, position: 'top', fontSize: 10 }} />
+                    <ReferenceLine 
+                      x={retirementResults.retirementYear} 
+                      stroke="#3b82f6" 
+                      strokeDasharray="3 3" 
+                      label={{ value: 'Retirement', position: 'insideTopLeft', fill: '#3b82f6', fontSize: 10, fontWeight: 'bold', offset: 10 }} 
+                    />
+                    <ReferenceLine 
+                      x={retirementResults.p25DepletionYear} 
+                      stroke={retirementResults.lastAge >= (parseInt(lifeExpectancy) || 85) ? "#10b981" : "#f87171"} 
+                      strokeDasharray="3 3" 
+                      label={{ 
+                        value: `Sustainable until Age ${retirementResults.lastAge}`, 
+                        position: 'insideTopRight', 
+                        fill: retirementResults.lastAge >= (parseInt(lifeExpectancy) || 85) ? "#10b981" : "#f87171", 
+                        fontSize: 10, 
+                        fontWeight: 'bold', 
+                        offset: 10 
+                      }} 
+                    />
                     <Area type="monotone" dataKey="p90" name="90th %" stroke="#4ade80" fill="#4ade80" fillOpacity={0.05} />
                     <Area type="monotone" dataKey="p75" name="75th %" stroke="#60a5fa" fill="#60a5fa" fillOpacity={0.1} />
                     <Area type="monotone" dataKey="median" name="Median" stroke="#facc15" fill="#facc15" fillOpacity={0.1} />
@@ -668,11 +686,11 @@ const FinanceIndependence: React.FC = () => {
               {/* Evolution Table */}
               <div className="overflow-x-auto rounded-xl border">
                 <Table>
-                  <TableHeader><TableRow className="bg-slate-50 h-10"><TableHead className="font-bold text-[9px] uppercase">Year</TableHead><TableHead className="font-bold text-[9px] uppercase">Age</TableHead><TableHead className="text-right font-bold text-[9px] uppercase">Start</TableHead><TableHead className="text-right font-bold text-[9px] uppercase">Return</TableHead><TableHead className="text-right font-bold text-[9px] uppercase">SS</TableHead><TableHead className="text-right font-bold text-[9px] uppercase">Withdrawal</TableHead><TableHead className="text-right font-bold text-[9px] uppercase">End</TableHead></TableRow></TableHeader>
+                  <TableHeader><TableRow className="bg-slate-50 h-10"><TableHead className="font-bold text-[9px] uppercase">Year</TableHead><TableHead className="font-bold text-[9px] uppercase">Age</TableHead><TableHead className="text-right font-bold text-[9px] uppercase">Start</TableHead><TableHead className="text-right font-bold text-[9px] uppercase">Return</TableHead><TableHead className="text-right font-bold text-[9px] uppercase">SS</TableHead><TableHead className="text-right font-bold text-[9px] uppercase">Port. Withdrawal</TableHead><TableHead className="text-right font-bold text-[9px] uppercase">Expenses</TableHead><TableHead className="text-right font-bold text-[9px] uppercase">End</TableHead></TableRow></TableHeader>
                   <TableBody>
                     {retirementResults.evolution.map((step: any) => (
                       <TableRow key={step.year} className={cn("h-8", !step.isRetirement && "opacity-60")}>
-                        <TableCell className="font-bold text-xs">{step.year}</TableCell><TableCell className="text-xs">{step.age}</TableCell><TableCell className="text-right font-mono text-[11px]">{formatCurrency(step.startBalance)}</TableCell><TableCell className="text-right font-mono text-[11px] text-green-600">+{formatCurrency(step.earnings)}</TableCell><TableCell className="text-right font-mono text-[11px] text-green-700">{step.ssIncome > 0 ? formatCurrency(step.ssIncome) : "—"}</TableCell><TableCell className="text-right font-mono text-[11px] text-red-500">{step.withdrawal > 0 ? formatCurrency(step.withdrawal) : "—"}</TableCell><TableCell className="text-right font-mono text-[11px] font-bold">{formatCurrency(step.endBalance)}</TableCell>
+                        <TableCell className="font-bold text-xs">{step.year}</TableCell><TableCell className="text-xs">{step.age}</TableCell><TableCell className="text-right font-mono text-[11px]">{formatCurrency(step.startBalance)}</TableCell><TableCell className="text-right font-mono text-[11px] text-green-600">+{formatCurrency(step.earnings)}</TableCell><TableCell className="text-right font-mono text-[11px] text-green-700">{step.ssIncome > 0 ? formatCurrency(step.ssIncome) : "—"}</TableCell><TableCell className="text-right font-mono text-[11px] text-red-500">{step.netWithdrawal > 0 ? `-${formatCurrency(step.netWithdrawal)}` : "—"}</TableCell><TableCell className="text-right font-mono text-[11px] text-slate-500">{formatCurrency(step.expenses)}</TableCell><TableCell className="text-right font-mono text-[11px] font-bold">{formatCurrency(step.endBalance)}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
