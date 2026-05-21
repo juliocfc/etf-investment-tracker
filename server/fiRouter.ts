@@ -315,6 +315,7 @@ export const fiRouter = router({
       ssAmount: z.string().optional(),
       ssAge: z.string().optional(),
       lifeExpectancy: z.string().optional(),
+      targetEffortDate: z.date().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       await updateRetirementSettings(ctx.user.id, input);

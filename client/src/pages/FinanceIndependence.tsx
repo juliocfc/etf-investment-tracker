@@ -61,10 +61,6 @@ const FinanceIndependence: React.FC = () => {
   const [editingExpense, setEditingExpense] = useState<{ id: number; description: string; amount: string } | null>(null);
   const [newExpense, setNewExpense] = useState({ description: "", amount: "" });
   
-  // Bridge Simulation State
-  const [simulationSymbol, setSimulationSymbol] = useState("");
-  const [simulationAllocation, setSimulationAllocation] = useState("0");
-  
   // Full Simulation State
   const [fullSimSymbol, setFullSimSymbol] = useState("");
   const [fullSimAllocation, setFullSimAllocation] = useState("0");
@@ -79,12 +75,16 @@ const FinanceIndependence: React.FC = () => {
   const [ssAmount, setSsAmount] = useState<string>("0");
   const [ssAge, setSsAge] = useState<string>("67");
   const [lifeExpectancy, setLifeExpectancy] = useState<string>("85");
+  const [targetEffortDate, setTargetEffortDate] = useState<Date>(() => {
+    const d = new Date();
+    d.setFullYear(d.getFullYear() + 5);
+    return d;
+  });
 
   // Data fetching
   const { data: user } = trpc.auth.me.useQuery();
   const { data: holdings, isPending: isHoldingsPending, error: holdingsError } = trpc.portfolio.getAllHoldings.useQuery();
   const { data: expenses, isPending: isExpensesPending, error: expensesError } = trpc.fi.getExpenses.useQuery();
-  const { data: simulationData, isPending: isSimPending } = trpc.fi.getSimulationData.useQuery();
   const { data: fullSimData, isPending: isFullSimPending } = trpc.fi.getFullSimulationData.useQuery();
   const { data: portfolios } = trpc.portfolio.getDetailedAll.useQuery();
 
@@ -110,26 +110,6 @@ const FinanceIndependence: React.FC = () => {
     onSuccess: () => {
       toast.success("Expense deleted");
       utils.fi.getExpenses.invalidate();
-    },
-  });
-
-  const addSimAssetMutation = trpc.fi.addSimulationAsset.useMutation({
-    onSuccess: () => {
-      toast.success("Asset added to bridge simulation");
-      utils.fi.getSimulationData.invalidate();
-      setSimulationSymbol("");
-      setSimulationAllocation("0");
-    },
-  });
-
-  const updateSimAssetMutation = trpc.fi.updateSimulationAsset.useMutation({
-    onSuccess: () => utils.fi.getSimulationData.invalidate(),
-  });
-
-  const deleteSimAssetMutation = trpc.fi.deleteSimulationAsset.useMutation({
-    onSuccess: () => {
-      toast.success("Asset removed from bridge simulation");
-      utils.fi.getSimulationData.invalidate();
     },
   });
 
@@ -167,6 +147,7 @@ const FinanceIndependence: React.FC = () => {
       if (user.ssAmount) setSsAmount(user.ssAmount);
       if (user.ssAge) setSsAge(user.ssAge);
       if (user.lifeExpectancy) setLifeExpectancy(user.lifeExpectancy);
+      if (user.targetEffortDate) setTargetEffortDate(new Date(user.targetEffortDate));
     }
   }, [user]);
 
@@ -183,15 +164,6 @@ const FinanceIndependence: React.FC = () => {
       description: editingExpense.description,
       amount: editingExpense.amount,
     });
-  };
-
-  const handleAddSimAsset = () => {
-    if (!simulationSymbol) return;
-    addSimAssetMutation.mutate({ symbol: simulationSymbol, allocation: simulationAllocation });
-  };
-
-  const handleUpdateSimAllocation = (id: number, val: string) => {
-    updateSimAssetMutation.mutate({ id, allocation: val });
   };
 
   const handleAddFullSimAsset = () => {
@@ -245,40 +217,6 @@ const FinanceIndependence: React.FC = () => {
     }), { amount: 0, covered: 0, remaining: 0 });
   }, [distributedExpenses]);
 
-  const remainingGap = Math.max(0, totals.amount - monthlyIncome);
-
-  const simulationResults = useMemo(() => {
-    if (!simulationData || simulationData.length === 0 || remainingGap <= 0) return [];
-    let weightedYieldSum = 0;
-    simulationData.forEach(asset => {
-      const alloc = parseFloat(asset.allocation) || 0;
-      const yield_ = asset.price > 0 ? (asset.annualDPS / 12) / asset.price : 0;
-      weightedYieldSum += (alloc / 100) * yield_;
-    });
-    if (weightedYieldSum <= 0) return [];
-    const totalCapitalNeeded = remainingGap / weightedYieldSum;
-    return simulationData.map(asset => {
-      const allocationPercent = parseFloat(asset.allocation) || 0;
-      const costNeeded = totalCapitalNeeded * (allocationPercent / 100);
-      const sharesNeeded = asset.price > 0 ? Math.ceil(costNeeded / asset.price) : 0;
-      const monthlyDPS = asset.annualDPS / 12;
-      const totalMonthlyDiv = sharesNeeded * monthlyDPS;
-      const currentShares = holdings ? holdings.filter(h => h.symbol.toUpperCase() === asset.symbol.toUpperCase()).reduce((sum, h) => sum + parseFloat(h.quantity.toString()), 0) : 0;
-      const currentMonthlyDiv = currentShares * monthlyDPS;
-      return { ...asset, monthlyDPS, sharesNeeded, costNeeded, allocationPercent, totalMonthlyDiv, currentMonthlyDiv };
-    });
-  }, [simulationData, remainingGap, holdings]);
-
-  const simTotals = useMemo(() => {
-    return simulationResults.reduce((acc, curr) => ({
-      cost: acc.cost + curr.costNeeded,
-      shares: acc.shares + curr.sharesNeeded,
-      allocation: acc.allocation + curr.allocationPercent,
-      currentMonthlyDiv: acc.currentMonthlyDiv + curr.currentMonthlyDiv,
-      totalMonthlyDiv: acc.totalMonthlyDiv + curr.totalMonthlyDiv
-    }), { cost: 0, shares: 0, allocation: 0, currentMonthlyDiv: 0, totalMonthlyDiv: 0 });
-  }, [simulationResults]);
-
   const fullSimulationResults = useMemo(() => {
     if (!fullSimData || fullSimData.length === 0 || totals.amount <= 0) return [];
     let weightedYieldSum = 0;
@@ -322,6 +260,29 @@ const FinanceIndependence: React.FC = () => {
       monthlyDivUsed: acc.monthlyDivUsed + curr.monthlyDivUsed
     }), { cost: 0, totalShares: 0, currentShares: 0, currentValue: 0, remainingShares: 0, remainingCost: 0, allocation: 0, currentMonthlyDiv: 0, desiredMonthlyDiv: 0, monthlyDivUsed: 0 });
   }, [fullSimulationResults]);
+
+  const effortResults = useMemo(() => {
+    if (!fullSimulationResults || fullSimulationResults.length === 0) return null;
+    
+    const now = new Date();
+    let months = (targetEffortDate.getFullYear() - now.getFullYear()) * 12 + (targetEffortDate.getMonth() - now.getMonth());
+    if (months <= 0) months = 1;
+
+    const assets = fullSimulationResults.map(asset => ({
+      symbol: asset.symbol,
+      monthlyShares: asset.remainingSharesNeeded / months,
+      monthlyCapital: asset.remainingCostNeeded / months,
+      remainingShares: asset.remainingSharesNeeded,
+      remainingCapital: asset.remainingCostNeeded
+    }));
+
+    const totals = assets.reduce((acc, curr) => ({
+      monthlyCapital: acc.monthlyCapital + curr.monthlyCapital,
+      remainingCapital: acc.remainingCapital + curr.remainingCapital
+    }), { monthlyCapital: 0, remainingCapital: 0 });
+
+    return { assets, totals, months };
+  }, [fullSimulationResults, targetEffortDate]);
 
   const retirementResults = useMemo(() => {
     const annualExpenses = totals.amount * 12;
@@ -537,6 +498,42 @@ const FinanceIndependence: React.FC = () => {
         </div>
       </div>
 
+      {/* Income & Progress Overview */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <Card className="bg-white border-none shadow-md shadow-slate-200/50 overflow-hidden relative">
+          <div className="absolute top-0 left-0 w-1 h-full bg-green-500" />
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Est. Monthly Dividend Income</CardTitle>
+              <Wallet className="w-4 h-4 text-green-500" />
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-black text-slate-800 tracking-tighter">{formatCurrency(monthlyIncome)}</div>
+            <p className="text-[10px] text-slate-500 font-medium mt-1 uppercase tracking-tight">Average based on annual projections</p>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-white border-none shadow-md shadow-slate-200/50 overflow-hidden relative">
+          <div className="absolute top-0 left-0 w-1 h-full bg-blue-500" />
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">FI Progress Score</CardTitle>
+              <TrendingUp className="w-4 h-4 text-blue-500" />
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="flex justify-between items-end mb-2">
+              <div className="text-3xl font-black text-slate-800 tracking-tighter">{(totals.amount > 0 ? (monthlyIncome / totals.amount) * 100 : 0).toFixed(1)}%</div>
+              <div className="text-right text-[10px] font-bold text-slate-500 uppercase">Gap: {formatCurrency(Math.max(0, totals.amount - monthlyIncome))}</div>
+            </div>
+            <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+              <div className="h-full bg-blue-600 transition-all duration-1000" style={{ width: `${Math.min(100, (totals.amount > 0 ? (monthlyIncome / totals.amount) * 100 : 0))}%` }} />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
       {/* Monthly Expenses Section */}
       <Card className="bg-white border-none shadow-md shadow-slate-200/50">
         <CardHeader className="flex flex-row items-center justify-between border-b border-slate-50 pb-4">
@@ -569,7 +566,7 @@ const FinanceIndependence: React.FC = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {distributedExpenses.length === 0 ? (<TableRow><TableCell colSpan={8} className="text-center py-12 text-slate-400 italic">No expenses.</TableCell></TableRow>) : (
+                {distributedExpenses.length === 0 ? (<TableRow><TableCell colSpan={8} className="text-center py-12 text-slate-400 italic">No expenses defined yet.</TableCell></TableRow>) : (
                   distributedExpenses.map((exp) => (
                     <TableRow key={exp.id} className="hover:bg-slate-50/50">
                       <TableCell className="font-bold">{exp.description}</TableCell>
@@ -582,13 +579,191 @@ const FinanceIndependence: React.FC = () => {
                       <TableCell className="text-center">
                         <div className="flex items-center justify-center gap-1">
                           <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setEditingExpense({ id: exp.id, description: exp.description, amount: exp.amount.toString() })}><Edit className="w-3" /></Button>
-                          <Button variant="ghost" size="icon" className="h-7 w-7 text-red-400" onClick={() => deleteExpenseMutation.mutate({ id: exp.id })}><Trash2 className="w-3" /></Button>
+                          <Button variant="ghost" size="icon" className="h-7 w-7 text-red-400" onClick={() => { if(confirm("Delete this expense?")) deleteExpenseMutation.mutate({ id: exp.id }); }}><Trash2 className="w-3.5 h-3.5" /></Button>
                         </div>
                       </TableCell>
                     </TableRow>
                   ))
                 )}
               </TableBody>
+              {distributedExpenses.length > 0 && (
+                <TableFooter className="bg-slate-50/50">
+                  <TableRow>
+                    <TableCell className="font-bold text-[10px] uppercase">Totals</TableCell>
+                    <TableCell className="text-right font-mono font-bold">{formatCurrency(totals.amount)}</TableCell>
+                    <TableCell className="text-right font-mono">{formatCurrency(totals.amount * 12)}</TableCell>
+                    <TableCell className="text-right font-mono text-green-700 font-bold">{formatCurrency(totals.covered)}</TableCell>
+                    <TableCell className="text-right font-black">{(totals.amount > 0 ? (totals.covered / totals.amount) * 100 : 0).toFixed(1)}%</TableCell>
+                    <TableCell className="text-right font-mono text-red-700 font-bold">{formatCurrency(totals.remaining)}</TableCell>
+                    <TableCell className="text-right font-black">{(totals.amount > 0 ? (totals.remaining / totals.amount) * 100 : 0).toFixed(1)}%</TableCell>
+                    <TableCell />
+                  </TableRow>
+                </TableFooter>
+              )}
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Total Portfolio Simulation */}
+      <Card className="bg-white border-none shadow-md shadow-slate-200/50 overflow-hidden">
+        <CardHeader className="flex flex-row items-center justify-between border-b border-slate-50 pb-4">
+          <div className="flex items-center gap-2"><Target className="w-5 h-5 text-indigo-600" /><CardTitle className="text-sm font-bold uppercase tracking-wider">Total Portfolio Simulation (Full Coverage)</CardTitle></div>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative"><Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" /><Input placeholder="Symbol" className="h-8 w-32 pl-8 text-[10px] font-bold uppercase" value={fullSimSymbol} onChange={(e) => setFullSimSymbol(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleAddFullSimAsset()} /></div>
+            <Input type="number" placeholder="Alloc %" className="h-8 w-16 text-[10px] font-bold text-right" value={fullSimAllocation} onChange={(e) => setFullSimAllocation(e.target.value)} />
+            <div className="flex items-center gap-1 bg-slate-50 px-2 rounded h-8 border border-slate-200"><span className="text-[8px] font-bold text-slate-400 uppercase">Usage %</span><Input type="number" className="h-6 w-12 border-none bg-transparent text-[10px] font-bold text-right p-0 focus-visible:ring-0" value={fullSimUsage} onChange={(e) => setFullSimUsage(e.target.value)} /></div>
+            <Button size="sm" onClick={handleAddFullSimAsset} className="bg-indigo-600 hover:bg-indigo-700 h-8 font-bold uppercase text-[10px] tracking-widest" disabled={addFullSimAssetMutation.isPending}><Plus className="w-3.5 h-3.5 mr-1.5" />{addFullSimAssetMutation.isPending ? "..." : "Add"}</Button>
+          </div>
+        </CardHeader>
+        <CardContent className="p-0">
+          <div className="p-4 bg-indigo-50/30 border-b border-indigo-50 flex justify-between items-center"><p className="text-[10px] text-indigo-700 font-bold uppercase tracking-widest leading-relaxed">Strategy: Define a complete asset mix to cover all {formatCurrency(totals.amount)} expenses. Usage % defines spendable dividend portion.</p>{fullSimTotals.allocation !== 100 && (<p className="text-[10px] text-orange-600 font-black uppercase bg-orange-50 px-2 py-1 rounded">Alloc: {fullSimTotals.allocation.toFixed(1)}%</p>)}</div>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-slate-50/50">
+                  <TableHead className="font-bold text-[10px] uppercase h-10">Asset</TableHead>
+                  <TableHead className="text-right font-bold text-[10px] uppercase h-10">Alloc %</TableHead>
+                  <TableHead className="text-right font-bold text-[10px] uppercase h-10">Usage %</TableHead>
+                  <TableHead className="text-right font-bold text-[10px] uppercase h-10">Des. Div (Used)</TableHead>
+                  <TableHead className="text-right font-bold text-[10px] uppercase h-10">Cur. Shares</TableHead>
+                  <TableHead className="text-right font-bold text-[10px] uppercase h-10">Rem. Shares</TableHead>
+                  <TableHead className="text-right font-bold text-[10px] uppercase h-10">Target Shares</TableHead>
+                  <TableHead className="text-right font-bold text-[10px] uppercase h-10">Progress %</TableHead>
+                  <TableHead className="text-right font-bold text-[10px] uppercase h-10">Cur. Capital</TableHead>
+                  <TableHead className="text-right font-bold text-[10px] uppercase h-10">Rem. Capital</TableHead>
+                  <TableHead className="text-right font-bold text-[10px] uppercase h-10">Total Capital</TableHead>
+                  <TableHead className="text-center font-bold text-[10px] uppercase h-10">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {fullSimulationResults.length === 0 ? (<TableRow><TableCell colSpan={11} className="text-center py-8 text-slate-400 italic text-xs">No simulation assets added.</TableCell></TableRow>) : (
+                  fullSimulationResults.map((asset) => (
+                    <TableRow key={asset.id} className="hover:bg-slate-50/50">
+                      <TableCell className="font-bold text-slate-700">{asset.symbol}</TableCell>
+                      <TableCell className="text-right"><Input type="number" className="h-7 w-16 text-right font-mono text-[11px] ml-auto" value={asset.allocation} onChange={(e) => handleUpdateFullSim(asset.id, { allocation: e.target.value })} /></TableCell>
+                      <TableCell className="text-right"><Input type="number" className="h-7 w-20 text-right font-mono text-[11px] ml-auto" value={asset.usagePercent} onChange={(e) => handleUpdateFullSim(asset.id, { usagePercent: e.target.value })} /></TableCell>
+                      <TableCell className="text-right font-mono text-xs font-bold text-green-600">{formatCurrency(asset.monthlyDivUsed)}</TableCell>
+                      <TableCell className="text-right font-mono text-xs text-slate-500">{asset.currentShares.toLocaleString()}</TableCell>
+                      <TableCell className="text-right font-mono text-xs font-bold text-indigo-600">{asset.remainingSharesNeeded.toLocaleString()}</TableCell>
+                      <TableCell className="text-right font-mono text-xs font-bold text-slate-700">{asset.totalSharesNeeded.toLocaleString()}</TableCell>
+                      <TableCell className="text-right"><div className="flex flex-col items-end"><span className={`text-[10px] font-black ${asset.progressPercent >= 100 ? "text-green-600" : "text-blue-600"}`}>{asset.progressPercent.toFixed(1)}%</span><div className="w-12 h-1 bg-slate-100 rounded-full mt-1 overflow-hidden"><div className={`h-full transition-all ${asset.progressPercent >= 100 ? "bg-green-500" : "bg-blue-500"}`} style={{ width: `${Math.min(100, asset.progressPercent)}%` }} /></div></div></TableCell>
+                      <TableCell className="text-right font-mono text-xs text-slate-500">{formatCurrency(asset.currentValue)}</TableCell>
+                      <TableCell className="text-right font-mono text-xs font-bold text-indigo-700">{formatCurrency(asset.remainingCostNeeded)}</TableCell>
+                      <TableCell className="text-right font-mono text-xs text-slate-400">{formatCurrency(asset.costNeeded)}</TableCell>
+                      <TableCell className="text-center"><Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-red-600" onClick={() => deleteFullSimAssetMutation.mutate({ id: asset.id })}><Trash2 className="w-3.5 h-3.5" /></Button></TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+              <TableFooter className="bg-indigo-50/50">
+                <TableRow>
+                  <TableCell className="font-bold text-indigo-700 uppercase text-[10px]">Totals</TableCell>
+                  <TableCell className="text-right font-mono text-xs font-bold">{fullSimTotals.allocation.toFixed(1)}%</TableCell><TableCell />
+                  <TableCell className="text-right font-mono text-xs font-bold text-green-700">{formatCurrency(fullSimTotals.monthlyDivUsed)}</TableCell>
+                  <TableCell colSpan={3} />
+                  <TableCell className="text-right font-mono text-xs font-bold text-green-700">{(fullSimTotals.cost > 0 ? (fullSimTotals.currentValue / fullSimTotals.cost) * 100 : 0).toFixed(1)}%</TableCell>
+                  <TableCell className="text-right font-mono text-xs font-bold text-slate-500">{formatCurrency(fullSimTotals.currentValue)}</TableCell>
+                  <TableCell className="text-right font-mono text-xs font-bold text-indigo-900">{formatCurrency(fullSimTotals.remainingCost)}</TableCell>
+                  <TableCell className="text-right font-mono text-xs font-bold text-slate-500">{formatCurrency(fullSimTotals.cost)}</TableCell>
+                  <TableCell />
+                </TableRow>
+              </TableFooter>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Monthly Effort Simulation */}
+      <Card className="bg-white border-none shadow-md shadow-slate-200/50 overflow-hidden relative">
+        <div className="absolute top-0 left-0 w-1 h-full bg-emerald-500" />
+        <CardHeader className="flex flex-row items-center justify-between border-b border-slate-50 pb-4">
+          <div className="flex items-center gap-2">
+            <Calculator className="w-5 h-5 text-emerald-600" />
+            <CardTitle className="text-sm font-bold uppercase tracking-wider">Monthly Effort Simulation</CardTitle>
+          </div>
+          <div className="flex flex-wrap items-end gap-4">
+            <div className="flex flex-col gap-1">
+              <span className="text-[10px] font-bold text-slate-400 uppercase">Target Goal Date</span>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className="h-8 w-[160px] text-[10px] font-bold">
+                    <CalendarIcon className="mr-2 h-3.5 w-3.5" />
+                    {targetEffortDate ? format(targetEffortDate, "PPP") : "Pick Date"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0">
+                  <Calendar 
+                    mode="single" 
+                    selected={targetEffortDate} 
+                    onSelect={(d) => { 
+                      if (d) { 
+                        setTargetEffortDate(d); 
+                        updateRetirementSettingsMutation.mutate({ targetEffortDate: d });
+                      } 
+                    }} 
+                    captionLayout="dropdown" 
+                    fromYear={new Date().getFullYear()} 
+                    toYear={new Date().getFullYear() + 30} 
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="p-0">
+          <div className="p-4 bg-emerald-50/30 border-b border-emerald-50 flex justify-between items-center">
+            <p className="text-[10px] text-emerald-700 font-bold uppercase tracking-widest leading-relaxed">
+              Plan: Investment required every month until {format(targetEffortDate, "MMMM yyyy")} ({effortResults?.months} months remaining).
+            </p>
+          </div>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-slate-50/50">
+                  <TableHead className="font-bold text-[10px] uppercase h-10">Asset</TableHead>
+                  <TableHead className="text-right font-bold text-[10px] uppercase h-10">Monthly Shares</TableHead>
+                  <TableHead className="text-right font-bold text-[10px] uppercase h-10">Monthly Capital</TableHead>
+                  <TableHead className="text-right font-bold text-[10px] uppercase h-10">Total Rem. Shares</TableHead>
+                  <TableHead className="text-right font-bold text-[10px] uppercase h-10">Total Rem. Capital</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {!effortResults || effortResults.assets.length === 0 ? (
+                  <TableRow><TableCell colSpan={5} className="text-center py-8 text-slate-400 italic text-xs">Define your Total Portfolio Simulation above.</TableCell></TableRow>
+                ) : (
+                  effortResults.assets.map((asset) => (
+                    <TableRow key={asset.symbol} className="hover:bg-slate-50/50">
+                      <TableCell className="font-bold text-slate-700">{asset.symbol}</TableCell>
+                      <TableCell className="text-right font-mono text-xs font-bold text-emerald-600">
+                        {asset.monthlyShares.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-xs font-bold text-emerald-700">
+                        {formatCurrency(asset.monthlyCapital)}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-xs text-slate-500">
+                        {asset.remainingShares.toLocaleString()}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-xs text-slate-500">
+                        {formatCurrency(asset.remainingCapital)}
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+              <TableFooter className="bg-emerald-50/50">
+                <TableRow>
+                  <TableCell className="font-bold text-emerald-700 uppercase text-[10px]">Totals</TableCell>
+                  <TableCell />
+                  <TableCell className="text-right font-mono text-xs font-black text-emerald-900">
+                    {formatCurrency(effortResults?.totals.monthlyCapital || 0)} / month
+                  </TableCell>
+                  <TableCell />
+                  <TableCell className="text-right font-mono text-xs font-bold text-slate-700">
+                    {formatCurrency(effortResults?.totals.remainingCapital || 0)}
+                  </TableCell>
+                </TableRow>
+              </TableFooter>
             </Table>
           </div>
         </CardContent>
@@ -602,7 +777,7 @@ const FinanceIndependence: React.FC = () => {
           <div className="flex flex-wrap items-end gap-4">
             <div className="flex flex-col gap-1">
               <span className="text-[10px] font-bold text-slate-400 uppercase">Birth Date</span>
-              <Popover><PopoverTrigger asChild><Button variant="outline" className="h-8 w-[160px] text-[10px] font-bold">{userBirthDate ? format(userBirthDate, "PPP") : "Select Date"}</Button></PopoverTrigger><PopoverContent className="w-auto p-0"><Calendar mode="single" selected={userBirthDate} onSelect={(d) => { setUserBirthDate(date); if (d) updateRetirementSettingsMutation.mutate({ birthDate: d }); }} captionLayout="dropdown" fromYear={1940} toYear={new Date().getFullYear()} /></PopoverContent></Popover>
+              <Popover><PopoverTrigger asChild><Button variant="outline" className="h-8 w-[160px] text-[10px] font-bold">{userBirthDate ? format(userBirthDate, "PPP") : "Select Date"}</Button></PopoverTrigger><PopoverContent className="w-auto p-0"><Calendar mode="single" selected={userBirthDate} onSelect={(d) => { if(d) { setUserBirthDate(d); updateRetirementSettingsMutation.mutate({ birthDate: d }); } }} captionLayout="dropdown" fromYear={1940} toYear={new Date().getFullYear()} /></PopoverContent></Popover>
             </div>
             <div className="flex flex-col gap-1">
               <span className="text-[10px] font-bold text-slate-400 uppercase">Retirement Start</span>
@@ -654,7 +829,7 @@ const FinanceIndependence: React.FC = () => {
                     <XAxis dataKey="year" tick={{fontSize: 10}} />
                     <YAxis tick={{fontSize: 10}} tickFormatter={(v) => `$${(v / 1000000).toFixed(1)}M`} />
                     <ChartTooltip formatter={(v: any) => formatCurrency(v as number)} />
-                    <Legend />
+                    <Legend iconType="circle" wrapperStyle={{ fontSize: '10px', fontWeight: 'bold', textTransform: 'uppercase', paddingTop: '20px' }} />
                     <ReferenceLine 
                       x={retirementResults.retirementYear} 
                       stroke="#3b82f6" 

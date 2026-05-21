@@ -328,7 +328,8 @@ export async function updateRetirementSettings(userId: number, settings: {
   birthDate?: Date,
   ssAmount?: string,
   ssAge?: string,
-  lifeExpectancy?: string
+  lifeExpectancy?: string,
+  targetEffortDate?: Date
 }) {
   const db = await getDb();
   const updateData: any = {
@@ -343,6 +344,7 @@ export async function updateRetirementSettings(userId: number, settings: {
   if (settings.ssAmount !== undefined) updateData.ssAmount = settings.ssAmount;
   if (settings.ssAge !== undefined) updateData.ssAge = settings.ssAge;
   if (settings.lifeExpectancy !== undefined) updateData.lifeExpectancy = settings.lifeExpectancy;
+  if (settings.targetEffortDate !== undefined) updateData.targetEffortDate = settings.targetEffortDate;
 
   return db.update(users)
     .set(updateData)
