@@ -87,6 +87,7 @@ const FinanceIndependence: React.FC = () => {
   const { data: expenses, isPending: isExpensesPending, error: expensesError } = trpc.fi.getExpenses.useQuery();
   const { data: fullSimData, isPending: isFullSimPending } = trpc.fi.getFullSimulationData.useQuery();
   const { data: portfolios } = trpc.portfolio.getDetailedAll.useQuery();
+  const { data: currentMonthActivities } = trpc.etf.getInvestmentActivities.useQuery({ range: "cm" });
 
   // Mutations
   const addExpenseMutation = trpc.fi.addExpense.useMutation({
@@ -268,21 +269,37 @@ const FinanceIndependence: React.FC = () => {
     let months = (targetEffortDate.getFullYear() - now.getFullYear()) * 12 + (targetEffortDate.getMonth() - now.getMonth());
     if (months <= 0) months = 1;
 
-    const assets = fullSimulationResults.map(asset => ({
-      symbol: asset.symbol,
-      monthlyShares: asset.remainingSharesNeeded / months,
-      monthlyCapital: asset.remainingCostNeeded / months,
-      remainingShares: asset.remainingSharesNeeded,
-      remainingCapital: asset.remainingCostNeeded
-    }));
+    const assets = fullSimulationResults.map(asset => {
+      const monthlyTarget = asset.remainingSharesNeeded / months;
+      
+      // Find what was already bought this month from activities
+      const activity = currentMonthActivities?.find(a => a.symbol.toUpperCase() === asset.symbol.toUpperCase());
+      const purchasedThisMonth = activity ? parseFloat(activity.totalQuantity) : 0;
+      const monthlyRemaining = Math.max(0, monthlyTarget - purchasedThisMonth);
+      const capitalForRemaining = monthlyRemaining * asset.price;
+
+      return {
+        symbol: asset.symbol,
+        monthlyShares: monthlyTarget,
+        monthlyCapital: asset.remainingCostNeeded / months,
+        remainingShares: asset.remainingSharesNeeded,
+        remainingCapital: asset.remainingCostNeeded,
+        purchasedThisMonth,
+        monthlyRemaining,
+        capitalForRemaining
+      };
+    });
 
     const totals = assets.reduce((acc, curr) => ({
       monthlyCapital: acc.monthlyCapital + curr.monthlyCapital,
-      remainingCapital: acc.remainingCapital + curr.remainingCapital
-    }), { monthlyCapital: 0, remainingCapital: 0 });
+      remainingCapital: acc.remainingCapital + curr.remainingCapital,
+      purchasedThisMonth: acc.purchasedThisMonth + curr.purchasedThisMonth,
+      monthlyRemaining: acc.monthlyRemaining + curr.monthlyRemaining,
+      capitalForRemaining: acc.capitalForRemaining + curr.capitalForRemaining
+    }), { monthlyCapital: 0, remainingCapital: 0, purchasedThisMonth: 0, monthlyRemaining: 0, capitalForRemaining: 0 });
 
     return { assets, totals, months };
-  }, [fullSimulationResults, targetEffortDate]);
+  }, [fullSimulationResults, targetEffortDate, currentMonthActivities]);
 
   const retirementResults = useMemo(() => {
     const annualExpenses = totals.amount * 12;
@@ -722,7 +739,10 @@ const FinanceIndependence: React.FC = () => {
               <TableHeader>
                 <TableRow className="bg-slate-50/50">
                   <TableHead className="font-bold text-[10px] uppercase h-10">Asset</TableHead>
-                  <TableHead className="text-right font-bold text-[10px] uppercase h-10">Monthly Shares</TableHead>
+                  <TableHead className="text-right font-bold text-[10px] uppercase h-10">Monthly Target</TableHead>
+                  <TableHead className="text-right font-bold text-[10px] uppercase h-10">Purchased (CM)</TableHead>
+                  <TableHead className="text-right font-bold text-[10px] uppercase h-10">Monthly Rem.</TableHead>
+                  <TableHead className="text-right font-bold text-[10px] uppercase h-10">Rem. Capital (CM)</TableHead>
                   <TableHead className="text-right font-bold text-[10px] uppercase h-10">Monthly Capital</TableHead>
                   <TableHead className="text-right font-bold text-[10px] uppercase h-10">Total Rem. Shares</TableHead>
                   <TableHead className="text-right font-bold text-[10px] uppercase h-10">Total Rem. Capital</TableHead>
@@ -730,15 +750,24 @@ const FinanceIndependence: React.FC = () => {
               </TableHeader>
               <TableBody>
                 {!effortResults || effortResults.assets.length === 0 ? (
-                  <TableRow><TableCell colSpan={5} className="text-center py-8 text-slate-400 italic text-xs">Define your Total Portfolio Simulation above.</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={8} className="text-center py-8 text-slate-400 italic text-xs">Define your Total Portfolio Simulation above.</TableCell></TableRow>
                 ) : (
                   effortResults.assets.map((asset) => (
                     <TableRow key={asset.symbol} className="hover:bg-slate-50/50">
                       <TableCell className="font-bold text-slate-700">{asset.symbol}</TableCell>
-                      <TableCell className="text-right font-mono text-xs font-bold text-emerald-600">
+                      <TableCell className="text-right font-mono text-xs font-bold text-slate-600">
                         {asset.monthlyShares.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </TableCell>
+                      <TableCell className="text-right font-mono text-xs font-bold text-blue-600">
+                        {asset.purchasedThisMonth.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-xs font-bold text-emerald-600">
+                        {asset.monthlyRemaining.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </TableCell>
                       <TableCell className="text-right font-mono text-xs font-bold text-emerald-700">
+                        {formatCurrency(asset.capitalForRemaining)}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-xs font-bold text-slate-400">
                         {formatCurrency(asset.monthlyCapital)}
                       </TableCell>
                       <TableCell className="text-right font-mono text-xs text-slate-500">
@@ -755,8 +784,17 @@ const FinanceIndependence: React.FC = () => {
                 <TableRow>
                   <TableCell className="font-bold text-emerald-700 uppercase text-[10px]">Totals</TableCell>
                   <TableCell />
+                  <TableCell className="text-right font-mono text-xs font-bold text-blue-700">
+                    {effortResults?.totals.purchasedThisMonth.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </TableCell>
+                  <TableCell className="text-right font-mono text-xs font-bold text-emerald-700">
+                    {effortResults?.totals.monthlyRemaining.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </TableCell>
                   <TableCell className="text-right font-mono text-xs font-black text-emerald-900">
-                    {formatCurrency(effortResults?.totals.monthlyCapital || 0)} / month
+                    {formatCurrency(effortResults?.totals.capitalForRemaining || 0)}
+                  </TableCell>
+                  <TableCell className="text-right font-mono text-xs font-bold text-slate-500">
+                    {formatCurrency(effortResults?.totals.monthlyCapital || 0)} / mo
                   </TableCell>
                   <TableCell />
                   <TableCell className="text-right font-mono text-xs font-bold text-slate-700">
