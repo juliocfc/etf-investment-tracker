@@ -3,23 +3,23 @@ import { sql } from "drizzle-orm";
 
 export const users = sqliteTable("users", {
   id: integer("id").primaryKey({ autoIncrement: true }),
-  openId: text("openId").notNull().unique(),
+  openId: text("openid").notNull().unique(),
   name: text("name"),
   email: text("email"),
-  loginMethod: text("loginMethod"),
+  loginMethod: text("loginmethod"),
   role: text("role").default("user").notNull(), // "user" or "admin"
-  retirementWithdrawalRate: text("retirementWithdrawalRate"),
-  retirementReturnRate: text("retirementReturnRate"),
-  retirementInflationRate: text("retirementInflationRate"),
-  retirementStartDate: integer("retirementStartDate", { mode: "timestamp" }),
-  userBirthDate: integer("userBirthDate", { mode: "timestamp" }),
-  ssAmount: text("ssAmount"),
-  ssAge: text("ssAge"),
-  lifeExpectancy: text("lifeExpectancy").default("85"),
-  targetEffortDate: integer("targetEffortDate", { mode: "timestamp" }),
-  createdAt: integer("createdAt", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
-  updatedAt: integer("updatedAt", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
-  lastSignedIn: integer("lastSignedIn", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+  retirementWithdrawalRate: text("retirementwithdrawalrate"),
+  retirementReturnRate: text("retirementreturnrate"),
+  retirementInflationRate: text("retirementinflationrate"),
+  retirementStartDate: integer("retirementstartdate", { mode: "timestamp" }),
+  userBirthDate: integer("userbirthdate", { mode: "timestamp" }),
+  ssAmount: text("ssamount"),
+  ssAge: text("ssage"),
+  lifeExpectancy: text("lifeexpectancy").default("85"),
+  targetEffortDate: integer("targeteffortdate", { mode: "timestamp" }),
+  createdAt: integer("createdat", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+  updatedAt: integer("updatedat", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+  lastSignedIn: integer("lastsignedin", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
 export type User = typeof users.$inferSelect;
@@ -27,11 +27,11 @@ export type InsertUser = typeof users.$inferInsert;
 
 export const portfolios = sqliteTable("portfolios", {
   id: integer("id").primaryKey({ autoIncrement: true }),
-  userId: integer("userId").notNull(),
+  userId: integer("userid").notNull(),
   name: text("name").notNull(),
   description: text("description"),
-  createdAt: integer("createdAt", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
-  updatedAt: integer("updatedAt", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+  createdAt: integer("createdat", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+  updatedAt: integer("updatedat", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
 export type Portfolio = typeof portfolios.$inferSelect;
@@ -39,55 +39,55 @@ export type InsertPortfolio = typeof portfolios.$inferInsert;
 
 export const accounts = sqliteTable("accounts", {
   id: integer("id").primaryKey({ autoIncrement: true }),
-  userId: integer("userId").notNull(),
-  portfolioId: integer("portfolioId").notNull(),
+  userId: integer("userid").notNull(),
+  portfolioId: integer("portfolioid").notNull(),
   name: text("name").notNull(),
   number: text("number"),
-  accountType: text("accountType").default("Brokerage").notNull(), // "Retirement", "Brokerage", "Savings", "Checking", "Other"
-  createdAt: integer("createdAt", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
-  updatedAt: integer("updatedAt", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+  accountType: text("accounttype").default("Brokerage").notNull(), // "Retirement", "Brokerage", "Savings", "Checking", "Other"
+  createdAt: integer("createdat", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+  updatedAt: integer("updatedat", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
 export type Account = typeof accounts.$inferSelect;
 export type InsertAccount = typeof accounts.$inferInsert;
 
-export const etfHoldings = sqliteTable("etfHoldings", {
+export const etfHoldings = sqliteTable("etfholdings", {
   id: integer("id").primaryKey({ autoIncrement: true }),
-  userId: integer("userId").notNull(),
-  portfolioId: integer("portfolioId").notNull(),
-  accountId: integer("accountId").default(0).notNull(),
+  userId: integer("userid").notNull(),
+  portfolioId: integer("portfolioid").notNull(),
+  accountId: integer("accountid").default(0).notNull(),
   symbol: text("symbol").notNull(),
   name: text("name").notNull(),
   quantity: text("quantity").notNull(),
-  purchasePrice: text("purchasePrice").notNull(),
-  currentPrice: text("currentPrice").notNull(),
-  annualDividendPerShare: text("annualDividendPerShare").default("0").notNull(),
-  desiredAllocation: text("desiredAllocation").default("0").notNull(),
-  purchaseDate: integer("purchaseDate", { mode: "timestamp" }).notNull(),
-  lastPriceUpdate: integer("lastPriceUpdate", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
-  createdAt: integer("createdAt", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
-  updatedAt: integer("updatedAt", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+  purchasePrice: text("purchaseprice").notNull(),
+  currentPrice: text("currentprice").notNull(),
+  annualDividendPerShare: text("annualdividendpershare").default("0").notNull(),
+  desiredAllocation: text("desiredallocation").default("0").notNull(),
+  purchaseDate: integer("purchasedate", { mode: "timestamp" }).notNull(),
+  lastPriceUpdate: integer("lastpriceupdate", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+  createdAt: integer("createdat", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+  updatedAt: integer("updatedat", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
 export const purchases = sqliteTable("purchases", {
   id: integer("id").primaryKey({ autoIncrement: true }),
-  userId: integer("userId").notNull(),
-  portfolioId: integer("portfolioId").notNull(),
-  accountId: integer("accountId").default(0).notNull(),
-  holdingId: integer("holdingId").notNull(),
+  userId: integer("userid").notNull(),
+  portfolioId: integer("portfolioid").notNull(),
+  accountId: integer("accountid").default(0).notNull(),
+  holdingId: integer("holdingid").notNull(),
   symbol: text("symbol").notNull(),
   quantity: text("quantity").notNull(),
   price: text("price").notNull(),
   fees: text("fees").default("0").notNull(),
-  cashTransactionId: integer("cashTransactionId"),
-  purchaseDate: integer("purchaseDate", { mode: "timestamp" }).notNull(),
-  isSold: integer("isSold", { mode: "boolean" }).default(false),
-  soldDate: integer("soldDate", { mode: "timestamp" }),
-  soldPrice: text("soldPrice"),
-  createdAt: integer("createdAt", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+  cashTransactionId: integer("cashtransactionid"),
+  purchaseDate: integer("purchasedate", { mode: "timestamp" }).notNull(),
+  isSold: integer("issold", { mode: "boolean" }).default(false),
+  soldDate: integer("solddate", { mode: "timestamp" }),
+  soldPrice: text("soldprice"),
+  createdAt: integer("createdat", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
-export const priceHistory = sqliteTable("priceHistory", {
+export const priceHistory = sqliteTable("pricehistory", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   userId: integer("userId").notNull(),
   symbol: text("symbol").notNull(),
@@ -96,7 +96,7 @@ export const priceHistory = sqliteTable("priceHistory", {
   timestamp: integer("timestamp", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
-export const assetPrices = sqliteTable("assetPrices", {
+export const assetPrices = sqliteTable("assetprices", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   symbol: text("symbol").notNull(),
   price: text("price").notNull(),
@@ -104,7 +104,7 @@ export const assetPrices = sqliteTable("assetPrices", {
   createdAt: integer("createdAt", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
-export const cashBalance = sqliteTable("cashBalance", {
+export const cashBalance = sqliteTable("cashbalance", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   userId: integer("userId").notNull(),
   portfolioId: integer("portfolioId").notNull(),
@@ -114,7 +114,7 @@ export const cashBalance = sqliteTable("cashBalance", {
   updatedAt: integer("updatedAt", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
-export const cashBalanceHistory = sqliteTable("cashBalanceHistory", {
+export const cashBalanceHistory = sqliteTable("cashbalancehistory", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   userId: integer("userId").notNull(),
   portfolioId: integer("portfolioId").notNull(),
@@ -126,7 +126,7 @@ export const cashBalanceHistory = sqliteTable("cashBalanceHistory", {
   date: integer("date", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
-export const balanceHistory = sqliteTable("balanceHistory", {
+export const balanceHistory = sqliteTable("balancehistory", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   userId: integer("userId").notNull(),
   portfolioId: integer("portfolioId").notNull(),
@@ -137,7 +137,7 @@ export const balanceHistory = sqliteTable("balanceHistory", {
   timestamp: integer("timestamp", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
-export const dividendHistory = sqliteTable("dividendHistory", {
+export const dividendHistory = sqliteTable("dividendhistory", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   userId: integer("userId").notNull(),
   symbol: text("symbol").notNull(),
@@ -148,7 +148,7 @@ export const dividendHistory = sqliteTable("dividendHistory", {
   createdAt: integer("createdAt", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
-export const importedTransactions = sqliteTable("importedTransactions", {
+export const importedTransactions = sqliteTable("importedtransactions", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   userId: integer("userId").notNull(),
   externalId: text("externalId").notNull(), // The ID from SnapTrade/other source
@@ -158,7 +158,7 @@ export const importedTransactions = sqliteTable("importedTransactions", {
   uniqueIndex("external_id_source_idx").on(table.externalId, table.source),
 ]);
 
-export const brokerageTransactions = sqliteTable("brokerageTransactions", {
+export const brokerageTransactions = sqliteTable("brokeragetransactions", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   userId: integer("userId").notNull(),
   externalId: text("externalId").notNull().unique(), // Activity ID from SnapTrade
@@ -178,7 +178,7 @@ export const brokerageTransactions = sqliteTable("brokerageTransactions", {
   updatedAt: integer("updatedAt", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
-export const brokerageSyncs = sqliteTable("brokerageSyncs", {
+export const brokerageSyncs = sqliteTable("brokeragesyncs", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   userId: integer("userId").notNull(),
   lastSyncAt: integer("lastSyncAt", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
@@ -187,7 +187,7 @@ export const brokerageSyncs = sqliteTable("brokerageSyncs", {
   uniqueIndex("user_sync_idx").on(table.userId),
 ]);
 
-export const brokerageHoldings = sqliteTable("brokerageHoldings", {
+export const brokerageHoldings = sqliteTable("brokerageholdings", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   userId: integer("userId").notNull(),
   accountId: text("accountId").notNull(), // SnapTrade Account ID
@@ -214,7 +214,7 @@ export const expenses = sqliteTable("expenses", {
   updatedAt: integer("updatedAt", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
-export const fiSimulationAssets = sqliteTable("fiSimulationAssets", {
+export const fiSimulationAssets = sqliteTable("fisimulationassets", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   userId: integer("userId").notNull(),
   symbol: text("symbol").notNull(),
@@ -222,7 +222,7 @@ export const fiSimulationAssets = sqliteTable("fiSimulationAssets", {
   createdAt: integer("createdAt", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
-export const fiFullSimulationAssets = sqliteTable("fiFullSimulationAssets", {
+export const fiFullSimulationAssets = sqliteTable("fifullsimulationassets", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   userId: integer("userId").notNull(),
   symbol: text("symbol").notNull(),

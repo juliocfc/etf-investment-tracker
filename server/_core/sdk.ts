@@ -290,8 +290,15 @@ class SDKServer {
       throw ForbiddenError("User not found");
     }
 
+    // Ensure we use the correct casing for openId from the database row
+    const openId = user.openId || (user as any).openid;
+    if (!openId) {
+      console.error("[Auth] User found but missing openId:", JSON.stringify(user));
+      throw ForbiddenError("User identity error");
+    }
+
     await db.upsertUser({
-      openId: user.openId,
+      openId: openId,
       lastSignedIn: signedInAt,
     });
 

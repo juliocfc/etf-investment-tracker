@@ -118,6 +118,9 @@ importers:
       '@trpc/server':
         specifier: ^11.8.0
         version: 11.8.0(typescript@5.9.3)
+      '@tursodatabase/sync':
+        specifier: ^0.6.1
+        version: 0.6.1
       axios:
         specifier: ^1.16.0
         version: 1.16.0
@@ -2493,6 +2496,38 @@ packages:
     resolution: {integrity: sha512-DphyQnLuyX2nwJCQGWQ9zYz4hZGvRhSBqDhQ0SH3tDhQ3PU4u68xofA0pJ741Ir4InEAFD+TtJVLAQy+wVOkiQ==}
     peerDependencies:
       typescript: '>=5.7.2'
+
+  '@tursodatabase/database-common@0.6.1':
+    resolution: {integrity: sha512-fkmkhgSUDg3MXkcziTG9Ime3AY5+YvvDN7VvUDEMNV7MP+XgwE/i5tU6eQP1EKa/zDkdSYPq8gPcmROmKmKL8Q==}
+
+  '@tursodatabase/serverless@0.2.4':
+    resolution: {integrity: sha512-kqf3FINvTGx8N1iH/4e1Dkbr/om5q9qitshzvljtQXwZFQIsVP/mDE76mGg9U2dg/ElOZKFKtT1VXDgd39Dr1w==}
+
+  '@tursodatabase/sync-common@0.6.1':
+    resolution: {integrity: sha512-QjImpfwGomXRPmr7+KQUxN1RHslOCY77ElHgmAdpDy0IAqp4WDO12waPpzV45hxoVb6tlmuArFEDdBGdiq9npQ==}
+
+  '@tursodatabase/sync-darwin-arm64@0.6.1':
+    resolution: {integrity: sha512-OneZUhTPTPkf048nu2rr39YLM2+CnAcY9oJUsAJvUc2ClLUIvFQtHSgTP7L13LtaLXLjR6Htzy77jKz+0hF4Tw==}
+    cpu: [arm64]
+    os: [darwin]
+
+  '@tursodatabase/sync-linux-arm64-gnu@0.6.1':
+    resolution: {integrity: sha512-Rs2Pei/sxBKma9Wfq5MNpUMLrfCxzx3qxiBEZcrfDsiBPkXCoU2F9GUzRKUo24pRcmKaZCCfSx0zLs1FFgt68A==}
+    cpu: [arm64]
+    os: [linux]
+
+  '@tursodatabase/sync-linux-x64-gnu@0.6.1':
+    resolution: {integrity: sha512-YWCt0SPi5imXGdVYBFao0Y8jYlkxh4TLBdHNw5QBffbxOKFwV5+ur2qf9rD1hTaY1SLxrosiWvygPAE/1DCUTA==}
+    cpu: [x64]
+    os: [linux]
+
+  '@tursodatabase/sync-win32-x64-msvc@0.6.1':
+    resolution: {integrity: sha512-KGTcLjN46laYBZCFm3F972e/mn6t8XPbm5zx34r1C7UC17GC5ONlDA5ArWegLfFAL5wuRbUjkk1kYFRIKAsPiw==}
+    cpu: [x64]
+    os: [win32]
+
+  '@tursodatabase/sync@0.6.1':
+    resolution: {integrity: sha512-FsyiVFdi6ufPy/l00XryacTLG/hpc7gum7JjhRvWGbABDqOiZL2WI4V/hPf3iu0eppWuU5PS6gHvIBm+DyCdiQ==}
 
   '@tybys/wasm-util@0.10.2':
     resolution: {integrity: sha512-RoBvJ2X0wuKlWFIjrwffGw1IqZHKQqzIchKaadZZfnNpsAYp2mM0h36JtPCjNDAHGgYez/15uMBpfGwchhiMgg==}
@@ -7383,6 +7418,37 @@ snapshots:
   '@trpc/server@11.8.0(typescript@5.9.3)':
     dependencies:
       typescript: 5.9.3
+
+  '@tursodatabase/database-common@0.6.1': {}
+
+  '@tursodatabase/serverless@0.2.4': {}
+
+  '@tursodatabase/sync-common@0.6.1':
+    dependencies:
+      '@tursodatabase/database-common': 0.6.1
+      '@tursodatabase/serverless': 0.2.4
+
+  '@tursodatabase/sync-darwin-arm64@0.6.1':
+    optional: true
+
+  '@tursodatabase/sync-linux-arm64-gnu@0.6.1':
+    optional: true
+
+  '@tursodatabase/sync-linux-x64-gnu@0.6.1':
+    optional: true
+
+  '@tursodatabase/sync-win32-x64-msvc@0.6.1':
+    optional: true
+
+  '@tursodatabase/sync@0.6.1':
+    dependencies:
+      '@tursodatabase/database-common': 0.6.1
+      '@tursodatabase/sync-common': 0.6.1
+    optionalDependencies:
+      '@tursodatabase/sync-darwin-arm64': 0.6.1
+      '@tursodatabase/sync-linux-arm64-gnu': 0.6.1
+      '@tursodatabase/sync-linux-x64-gnu': 0.6.1
+      '@tursodatabase/sync-win32-x64-msvc': 0.6.1
 
   '@tybys/wasm-util@0.10.2':
     dependencies:

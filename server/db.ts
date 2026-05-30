@@ -2,10 +2,12 @@ import { eq, and, gte, lte, desc, sql } from "drizzle-orm";
 export { eq, and, desc };
 import { drizzle } from "drizzle-orm/libsql";
 import { createClient } from "@libsql/client";
+import { connect } from "@tursodatabase/sync";
 import { InsertUser, users, portfolios, accounts, etfHoldings, purchases, priceHistory, balanceHistory, dividendHistory, cashBalance, cashBalanceHistory, assetPrices, importedTransactions, brokerageTransactions, brokerageSyncs, brokerageHoldings } from "../drizzle/schema";
 export { brokerageSyncs };
 
 let _db: any = null;
+let _syncClient: any = null;
 
 export async function upsertBrokerageHoldings(userId: number, positions: any[]) {
   const db = await getDb();
@@ -268,23 +270,195 @@ export async function getAssetPriceByDate(symbol: string, date: Date) {
     .then((rows: any[]) => rows[0]);
 }
 
-
 export async function getDb() {
   if (_db) return _db;
 
-  const url = process.env.DATABASE_URL || "file:local.db";
-  const authToken = process.env.DATABASE_AUTH_TOKEN;
+  const url = process.env.TURSO_URL || process.env.DATABASE_URL;
+  const authToken = process.env.TURSO_AUTH_TOKEN || process.env.DATABASE_AUTH_TOKEN;
+  const localPath = "local.db";
 
-  console.log(`[Database] Connecting to database at: ${url.startsWith('file:') ? 'local file' : 'remote Turso'}`);
-  
-  const client = createClient({
-    url: url,
-    authToken: authToken,
-  });
+  if (url && authToken && !url.startsWith('file:')) {
+    console.log(`[Database] Initializing Turso Sync at: ${url}`);
+    try {
+      _syncClient = await connect({
+        path: localPath,
+        url: url,
+        authToken: authToken,
+        bootstrapIfEmpty: false,
+      } as any);
 
-  _db = drizzle(client);
+      // On app launch, pull the latest state if online
+      try {
+        const pullResult = await _syncClient.pull();
+        console.log(`[Database] Initial sync pull successful. New changes: ${pullResult}`);
+        
+        // Diagnostic: list tables
+        const tablesPrep = await _syncClient.prepare("SELECT name FROM sqlite_master WHERE type='table';");
+        const tables = await tablesPrep.all();
+        console.log("[Database] Local tables after pull:", JSON.stringify(tables.map((t: any) => t.name)));
+      } catch (e) {
+        console.warn("[Database] Initial sync pull failed (offline?):", e);
+      }
+
+      // Wrap syncClient to match LibSQL client interface for Drizzle
+      const wrappedClient = {
+        execute: async (stmt: any) => {
+          const sql = typeof stmt === 'string' ? stmt : stmt.sql;
+          let args = typeof stmt === 'string' ? [] : (stmt.args || []);
+          
+          // SQLite normalization: convert Date objects to ISO strings
+          args = args.map((arg: any) => arg instanceof Date ? arg.toISOString() : arg);
+          
+          try {
+            const prepared = await _syncClient.prepare(sql);
+            const isSelect = sql.trim().toLowerCase().startsWith('select');
+            
+            let rawRows;
+            let rowsAffected = 0;
+            let lastInsertRowid = undefined;
+
+            if (isSelect) {
+              rawRows = await prepared.all(args);
+            } else {
+              if (typeof prepared.run === 'function') {
+                const result = await prepared.run(args);
+                rawRows = [];
+                rowsAffected = result?.rowsAffected || 0;
+                lastInsertRowid = result?.lastInsertRowid;
+              } else {
+                rawRows = await prepared.all(args);
+              }
+            }
+            
+            if (!rawRows || rawRows.length === 0) {
+              return { rows: [], columns: [], rowsAffected, lastInsertRowid };
+            }
+
+            const columns = Object.keys(rawRows[0]);
+            const rows = rawRows.map((rawRow: any) => {
+              const row: any = [];
+              columns.forEach((col, idx) => {
+                let val = rawRow[col];
+                row[idx] = val;
+                row[col] = val;
+              });
+              return row;
+            });
+
+            return {
+              rows,
+              columns,
+              rowsAffected,
+              lastInsertRowid,
+            };
+          } catch (err: any) {
+            console.error("[Database] Query failed:", sql);
+            console.error("[Database] Error:", err.message);
+            throw err;
+          }
+        },
+        batch: async (stmts: any[]) => {
+          const results = [];
+          for (const s of stmts) {
+            results.push(await wrappedClient.execute(s));
+          }
+          return results;
+        },
+        transaction: (fn: any) => {
+          return _syncClient.transaction(async (tx: any) => {
+            const wrappedTx = {
+              execute: async (stmt: any) => {
+                const sql = typeof stmt === 'string' ? stmt : stmt.sql;
+                let args = typeof stmt === 'string' ? [] : (stmt.args || []);
+                args = args.map((arg: any) => arg instanceof Date ? arg.toISOString() : arg);
+
+                const prepared = await tx.prepare(sql);
+                const isSelect = sql.trim().toLowerCase().startsWith('select');
+                
+                let rawRows;
+                let rowsAffected = 0;
+                let lastInsertRowid = undefined;
+
+                if (isSelect) {
+                  rawRows = await prepared.all(args);
+                } else {
+                  if (typeof prepared.run === 'function') {
+                    const result = await prepared.run(args);
+                    rawRows = [];
+                    rowsAffected = result?.rowsAffected || 0;
+                    lastInsertRowid = result?.lastInsertRowid;
+                  } else {
+                    rawRows = await prepared.all(args);
+                  }
+                }
+                
+                if (!rawRows || rawRows.length === 0) {
+                  return { rows: [], columns: [], rowsAffected, lastInsertRowid };
+                }
+
+                const columns = Object.keys(rawRows[0]);
+                const rows = rawRows.map((rawRow: any) => {
+                  const row: any = [];
+                  columns.forEach((col, idx) => {
+                    let val = rawRow[col];
+                    row[idx] = val;
+                    row[col] = val;
+                  });
+                  return row;
+                });
+
+                return {
+                  rows,
+                  columns,
+                  rowsAffected,
+                  lastInsertRowid,
+                };
+              },
+              batch: async (stmts: any[]) => {
+                const results = [];
+                for (const s of stmts) {
+                  results.push(await wrappedTx.execute(s));
+                }
+                return results;
+              },
+            };
+            return fn(wrappedTx);
+          })();
+        },
+        close: () => _syncClient.close(),
+      };
+
+      _db = drizzle(wrappedClient as any);
+
+      // Start background sync
+      setInterval(async () => {
+        await syncWhenOnline(_syncClient);
+      }, 5 * 60 * 1000); // Sync every 5 minutes
+
+    } catch (err) {
+      console.error("[Database] Failed to initialize Turso sync:", err);
+      // Fallback to standard LibSQL client
+      const client = createClient({ url, authToken });
+      _db = drizzle(client);
+    }
+  } else {
+    console.log(`[Database] Connecting to local database: ${localPath}`);
+    const client = createClient({ url: `file:${localPath}` });
+    _db = drizzle(client);
+  }
+
   return _db;
 }
+
+async function syncWhenOnline(syncClient: any) {
+  try {
+    await syncClient.push();
+    console.log("[Database] Changes pushed to remote");
+  } catch (e) {
+    // No connectivity — changes are safe in the local file
+  }
+}
+
 
 // User queries
 export async function getUserById(id: number) {
