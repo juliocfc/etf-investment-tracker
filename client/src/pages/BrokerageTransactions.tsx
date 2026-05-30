@@ -213,19 +213,19 @@ export default function BrokerageTransactions() {
     }
   });
 
-  const refreshConnectionMutation = trpc.brokerage.refreshConnection.useMutation({
+  const syncTransactionsMutation = trpc.brokerage.syncTransactions.useMutation({
     onMutate: () => {
-      toast.info("Triggering SnapTrade refresh...");
+      toast.info("Triggering transaction sync...");
     },
     onSuccess: (data) => {
       const successCount = data.results?.filter(r => r.success).length || 0;
       const totalCount = data.results?.length || 0;
       
       if (successCount > 0) {
-        toast.success(`Successfully triggered refresh for ${successCount}/${totalCount} brokerage connections!`);
+        toast.success(`Successfully triggered sync for ${successCount}/${totalCount} brokerage connections!`);
         toast.info("The system is now updating your cache in the background. Please wait a moment and refresh the data.");
       } else {
-        toast.error("No active brokerage connections found to refresh.");
+        toast.error("No active brokerage connections found to sync.");
       }
       
       // Invalidate queries to show new data
@@ -233,7 +233,7 @@ export default function BrokerageTransactions() {
       refetchHoldings();
     },
     onError: (error) => {
-      toast.error(error.message || "Failed to refresh connection");
+      toast.error(error.message || "Failed to sync transactions");
     }
   });
 
@@ -527,20 +527,20 @@ export default function BrokerageTransactions() {
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={() => refreshConnectionMutation.mutate({
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => syncTransactionsMutation.mutate({
               clientId: config.clientId,
               consumerKey: config.consumerKey,
               userId: config.userId,
               userSecret: config.userSecret
             })}
-            disabled={!config.userId || refreshConnectionMutation.isPending}
+            disabled={!config.userId || syncTransactionsMutation.isPending}
             className="text-xs font-bold uppercase"
           >
-            <RefreshCw className={`w-3.5 h-3.5 mr-2 ${refreshConnectionMutation.isPending ? "animate-spin" : ""}`} />
-            Refresh Connection
+            <RefreshCw className={`w-3.5 h-3.5 mr-2 ${syncTransactionsMutation.isPending ? "animate-spin" : ""}`} />
+            Sync Transactions
           </Button>
           <Button 
             variant="outline" 

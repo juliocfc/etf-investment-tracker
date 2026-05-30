@@ -309,7 +309,7 @@ export const brokerageRouter = router({
   }),
 
   // Force a connection and holdings refresh on SnapTrade
-  refreshConnection: protectedProcedure
+  syncTransactions: protectedProcedure
     .input(z.object({
       clientId: z.string().optional(),
       consumerKey: z.string().optional(),
@@ -330,18 +330,18 @@ export const brokerageRouter = router({
 
         const results = [];
         
-        // 2. Refresh each authorization
+        // 2. Sync each authorization
         for (const auth of authsResponse.data) {
           if (!auth.id) continue;
           try {
-            const refreshResponse = await snaptrade.connections.refreshBrokerageAuthorization({
+            const syncResponse = await snaptrade.connections.syncBrokerageAuthorizationTransactions({
               userId: input.userId,
               userSecret: input.userSecret,
               authorizationId: auth.id,
             });
-            results.push({ id: auth.id, success: true, data: refreshResponse.data });
+            results.push({ id: auth.id, success: true, data: syncResponse.data });
           } catch (err: any) {
-            console.error(`Failed to refresh auth ${auth.id}:`, err.response?.data || err.message);
+            console.error(`Failed to sync transactions for auth ${auth.id}:`, err.response?.data || err.message);
             results.push({ id: auth.id, success: false, error: err.message });
           }
         }
@@ -357,8 +357,8 @@ export const brokerageRouter = router({
 
         return { success: true, results };
       } catch (error: any) {
-        console.error("SnapTrade refreshConnection error:", error.response?.data || error.message);
-        throw new Error("Failed to trigger brokerage refresh");
+        console.error("SnapTrade syncBrokerageAuthorizationTransactions error:", error.response?.data || error.message);
+        throw new Error("Failed to trigger brokerage transaction sync");
       }
     }),
 });
