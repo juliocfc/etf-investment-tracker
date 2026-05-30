@@ -185,7 +185,7 @@ export async function addAssetPrice(symbol: string, price: string, date: Date) {
 
   // Check if it already exists
   const existing = await getAssetPriceByDate(sym, dateOnly);
-  
+
   if (existing) {
     return db.update(assetPrices)
       .set({ price, createdAt: new Date() })
@@ -194,23 +194,23 @@ export async function addAssetPrice(symbol: string, price: string, date: Date) {
         eq(assetPrices.date, dateOnly)
       ));
   } else {
-    return db.insert(assetPrices).values({ 
-      symbol: sym, 
-      price, 
-      date: dateOnly 
+    return db.insert(assetPrices).values({
+      symbol: sym,
+      price,
+      date: dateOnly
     });
   }
 }
 
 export async function bulkAddAssetPrices(prices: Array<{ symbol: string, price: string, date: Date }>) {
   const db = await getDb();
-  
+
   // Use a transaction for bulk operations in SQLite for MUCH better performance
   return db.transaction(async (tx: any) => {
     for (const p of prices) {
       const dateOnly = new Date(Date.UTC(p.date.getFullYear(), p.date.getMonth(), p.date.getDate()));
       const sym = p.symbol.toUpperCase();
-      
+
       // We still check for existence to avoid unique constraint errors if using raw insert
       // or we can use onConflictDoUpdate if we can get it to work.
       // But in a transaction, individual selects are much faster.
@@ -221,7 +221,7 @@ export async function bulkAddAssetPrices(prices: Array<{ symbol: string, price: 
           eq(assetPrices.date, dateOnly)
         ))
         .limit(1);
-      
+
       const existing = rows[0];
 
       if (existing) {
@@ -231,10 +231,10 @@ export async function bulkAddAssetPrices(prices: Array<{ symbol: string, price: 
             .where(eq(assetPrices.id, existing.id));
         }
       } else {
-        await tx.insert(assetPrices).values({ 
-          symbol: sym, 
-          price: p.price, 
-          date: dateOnly 
+        await tx.insert(assetPrices).values({
+          symbol: sym,
+          price: p.price,
+          date: dateOnly
         });
       }
     }
@@ -275,172 +275,178 @@ export async function getDb() {
 
   const url = process.env.TURSO_URL || process.env.DATABASE_URL;
   const authToken = process.env.TURSO_AUTH_TOKEN || process.env.DATABASE_AUTH_TOKEN;
-  const localPath = "local.db";
+  const localPath = "etf-tracker.db";
 
   if (url && authToken && !url.startsWith('file:')) {
     console.log(`[Database] Initializing Turso Sync at: ${url}`);
     try {
-      _syncClient = await connect({
-        path: localPath,
-        url: url,
-        authToken: authToken,
-        bootstrapIfEmpty: false,
-      } as any);
+      if (process.env.DATABASE_SYNC_ENABLED !== "true") {
+        console.log(`[Database] Remote DB sync is disabled, using remote database: ${url}`);
+        const client = createClient({ url, authToken });
+        _db = drizzle(client);
+      } else {
+        _syncClient = await connect({
+          path: localPath,
+          url: url,
+          authToken: authToken,
+          bootstrapIfEmpty: false,
+        } as any);
 
-      // On app launch, pull the latest state if online
-      try {
-        const pullResult = await _syncClient.pull();
-        console.log(`[Database] Initial sync pull successful. New changes: ${pullResult}`);
-        
-        // Diagnostic: list tables
-        const tablesPrep = await _syncClient.prepare("SELECT name FROM sqlite_master WHERE type='table';");
-        const tables = await tablesPrep.all();
-        console.log("[Database] Local tables after pull:", JSON.stringify(tables.map((t: any) => t.name)));
-      } catch (e) {
-        console.warn("[Database] Initial sync pull failed (offline?):", e);
-      }
+        // On app launch, pull the latest state if online
+        try {
+          const pullResult = await _syncClient.pull();
+          console.log(`[Database] Initial sync pull successful. New changes: ${pullResult}`);
 
-      // Wrap syncClient to match LibSQL client interface for Drizzle
-      const wrappedClient = {
-        execute: async (stmt: any) => {
-          const sql = typeof stmt === 'string' ? stmt : stmt.sql;
-          let args = typeof stmt === 'string' ? [] : (stmt.args || []);
-          
-          // SQLite normalization: convert Date objects to ISO strings
-          args = args.map((arg: any) => arg instanceof Date ? arg.toISOString() : arg);
-          
-          try {
-            const prepared = await _syncClient.prepare(sql);
-            const isSelect = sql.trim().toLowerCase().startsWith('select');
-            
-            let rawRows;
-            let rowsAffected = 0;
-            let lastInsertRowid = undefined;
+          // Diagnostic: list tables
+          const tablesPrep = await _syncClient.prepare("SELECT name FROM sqlite_master WHERE type='table';");
+          const tables = await tablesPrep.all();
+          console.log("[Database] Local tables after pull:", JSON.stringify(tables.map((t: any) => t.name)));
+        } catch (e) {
+          console.warn("[Database] Initial sync pull failed (offline?):", e);
+        }
 
-            if (isSelect) {
-              rawRows = await prepared.all(args);
-            } else {
-              if (typeof prepared.run === 'function') {
-                const result = await prepared.run(args);
-                rawRows = [];
-                rowsAffected = result?.rowsAffected || 0;
-                lastInsertRowid = result?.lastInsertRowid;
-              } else {
+        // Wrap syncClient to match LibSQL client interface for Drizzle
+        const wrappedClient = {
+          execute: async (stmt: any) => {
+            const sql = typeof stmt === 'string' ? stmt : stmt.sql;
+            let args = typeof stmt === 'string' ? [] : (stmt.args || []);
+
+            // SQLite normalization: convert Date objects to ISO strings
+            args = args.map((arg: any) => arg instanceof Date ? arg.toISOString() : arg);
+
+            try {
+              const prepared = await _syncClient.prepare(sql);
+              const isSelect = sql.trim().toLowerCase().startsWith('select');
+
+              let rawRows;
+              let rowsAffected = 0;
+              let lastInsertRowid = undefined;
+
+              if (isSelect) {
                 rawRows = await prepared.all(args);
-              }
-            }
-            
-            if (!rawRows || rawRows.length === 0) {
-              return { rows: [], columns: [], rowsAffected, lastInsertRowid };
-            }
-
-            const columns = Object.keys(rawRows[0]);
-            const rows = rawRows.map((rawRow: any) => {
-              const row: any = [];
-              columns.forEach((col, idx) => {
-                let val = rawRow[col];
-                row[idx] = val;
-                row[col] = val;
-              });
-              return row;
-            });
-
-            return {
-              rows,
-              columns,
-              rowsAffected,
-              lastInsertRowid,
-            };
-          } catch (err: any) {
-            console.error("[Database] Query failed:", sql);
-            console.error("[Database] Error:", err.message);
-            throw err;
-          }
-        },
-        batch: async (stmts: any[]) => {
-          const results = [];
-          for (const s of stmts) {
-            results.push(await wrappedClient.execute(s));
-          }
-          return results;
-        },
-        transaction: (fn: any) => {
-          return _syncClient.transaction(async (tx: any) => {
-            const wrappedTx = {
-              execute: async (stmt: any) => {
-                const sql = typeof stmt === 'string' ? stmt : stmt.sql;
-                let args = typeof stmt === 'string' ? [] : (stmt.args || []);
-                args = args.map((arg: any) => arg instanceof Date ? arg.toISOString() : arg);
-
-                const prepared = await tx.prepare(sql);
-                const isSelect = sql.trim().toLowerCase().startsWith('select');
-                
-                let rawRows;
-                let rowsAffected = 0;
-                let lastInsertRowid = undefined;
-
-                if (isSelect) {
-                  rawRows = await prepared.all(args);
+              } else {
+                if (typeof prepared.run === 'function') {
+                  const result = await prepared.run(args);
+                  rawRows = [];
+                  rowsAffected = result?.rowsAffected || 0;
+                  lastInsertRowid = result?.lastInsertRowid;
                 } else {
-                  if (typeof prepared.run === 'function') {
-                    const result = await prepared.run(args);
-                    rawRows = [];
-                    rowsAffected = result?.rowsAffected || 0;
-                    lastInsertRowid = result?.lastInsertRowid;
-                  } else {
-                    rawRows = await prepared.all(args);
-                  }
+                  rawRows = await prepared.all(args);
                 }
-                
-                if (!rawRows || rawRows.length === 0) {
-                  return { rows: [], columns: [], rowsAffected, lastInsertRowid };
-                }
+              }
 
-                const columns = Object.keys(rawRows[0]);
-                const rows = rawRows.map((rawRow: any) => {
-                  const row: any = [];
-                  columns.forEach((col, idx) => {
-                    let val = rawRow[col];
-                    row[idx] = val;
-                    row[col] = val;
-                  });
-                  return row;
+              if (!rawRows || rawRows.length === 0) {
+                return { rows: [], columns: [], rowsAffected, lastInsertRowid };
+              }
+
+              const columns = Object.keys(rawRows[0]);
+              const rows = rawRows.map((rawRow: any) => {
+                const row: any = [];
+                columns.forEach((col, idx) => {
+                  let val = rawRow[col];
+                  row[idx] = val;
+                  row[col] = val;
                 });
+                return row;
+              });
 
-                return {
-                  rows,
-                  columns,
-                  rowsAffected,
-                  lastInsertRowid,
-                };
-              },
-              batch: async (stmts: any[]) => {
-                const results = [];
-                for (const s of stmts) {
-                  results.push(await wrappedTx.execute(s));
-                }
-                return results;
-              },
-            };
-            return fn(wrappedTx);
-          })();
-        },
-        close: () => _syncClient.close(),
-      };
+              return {
+                rows,
+                columns,
+                rowsAffected,
+                lastInsertRowid,
+              };
+            } catch (err: any) {
+              console.error("[Database] Query failed:", sql);
+              console.error("[Database] Error:", err.message);
+              throw err;
+            }
+          },
+          batch: async (stmts: any[]) => {
+            const results = [];
+            for (const s of stmts) {
+              results.push(await wrappedClient.execute(s));
+            }
+            return results;
+          },
+          transaction: (fn: any) => {
+            return _syncClient.transaction(async (tx: any) => {
+              const wrappedTx = {
+                execute: async (stmt: any) => {
+                  const sql = typeof stmt === 'string' ? stmt : stmt.sql;
+                  let args = typeof stmt === 'string' ? [] : (stmt.args || []);
+                  args = args.map((arg: any) => arg instanceof Date ? arg.toISOString() : arg);
 
-      _db = drizzle(wrappedClient as any);
+                  const prepared = await tx.prepare(sql);
+                  const isSelect = sql.trim().toLowerCase().startsWith('select');
 
-      // Start background sync
-      setInterval(async () => {
-        await syncWhenOnline(_syncClient);
-      }, 5 * 60 * 1000); // Sync every 5 minutes
+                  let rawRows;
+                  let rowsAffected = 0;
+                  let lastInsertRowid = undefined;
 
+                  if (isSelect) {
+                    rawRows = await prepared.all(args);
+                  } else {
+                    if (typeof prepared.run === 'function') {
+                      const result = await prepared.run(args);
+                      rawRows = [];
+                      rowsAffected = result?.rowsAffected || 0;
+                      lastInsertRowid = result?.lastInsertRowid;
+                    } else {
+                      rawRows = await prepared.all(args);
+                    }
+                  }
+
+                  if (!rawRows || rawRows.length === 0) {
+                    return { rows: [], columns: [], rowsAffected, lastInsertRowid };
+                  }
+
+                  const columns = Object.keys(rawRows[0]);
+                  const rows = rawRows.map((rawRow: any) => {
+                    const row: any = [];
+                    columns.forEach((col, idx) => {
+                      let val = rawRow[col];
+                      row[idx] = val;
+                      row[col] = val;
+                    });
+                    return row;
+                  });
+
+                  return {
+                    rows,
+                    columns,
+                    rowsAffected,
+                    lastInsertRowid,
+                  };
+                },
+                batch: async (stmts: any[]) => {
+                  const results = [];
+                  for (const s of stmts) {
+                    results.push(await wrappedTx.execute(s));
+                  }
+                  return results;
+                },
+              };
+              return fn(wrappedTx);
+            })();
+          },
+          close: () => _syncClient.close(),
+        };
+
+        _db = drizzle(wrappedClient as any);
+
+        // Start background sync
+        setInterval(async () => {
+          await syncWhenOnline(_syncClient);
+        }, 5 * 60 * 1000); // Sync every 5 minutes
+      }
     } catch (err) {
       console.error("[Database] Failed to initialize Turso sync:", err);
       // Fallback to standard LibSQL client
       const client = createClient({ url, authToken });
       _db = drizzle(client);
     }
+
   } else {
     console.log(`[Database] Connecting to local database: ${localPath}`);
     const client = createClient({ url: `file:${localPath}` });
@@ -546,7 +552,7 @@ export async function createAccount(data: any) {
     number: data.number || null,
     accountType: data.accountType || "Brokerage",
   };
-  
+
   const result = await db.insert(accounts).values(values);
   if ((result as any).lastInsertRowid !== undefined) {
     return (result as any).lastInsertRowid;
@@ -557,7 +563,7 @@ export async function createAccount(data: any) {
     .orderBy(desc(accounts.id))
     .limit(1)
     .then((rows: any[]) => rows[0]);
-    
+
   return row?.id;
 }
 
@@ -595,12 +601,12 @@ export async function getUserEtfHoldings(userId: number, portfolioId?: number, a
 export async function createEtfHolding(data: any) {
   const db = await getDb();
   const result = await db.insert(etfHoldings).values(data);
-  
+
   // For Turso/LibSQL, the ID is often in result.lastInsertRowid or we need to query it
   if ((result as any).lastInsertRowid !== undefined) {
     return (result as any).lastInsertRowid;
   }
-  
+
   // Fallback: get the most recent ID for this user
   const row = await db.select({ id: etfHoldings.id })
     .from(etfHoldings)
@@ -608,7 +614,7 @@ export async function createEtfHolding(data: any) {
     .orderBy(desc(etfHoldings.id))
     .limit(1)
     .then((rows: any[]) => rows[0]);
-    
+
   return row?.id;
 }
 
@@ -665,13 +671,13 @@ export async function addPriceHistory(userId: number, symbol: string, price: str
 export async function getPriceHistory(userId: number, symbol: string, days?: number) {
   const db = await getDb();
   let conditions = [eq(priceHistory.userId, userId), eq(priceHistory.symbol, symbol)];
-  
+
   if (days) {
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
     conditions.push(gte(priceHistory.date, startDate));
   }
-  
+
   return db.select().from(priceHistory).where(and(...conditions)).orderBy(desc(priceHistory.date));
 }
 
@@ -684,13 +690,13 @@ export async function addBalanceHistory(userId: number, portfolioId: number, tot
 export async function getBalanceHistory(userId: number, portfolioId: number, days?: number) {
   const db = await getDb();
   let conditions = [eq(balanceHistory.userId, userId), eq(balanceHistory.portfolioId, portfolioId)];
-  
+
   if (days) {
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
     conditions.push(gte(balanceHistory.date, startDate));
   }
-  
+
   return db.select().from(balanceHistory).where(and(...conditions)).orderBy(desc(balanceHistory.date));
 }
 
@@ -703,11 +709,11 @@ export async function addDividendHistory(data: any) {
 export async function getDividendHistory(userId: number, symbol?: string) {
   const db = await getDb();
   let conditions = [eq(dividendHistory.userId, userId)];
-  
+
   if (symbol) {
     conditions.push(eq(dividendHistory.symbol, symbol));
   }
-  
+
   return db.select().from(dividendHistory).where(and(...conditions)).orderBy(desc(dividendHistory.exDate));
 }
 
@@ -725,11 +731,11 @@ export async function getCashBalance(userId: number, portfolioId: number, accoun
     // Based on the requirement, we should probably return all and sum them if accountId is not provided
     const rows = await db.select().from(cashBalance).where(and(...conditions));
     if (rows.length === 0) return null;
-    
+
     // Check if we have a global one (where accountId is null)
     const globalRow = rows.find((r: any) => r.accountId === null);
     if (rows.length === 1 && globalRow) return globalRow;
-    
+
     // Sum them up for global view
     const totalAmount = rows.reduce((sum: number, row: any) => sum + parseFloat(row.amount), 0);
     return { ...(globalRow || rows[0]), amount: totalAmount.toString(), id: globalRow ? globalRow.id : 0, accountId: null };
@@ -773,17 +779,17 @@ export async function recalculateCashBalances(userId: number, portfolioId: numbe
   const existing = await getCashBalance(userId, portfolioId, accountId);
   if (existing && existing.accountId === accountId) {
     await db.update(cashBalance)
-      .set({ 
-        amount: currentRunningBalance.toString(), 
-        updatedAt: new Date() 
+      .set({
+        amount: currentRunningBalance.toString(),
+        updatedAt: new Date()
       })
       .where(eq(cashBalance.id, existing.id));
   } else {
-    await db.insert(cashBalance).values({ 
-      userId, 
-      portfolioId, 
-      amount: currentRunningBalance.toString(), 
-      accountId 
+    await db.insert(cashBalance).values({
+      userId,
+      portfolioId,
+      amount: currentRunningBalance.toString(),
+      accountId
     });
   }
 
@@ -791,10 +797,10 @@ export async function recalculateCashBalances(userId: number, portfolioId: numbe
 }
 
 export async function updateCashBalance(
-  userId: number, 
-  portfolioId: number, 
-  amount: string, 
-  accountId: number, 
+  userId: number,
+  portfolioId: number,
+  amount: string,
+  accountId: number,
   date: Date = new Date(),
   transactionDetails?: {
     type: string,
@@ -805,15 +811,15 @@ export async function updateCashBalance(
   const db = await getDb();
 
   // 1. Record history
-  const historyResult = await db.insert(cashBalanceHistory).values({ 
-    userId, 
-    portfolioId, 
-    accountId, 
+  const historyResult = await db.insert(cashBalanceHistory).values({
+    userId,
+    portfolioId,
+    accountId,
     amount, // Placeholder
     transactionType: transactionDetails?.type || "adjustment",
     transactionAmount: transactionDetails?.transactionAmount || amount,
     description: transactionDetails?.description || "",
-    date: date 
+    date: date
   }).returning({ id: cashBalanceHistory.id });
 
   const historyId = historyResult[0]?.id;
@@ -828,7 +834,7 @@ export async function getCashBalanceHistory(userId: number, portfolioId?: number
   const conditions = [
     eq(cashBalanceHistory.userId, userId),
   ];
-  
+
   if (portfolioId !== undefined) {
     conditions.push(eq(cashBalanceHistory.portfolioId, portfolioId));
   }
@@ -845,13 +851,13 @@ export async function getCashBalanceHistory(userId: number, portfolioId?: number
 
 export async function deleteCashTransaction(userId: number, portfolioId: number, accountId: number, transactionId: number) {
   const db = await getDb();
-  
+
   // Check if this transaction is linked to a purchase
   const linkedPurchase = await db.select()
     .from(purchases)
     .where(and(eq(purchases.cashTransactionId, transactionId), eq(purchases.userId, userId)))
     .then((rows: any[]) => rows[0]);
-    
+
   if (linkedPurchase) {
     throw new Error("Cannot delete cash transaction linked to a purchase. Delete the purchase instead.");
   }
@@ -861,7 +867,7 @@ export async function deleteCashTransaction(userId: number, portfolioId: number,
     eq(cashBalanceHistory.id, transactionId),
     eq(cashBalanceHistory.userId, userId)
   ));
-  
+
   // 2. Recalculate all subsequent balances for this specific account
   // First, get all remaining records for this account, sorted by date
   const accountHistory = await db.select()
@@ -871,7 +877,7 @@ export async function deleteCashTransaction(userId: number, portfolioId: number,
       eq(cashBalanceHistory.accountId, accountId)
     ))
     .orderBy(cashBalanceHistory.date, cashBalanceHistory.id);
-  
+
   // Recalculate balances starting from the first record
   let currentBalance = 0;
   for (const record of accountHistory) {
@@ -884,7 +890,7 @@ export async function deleteCashTransaction(userId: number, portfolioId: number,
       // Adjustment or initial record: sets the balance
       currentBalance = transAmount;
     }
-    
+
     currentBalance = truncateNumber(currentBalance);
 
     // Update the record with the recalculated balance
@@ -892,7 +898,7 @@ export async function deleteCashTransaction(userId: number, portfolioId: number,
       .set({ amount: currentBalance.toString() })
       .where(eq(cashBalanceHistory.id, record.id));
   }
-  
+
   // 3. Update the main cashBalance table with the final result
   const finalBalance = currentBalance.toString();
   const existing = await getCashBalance(userId, portfolioId, accountId);
@@ -901,16 +907,16 @@ export async function deleteCashTransaction(userId: number, portfolioId: number,
       .set({ amount: finalBalance, updatedAt: new Date() })
       .where(eq(cashBalance.id, existing.id));
   }
-  
+
   return { success: true };
 }
 
 export async function editCashTransaction(userId: number, portfolioId: number, accountId: number, transactionId: number, data: { amount: string, description?: string }) {
   const db = await getDb();
-  
+
   // 1. Update the record
   await db.update(cashBalanceHistory)
-    .set({ 
+    .set({
       transactionAmount: data.amount,
       description: data.description !== undefined ? data.description : sql`description`
     })
@@ -918,7 +924,7 @@ export async function editCashTransaction(userId: number, portfolioId: number, a
       eq(cashBalanceHistory.id, transactionId),
       eq(cashBalanceHistory.userId, userId)
     ));
-  
+
   // 2. Recalculate all subsequent balances for this specific account
   const accountHistory = await db.select()
     .from(cashBalanceHistory)
@@ -927,7 +933,7 @@ export async function editCashTransaction(userId: number, portfolioId: number, a
       eq(cashBalanceHistory.accountId, accountId)
     ))
     .orderBy(cashBalanceHistory.date, cashBalanceHistory.id);
-  
+
   let currentBalance = 0;
   for (const record of accountHistory) {
     const transAmount = parseFloat(record.transactionAmount || record.amount);
@@ -938,14 +944,14 @@ export async function editCashTransaction(userId: number, portfolioId: number, a
     } else {
       currentBalance = transAmount;
     }
-    
+
     currentBalance = truncateNumber(currentBalance);
 
     await db.update(cashBalanceHistory)
       .set({ amount: currentBalance.toString() })
       .where(eq(cashBalanceHistory.id, record.id));
   }
-  
+
   // 3. Update the main cashBalance table
   const finalBalance = currentBalance.toString();
   const existing = await getCashBalance(userId, portfolioId, accountId);
@@ -954,7 +960,7 @@ export async function editCashTransaction(userId: number, portfolioId: number, a
       .set({ amount: finalBalance, updatedAt: new Date() })
       .where(eq(cashBalance.id, existing.id));
   }
-  
+
   return { success: true };
 }
 
@@ -989,17 +995,17 @@ export function parseCSVContent(csvContent: string) {
     }
 
     const [dateStr, quantityStr, costStr] = parts;
-    
+
     // More robust number parsing: remove currency symbols, commas, and other non-numeric chars
     // but keep minus sign and decimal point
     const cleanNumber = (val: string) => val.replace(/[^0-9.-]/g, "");
-    
+
     const quantity = parseFloat(cleanNumber(quantityStr));
     const cost = parseFloat(cleanNumber(costStr));
-    
+
     // Try to handle various date formats
     let date = new Date(dateStr);
-    
+
     // Fallback for DD/MM/YYYY or DD-MM-YYYY
     if (isNaN(date.getTime()) && dateStr.includes("/")) {
       const parts = dateStr.split("/");
@@ -1074,7 +1080,7 @@ export async function calculateAverageCost(holdingId: number) {
   if (allPurchases.length === 0) {
     // Check if there are ANY purchases at all (even sold ones)
     const hasAnyPurchases = await db.select({ id: purchases.id }).from(purchases).where(eq(purchases.holdingId, holdingId)).limit(1).then((rows: any[]) => rows.length > 0);
-    
+
     if (hasAnyPurchases) {
       // Asset is fully sold, keep the holding but set quantity to 0
       await db
@@ -1118,7 +1124,7 @@ export async function calculateAverageCost(holdingId: number) {
 // Import tracking queries
 export async function getImportedTransactionIds(userId: number, source: string) {
   const db = await getDb();
-  
+
   // Get from legacy table
   const legacyIds = await db.select({ externalId: importedTransactions.externalId })
     .from(importedTransactions)
@@ -1143,7 +1149,7 @@ export async function getImportedTransactionIds(userId: number, source: string) 
 export async function markTransactionsAsImported(userId: number, externalIds: string[], source: string) {
   const db = await getDb();
   if (externalIds.length === 0) return;
-  
+
   for (const id of externalIds) {
     // Update brokerageTransactions table
     await markBrokerageTransactionImported(id, userId);
@@ -1157,7 +1163,7 @@ export async function markTransactionsAsImported(userId: number, externalIds: st
 export function truncateNumber(value: number, decimals: number = 2): number {
   const factor = Math.pow(10, decimals);
   const epsilon = 1e-9;
-  return value < 0 
-    ? Math.ceil(value * factor - epsilon) / factor 
+  return value < 0
+    ? Math.ceil(value * factor - epsilon) / factor
     : Math.floor(value * factor + epsilon) / factor;
 }

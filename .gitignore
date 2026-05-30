@@ -111,3 +111,7 @@ temp/
 local.db-info
 local.db-wal
 local.db-changes
+etf-tracker.db-changes
+etf-tracker.db-info
+etf-tracker.db-wal
+etf-tracker.db-wal-revert
