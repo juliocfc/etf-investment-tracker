@@ -448,8 +448,8 @@ export async function getDb() {
     }
 
   } else {
-    console.log(`[Database] Connecting to local database: ${localPath}`);
-    const client = createClient({ url: `file:${localPath}` });
+    console.log(`[Database] Connecting to local database: ${url || localPath}`);
+    const client = createClient({ url: `${url || localPath}` });
     _db = drizzle(client);
   }
 
