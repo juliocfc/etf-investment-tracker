@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
-import { Briefcase, ChevronDown, ChevronRight, Edit2, Trash2, PieChart, Wallet, DollarSign, Plus, BarChart3, CalendarPlus, List, RefreshCw, TrendingUp, ArrowRightLeft } from "lucide-react";
+import { Briefcase, ChevronDown, ChevronRight, Edit2, Trash2, PieChart, Wallet, DollarSign, Plus, BarChart3, Calendar, CalendarPlus, List, RefreshCw, TrendingUp, ArrowRightLeft } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import { motion, AnimatePresence } from "framer-motion";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, Legend } from "recharts";
@@ -158,6 +158,42 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
       projectedDividend: truncateNumber(totals.projectedDividend)
     };
   }, [consolidatedHoldings]);
+
+  const assetAndCashAllocation = useMemo(() => {
+    if (!portfolios || !consolidatedHoldings) return [];
+
+    const filterId = portfolioFilter === "all" ? null : parseInt(portfolioFilter);
+    
+    const totalCash = portfolios.reduce((acc, p) => {
+      if (filterId !== null && p.id !== filterId) return acc;
+      return acc + parseFloat(p.cashValue);
+    }, 0);
+
+    const totalInvestments = consolidatedHoldings.reduce((acc, h) => acc + h.mktValue, 0);
+    const grandTotal = totalInvestments + totalCash;
+
+    const data = consolidatedHoldings.map(h => ({
+      name: h.symbol,
+      fullName: h.name,
+      value: h.mktValue,
+      quantity: h.quantity,
+      allocation: grandTotal > 0 ? (h.mktValue / grandTotal) * 100 : 0,
+      type: 'Asset'
+    }));
+
+    if (totalCash > 0) {
+      data.push({
+        name: 'Cash',
+        fullName: 'Available Liquidity',
+        value: totalCash,
+        quantity: null,
+        allocation: grandTotal > 0 ? (totalCash / grandTotal) * 100 : 0,
+        type: 'Cash'
+      });
+    }
+
+    return data.sort((a, b) => b.value - a.value);
+  }, [portfolios, consolidatedHoldings, portfolioFilter]);
 
   // Yearly performance data is now fetched via trpc.portfolio.getYearlyPerformance
 
@@ -771,6 +807,92 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
                   </tr>
                 </tfoot>
               )}
+            </table>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="bg-white border-none shadow-sm shadow-slate-200/50">
+        <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
+          <div className="flex items-center gap-2">
+            <PieChart className="w-4 h-4 text-primary" />
+            <CardTitle className="text-sm font-bold text-slate-800 uppercase tracking-widest">Total Asset & Cash Allocation</CardTitle>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Filter:</span>
+            <Select value={portfolioFilter} onValueChange={setPortfolioFilter}>
+              <SelectTrigger className="h-7 text-[10px] font-bold uppercase tracking-wider min-w-[140px] bg-slate-50 border-slate-200">
+                <SelectValue placeholder="All Portfolios" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all" className="text-[10px] font-bold uppercase">All Portfolios</SelectItem>
+                {portfolios?.map(p => (
+                  <SelectItem key={p.id} value={p.id.toString()} className="text-[10px] font-bold uppercase">
+                    {p.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </CardHeader>
+        <CardContent className="pt-4">
+          <div className="overflow-x-auto rounded-lg border border-slate-100">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-slate-50 border-b border-slate-200">
+                  <th className="text-left py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Asset / Type</th>
+                  <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Quantity</th>
+                  <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Current Value</th>
+                  <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Total Allocation %</th>
+                </tr>
+              </thead>
+              <tbody>
+                {assetAndCashAllocation.map((item) => (
+                  <tr key={item.name} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/50 transition-colors">
+                    <td className="py-3 px-4">
+                      <div className="flex items-center gap-2">
+                        {item.type === 'Cash' ? (
+                          <Wallet className="w-3 h-3 text-slate-400" />
+                        ) : (
+                          <Briefcase className="w-3 h-3 text-primary/60" />
+                        )}
+                        <div>
+                          <div className="font-bold text-slate-800">{item.name}</div>
+                          <div className="text-[10px] text-slate-400 font-medium">{item.fullName}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="py-3 px-4 text-right font-mono text-slate-600 text-xs">
+                      {item.type === 'Cash' ? '-' : item.quantity?.toFixed(3)}
+                    </td>
+                    <td className="py-3 px-4 text-right font-mono font-bold text-slate-700">
+                      {formatCurrency(item.value)}
+                    </td>
+                    <td className="py-3 px-4 text-right">
+                      <div className="flex items-center justify-end gap-3">
+                        <div className="w-24 h-1.5 bg-slate-100 rounded-full overflow-hidden hidden sm:block">
+                          <div 
+                            className={`h-full rounded-full ${item.type === 'Cash' ? 'bg-slate-300' : 'bg-primary'}`}
+                            style={{ width: `${item.allocation}%` }}
+                          />
+                        </div>
+                        <span className="font-mono font-bold text-primary text-xs w-12 text-right">
+                          {item.allocation.toFixed(2)}%
+                        </span>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot className="bg-slate-50/80 font-bold border-t border-slate-200">
+                <tr>
+                  <td colSpan={2} className="py-3 px-4 text-[10px] uppercase tracking-widest text-slate-500">Grand Total</td>
+                  <td className="py-3 px-4 text-right font-mono text-sm text-slate-800">
+                    {formatCurrency(assetAndCashAllocation.reduce((sum, item) => sum + item.value, 0))}
+                  </td>
+                  <td className="py-3 px-4 text-right font-mono text-xs text-primary">100.00%</td>
+                </tr>
+              </tfoot>
             </table>
           </div>
         </CardContent>
