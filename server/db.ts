@@ -1054,7 +1054,27 @@ export async function bulkImportPurchases(
 
   for (const record of records) {
     try {
-      await db.insert(purchases).values({
+      const quantityNum = parseFloat(record.quantity);
+      const priceNum = parseFloat(record.cost);
+      const totalCost = truncateNumber(quantityNum * priceNum);
+      const description = `Imported: You bought ${record.quantity} ${symbol.toUpperCase()} at $${priceNum.toFixed(2)}`;
+
+      // 1. Create cash transaction
+      const cashResult = await updateCashBalance(
+        userId,
+        portfolioId,
+        "0", // Balance will be recalculated
+        accountId,
+        record.date,
+        {
+          type: "withdrawal",
+          transactionAmount: totalCost.toString(),
+          description: description
+        }
+      );
+
+      // 2. Add the purchase record with cashTransactionId
+      await addPurchase({
         userId,
         portfolioId,
         accountId,
@@ -1062,11 +1082,14 @@ export async function bulkImportPurchases(
         symbol,
         quantity: record.quantity,
         price: record.cost,
+        fees: "0",
+        cashTransactionId: cashResult.historyId,
         purchaseDate: record.date,
       });
+
       successCount++;
     } catch (error) {
-      errors.push(`Failed to insert record: ${(error as Error).message}`);
+      errors.push(`Failed to import record for ${record.date}: ${(error as Error).message}`);
     }
   }
 

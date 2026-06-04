@@ -147,16 +147,14 @@ export const brokerageRouter = router({
           accounts: input.accounts,
         });
 
-        // Trigger background update
-        (async () => {
-          try {
-            await upsertBrokerageTransactions(ctx.user.id, response.data);
-            await updateLastBrokerageSync(ctx.user.id);
-            console.log(`[Brokerage] Background sync completed for user ${ctx.user.id}`);
-          } catch (err) {
-            console.error(`[Brokerage] Background sync failed:`, err);
-          }
-        })();
+        // 3. Trigger synchronous update to ensure DB is populated before returning
+        try {
+          await upsertBrokerageTransactions(ctx.user.id, response.data);
+          await updateLastBrokerageSync(ctx.user.id);
+          console.log(`[Brokerage] Sync completed for user ${ctx.user.id}`);
+        } catch (err) {
+          console.error(`[Brokerage] Sync failed to save to DB:`, err);
+        }
 
         // For the immediate response on MISS, we try to augment with what we have in DB
         const augmented = await augmentWithDbInfo(response.data);
