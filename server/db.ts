@@ -1,5 +1,5 @@
-import { eq, and, gte, lte, desc, sql } from "drizzle-orm";
-export { eq, and, desc };
+import { eq, and, gte, lte, desc, sql, isNotNull } from "drizzle-orm";
+export { eq, and, desc, isNotNull };
 import { drizzle } from "drizzle-orm/libsql";
 import { createClient } from "@libsql/client";
 import { connect } from "@tursodatabase/sync";
@@ -312,17 +312,18 @@ export async function getDb() {
             let args = typeof stmt === 'string' ? [] : (stmt.args || []);
 
             // SQLite normalization: convert Date objects to ISO strings
-            args = args.map((arg: any) => arg instanceof Date ? arg.toISOString() : arg);
+            args = args.map((arg: any) => arg instanceof Date ? Math.floor(arg.getTime() / 1000) : arg);
 
             try {
               const prepared = await _syncClient.prepare(sql);
-              const isSelect = sql.trim().toLowerCase().startsWith('select');
+              const sqlLower = sql.toLowerCase();
+              const isQuery = sqlLower.startsWith('select') || sqlLower.includes('returning')
 
               let rawRows;
               let rowsAffected = 0;
               let lastInsertRowid = undefined;
 
-              if (isSelect) {
+              if (isQuery) {
                 rawRows = await prepared.all(args);
               } else {
                 if (typeof prepared.run === 'function') {
@@ -649,7 +650,14 @@ export async function getPurchases(holdingId: number) {
 export async function addPurchase(data: any) {
   const db = await getDb();
   const result = await db.insert(purchases).values(data).returning({ id: purchases.id });
-  return result[0]?.id;
+  if (result && result[0]?.id) return result[0].id;
+         
+  // Fallback for Turso sync wrapper if returning() didn't work as expected
+  if ((result as any).lastInsertRowid !== undefined) {
+    return (result as any).lastInsertRowid;
+  }
+    
+  return undefined;
 }
 
 export async function deletePurchase(purchaseId: number) {
@@ -822,7 +830,10 @@ export async function updateCashBalance(
     date: date
   }).returning({ id: cashBalanceHistory.id });
 
-  const historyId = historyResult[0]?.id;
+  let historyId = historyResult[0]?.id;
+  if (!historyId && (historyResult as any).lastInsertRowid !== undefined) {
+    historyId = (historyResult as any).lastInsertRowid;
+  }
 
   // 2. Recalculate
   await recalculateCashBalances(userId, portfolioId, accountId);
@@ -1162,7 +1173,7 @@ export async function getImportedTransactionIds(userId: number, source: string) 
     .from(brokerageTransactions)
     .where(and(
       eq(brokerageTransactions.userId, userId),
-      sql`${brokerageTransactions.importDate} IS NOT NULL`
+      isNotNull(brokerageTransactions.importDate)
     ))
     .then((rows: any[]) => rows.map(r => r.externalId));
 
