@@ -1,5 +1,5 @@
-import { eq, and, gte, lte, desc, sql, isNotNull } from "drizzle-orm";
-export { eq, and, desc, isNotNull };
+import { eq, and, gte, lte, desc, sql, isNotNull, inArray } from "drizzle-orm";
+export { eq, and, desc, isNotNull, inArray };
 import { drizzle } from "drizzle-orm/libsql";
 import { createClient } from "@libsql/client";
 import { connect } from "@tursodatabase/sync";
@@ -308,15 +308,15 @@ export async function getDb() {
         // Wrap syncClient to match LibSQL client interface for Drizzle
         const wrappedClient = {
           execute: async (stmt: any) => {
-            const sql = typeof stmt === 'string' ? stmt : stmt.sql;
+            const sqlStr = typeof stmt === 'string' ? stmt : stmt.sql;
             let args = typeof stmt === 'string' ? [] : (stmt.args || []);
 
-            // SQLite normalization: convert Date objects to ISO strings
-            args = args.map((arg: any) => arg instanceof Date ? Math.floor(arg.getTime() / 1000) : arg);
+            // SQLite normalization: convert Date objects to milliseconds (integer) for mode: "timestamp"
+            args = args.map((arg: any) => arg instanceof Date ? arg.getTime() : arg);
 
             try {
-              const prepared = await _syncClient.prepare(sql);
-              const sqlLower = sql.toLowerCase();
+              const prepared = await _syncClient.prepare(sqlStr);
+              const sqlLower = sqlStr.toLowerCase();
               const isQuery = sqlLower.startsWith('select') || sqlLower.includes('returning')
 
               let rawRows;
@@ -327,9 +327,9 @@ export async function getDb() {
                 rawRows = await prepared.all(args);
               } else {
                 if (typeof prepared.run === 'function') {
-                  const result = await prepared.run(args);
+                  const result = await prepared.run(args) as any;
                   rawRows = [];
-                  rowsAffected = result?.rowsAffected || 0;
+                  rowsAffected = result?.changes || 0;
                   lastInsertRowid = result?.lastInsertRowid;
                 } else {
                   rawRows = await prepared.all(args);
@@ -358,7 +358,7 @@ export async function getDb() {
                 lastInsertRowid,
               };
             } catch (err: any) {
-              console.error("[Database] Query failed:", sql);
+              console.error("[Database] Query failed:", sqlStr);
               console.error("[Database] Error:", err.message);
               throw err;
             }
@@ -370,66 +370,50 @@ export async function getDb() {
             }
             return results;
           },
-          transaction: (fn: any) => {
-            return _syncClient.transaction(async (tx: any) => {
-              const wrappedTx = {
-                execute: async (stmt: any) => {
-                  const sql = typeof stmt === 'string' ? stmt : stmt.sql;
-                  let args = typeof stmt === 'string' ? [] : (stmt.args || []);
-                  args = args.map((arg: any) => arg instanceof Date ? arg.toISOString() : arg);
+          transaction: async (fn?: any) => {
+            // Handle callback-based API (if used manually)
+            if (typeof fn === 'function') {
+              const runner = _syncClient.transaction(async () => {
+                return await fn(wrappedClient);
+              });
+              return await runner();
+            }
 
-                  const prepared = await tx.prepare(sql);
-                  const isSelect = sql.trim().toLowerCase().startsWith('select');
+            // Handle handle-based API (used by Drizzle)
+            // We use a promise to keep the transaction open while Drizzle executes queries
+            let resolveTx: any;
+            let rejectTx: any;
+            const done = new Promise<void>((resolve, reject) => {
+              resolveTx = resolve;
+              rejectTx = reject;
+            });
 
-                  let rawRows;
-                  let rowsAffected = 0;
-                  let lastInsertRowid = undefined;
+            let startedResolve: any;
+            const started = new Promise<void>(resolve => startedResolve = resolve);
 
-                  if (isSelect) {
-                    rawRows = await prepared.all(args);
-                  } else {
-                    if (typeof prepared.run === 'function') {
-                      const result = await prepared.run(args);
-                      rawRows = [];
-                      rowsAffected = result?.rowsAffected || 0;
-                      lastInsertRowid = result?.lastInsertRowid;
-                    } else {
-                      rawRows = await prepared.all(args);
-                    }
-                  }
+            const runner = _syncClient.transaction(async () => {
+              startedResolve();
+              await done;
+            });
 
-                  if (!rawRows || rawRows.length === 0) {
-                    return { rows: [], columns: [], rowsAffected, lastInsertRowid };
-                  }
+            const executionPromise = runner();
+            await started;
 
-                  const columns = Object.keys(rawRows[0]);
-                  const rows = rawRows.map((rawRow: any) => {
-                    const row: any = [];
-                    columns.forEach((col, idx) => {
-                      let val = rawRow[col];
-                      row[idx] = val;
-                      row[col] = val;
-                    });
-                    return row;
-                  });
-
-                  return {
-                    rows,
-                    columns,
-                    rowsAffected,
-                    lastInsertRowid,
-                  };
-                },
-                batch: async (stmts: any[]) => {
-                  const results = [];
-                  for (const s of stmts) {
-                    results.push(await wrappedTx.execute(s));
-                  }
-                  return results;
-                },
-              };
-              return fn(wrappedTx);
-            })();
+            return {
+              execute: (stmt: any) => wrappedClient.execute(stmt),
+              commit: async () => {
+                resolveTx();
+                await executionPromise;
+              },
+              rollback: async () => {
+                rejectTx();
+                try {
+                  await executionPromise;
+                } catch (e) {
+                  // Rollback error is expected
+                }
+              },
+            };
           },
           close: () => _syncClient.close(),
         };
@@ -460,7 +444,8 @@ export async function getDb() {
 async function syncWhenOnline(syncClient: any) {
   try {
     await syncClient.push();
-    console.log("[Database] Changes pushed to remote");
+    await syncClient.pull();
+    console.log("[Database] Changes synced (push/pull) with remote");
   } catch (e) {
     // No connectivity — changes are safe in the local file
   }
@@ -1184,10 +1169,13 @@ export async function markTransactionsAsImported(userId: number, externalIds: st
   const db = await getDb();
   if (externalIds.length === 0) return;
 
-  for (const id of externalIds) {
-    // Update brokerageTransactions table
-    await markBrokerageTransactionImported(id, userId);
-  }
+  // Update brokerageTransactions table
+  await db.update(brokerageTransactions)
+    .set({ importDate: new Date() })
+    .where(and(
+      eq(brokerageTransactions.userId, userId),
+      inArray(brokerageTransactions.externalId, externalIds)
+    ));
 }
 
 /**
