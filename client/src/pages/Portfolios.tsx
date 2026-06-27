@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { trpc } from "@/lib/trpc";
 import { formatCurrency, truncateNumber } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -80,6 +80,53 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
   const { data: dividendReport, isLoading: isLoadingDividends } = trpc.etf.getDetailedDividendReport.useQuery(
     { portfolioId: portfolioFilter === "all" ? undefined : parseInt(portfolioFilter) }
   );
+
+  const [divFocusSymbol, setDivFocusSymbol] = useState<string>("ALL");
+
+  useEffect(() => {
+    setDivFocusSymbol("ALL");
+  }, [portfolioFilter]);
+
+  // Group history by quarter for dividend bar chart (last 5 years only)
+  const dividendBarChartData = useMemo(() => {
+    if (!dividendReport?.history) return [];
+    
+    const fiveYearsAgo = new Date();
+    fiveYearsAgo.setFullYear(fiveYearsAgo.getFullYear() - 5);
+
+    const filtered = (divFocusSymbol === "ALL" 
+      ? dividendReport.history 
+      : dividendReport.history.filter((h: any) => h.symbol === divFocusSymbol))
+      .filter((h: any) => new Date(h.exDate) >= fiveYearsAgo);
+      
+    const grouped: Record<string, number> = {};
+    
+    filtered.forEach((div: any) => {
+      const date = new Date(div.exDate);
+      const quarter = Math.floor(date.getMonth() / 3) + 1;
+      const key = `${date.getFullYear()} Q${quarter}`;
+      grouped[key] = (grouped[key] || 0) + div.totalAmount;
+    });
+    
+    const sortedEntries = Object.entries(grouped)
+      .map(([quarterKey, amount]) => ({ 
+        date: quarterKey, 
+        amount: parseFloat(amount.toFixed(2)),
+        displayDate: quarterKey,
+        changePercent: null as number | null
+      }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    for (let i = 1; i < sortedEntries.length; i++) {
+      const prevAmount = sortedEntries[i - 1].amount;
+      const currAmount = sortedEntries[i].amount;
+      if (prevAmount > 0) {
+        sortedEntries[i].changePercent = ((currAmount - prevAmount) / prevAmount) * 100;
+      }
+    }
+
+    return sortedEntries;
+  }, [dividendReport?.history, divFocusSymbol]);
 
 
   // Aggregate consolidated holdings by asset
@@ -172,7 +219,14 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
     const totalInvestments = consolidatedHoldings.reduce((acc, h) => acc + h.mktValue, 0);
     const grandTotal = totalInvestments + totalCash;
 
-    const data = consolidatedHoldings.map(h => ({
+    const data: Array<{
+      name: string;
+      fullName: string;
+      value: number;
+      quantity: number | null;
+      allocation: number;
+      type: string;
+    }> = consolidatedHoldings.map(h => ({
       name: h.symbol,
       fullName: h.name,
       value: h.mktValue,
@@ -1182,6 +1236,128 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
             </table>
           )}
         </div>
+      </Card>
+
+      <Card className="bg-white border-none shadow-sm shadow-slate-200/50">
+        <CardHeader className="pb-4 flex flex-col md:flex-row items-start md:items-center justify-between space-y-0 gap-4">
+          <div className="flex items-center gap-2">
+            <BarChart3 className="w-4 h-4 text-primary" />
+            <CardTitle className="text-sm font-bold text-slate-800 uppercase tracking-widest">Dividend Payout Timeline</CardTitle>
+          </div>
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Focus:</span>
+              <Select value={divFocusSymbol} onValueChange={setDivFocusSymbol}>
+                <SelectTrigger className="h-7 text-[10px] font-bold uppercase tracking-wider min-w-[120px] bg-slate-50 border-slate-200">
+                  <SelectValue placeholder="Total Portfolio" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL" className="text-[10px] font-bold uppercase">Total Portfolio</SelectItem>
+                  {dividendReport?.etfBreakdown.map((etf: any) => (
+                    <SelectItem key={etf.symbol} value={etf.symbol} className="text-[10px] font-bold uppercase">
+                      {etf.symbol}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Filter:</span>
+              <Select value={portfolioFilter} onValueChange={setPortfolioFilter}>
+                <SelectTrigger className="h-7 text-[10px] font-bold uppercase tracking-wider min-w-[140px] bg-slate-50 border-slate-200">
+                  <SelectValue placeholder="All Portfolios" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all" className="text-[10px] font-bold uppercase">All Portfolios</SelectItem>
+                  {portfolios?.map(p => (
+                    <SelectItem key={p.id} value={p.id.toString()} className="text-[10px] font-bold uppercase">
+                      {p.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="pt-0">
+          <div className="flex justify-between items-center mb-6 px-1">
+            <div>
+              <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Total Period Value</div>
+              <div className="text-2xl font-bold text-slate-800 font-mono mt-1">
+                {formatCurrency(dividendBarChartData.reduce((acc, curr) => acc + curr.amount, 0))}
+              </div>
+            </div>
+          </div>
+          <div className="h-[300px] w-full mt-4">
+            {isLoadingDividends ? (
+              <div className="h-full flex items-center justify-center">
+                <RefreshCw className="w-8 h-8 animate-spin text-primary opacity-50" />
+              </div>
+            ) : dividendBarChartData.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={dividendBarChartData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                  <XAxis 
+                    dataKey="displayDate" 
+                    stroke="#94a3b8" 
+                    fontSize={10} 
+                    tickLine={false} 
+                    axisLine={false}
+                    minTickGap={20}
+                  />
+                  <YAxis 
+                    stroke="#94a3b8" 
+                    fontSize={10} 
+                    tickLine={false} 
+                    axisLine={false}
+                    tickFormatter={(value) => `$${value}`}
+                  />
+                  <Tooltip
+                    cursor={{ fill: '#f8fafc' }}
+                    content={({ active, payload, label }) => {
+                      if (active && payload && payload.length) {
+                        const data = payload[0].payload;
+                        const amount = data.amount;
+                        const changePercent = data.changePercent;
+
+                        return (
+                          <div className="bg-white p-3 border border-slate-200 rounded-lg shadow-lg space-y-1">
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 border-b pb-1">
+                              {label}
+                            </p>
+                            <div className="flex justify-between gap-8 items-center">
+                              <span className="text-[10px] font-bold text-slate-500 uppercase">Received</span>
+                              <span className="font-mono font-bold text-primary">{formatCurrency(amount)}</span>
+                            </div>
+                            {changePercent !== null && changePercent !== undefined && (
+                              <div className="flex justify-between gap-8 items-center pt-1 border-t border-slate-50 mt-1">
+                                <span className="text-[10px] font-bold text-slate-500 uppercase">QoQ Change</span>
+                                <span className={`font-mono font-bold text-xs ${changePercent >= 0 ? "text-green-600" : "text-red-600"}`}>
+                                  {changePercent >= 0 ? "+" : ""}{changePercent.toFixed(1)}%
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      }
+                      return null;
+                    }}
+                  />
+                  <Bar dataKey="amount" fill="#004a99" radius={[4, 4, 0, 0]}>
+                    {dividendBarChartData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill="#004a99" fillOpacity={0.8 + (index / dividendBarChartData.length) * 0.2} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-full flex items-center justify-center text-slate-400 italic text-sm">
+                No historical payouts recorded for this selection.
+              </div>
+            )}
+          </div>
+        </CardContent>
       </Card>
 
       {/* Account Type Allocation Pie Chart */}

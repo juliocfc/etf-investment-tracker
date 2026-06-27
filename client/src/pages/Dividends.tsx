@@ -57,29 +57,45 @@ export default function Dividends({
     setFilterAccountId("ALL");
   }, [selectedPortfolioId]);
 
-  // Group history by month for bar chart
+  // Group history by quarter for bar chart (last 5 years only)
   const barChartData = useMemo(() => {
     if (!report?.history) return [];
     
-    const filtered = globalFilterSymbol === "ALL" 
+    const fiveYearsAgo = new Date();
+    fiveYearsAgo.setFullYear(fiveYearsAgo.getFullYear() - 5);
+
+    const filtered = (globalFilterSymbol === "ALL" 
       ? report.history 
-      : report.history.filter((h: any) => h.symbol === globalFilterSymbol);
+      : report.history.filter((h: any) => h.symbol === globalFilterSymbol))
+      .filter((h: any) => new Date(h.exDate) >= fiveYearsAgo);
       
     const grouped: Record<string, number> = {};
     
     filtered.forEach((div: any) => {
       const date = new Date(div.exDate);
-      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      const quarter = Math.floor(date.getMonth() / 3) + 1;
+      const key = `${date.getFullYear()} Q${quarter}`;
       grouped[key] = (grouped[key] || 0) + div.totalAmount;
     });
     
-    return Object.entries(grouped)
-      .map(([date, amount]) => ({ 
-        date, 
+    const sortedEntries = Object.entries(grouped)
+      .map(([quarterKey, amount]) => ({ 
+        date: quarterKey, 
         amount: parseFloat(amount.toFixed(2)),
-        displayDate: new Date(date + "-02").toLocaleDateString(undefined, { month: 'short', year: '2-digit' })
+        displayDate: quarterKey,
+        changePercent: null as number | null
       }))
       .sort((a, b) => a.date.localeCompare(b.date));
+
+    for (let i = 1; i < sortedEntries.length; i++) {
+      const prevAmount = sortedEntries[i - 1].amount;
+      const currAmount = sortedEntries[i].amount;
+      if (prevAmount > 0) {
+        sortedEntries[i].changePercent = ((currAmount - prevAmount) / prevAmount) * 100;
+      }
+    }
+
+    return sortedEntries;
   }, [report?.history, globalFilterSymbol]);
 
   const filteredHistory = useMemo(() => {
@@ -258,15 +274,35 @@ export default function Dividends({
                   tickFormatter={(value) => `$${value}`}
                 />
                 <Tooltip
-                  contentStyle={{
-                    backgroundColor: "#fff",
-                    border: "1px solid #e2e8f0",
-                    borderRadius: "8px",
-                    boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)",
-                    fontSize: "12px",
-                  }}
                   cursor={{ fill: '#f8fafc' }}
-                  formatter={(value) => [formatCurrency(value as number), "Received"]}
+                  content={({ active, payload, label }) => {
+                    if (active && payload && payload.length) {
+                      const data = payload[0].payload;
+                      const amount = data.amount;
+                      const changePercent = data.changePercent;
+
+                      return (
+                        <div className="bg-white p-3 border border-slate-200 rounded-lg shadow-lg space-y-1">
+                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 border-b pb-1">
+                            {label}
+                          </p>
+                          <div className="flex justify-between gap-8 items-center">
+                            <span className="text-[10px] font-bold text-slate-500 uppercase">Received</span>
+                            <span className="font-mono font-bold text-primary">{formatCurrency(amount)}</span>
+                          </div>
+                          {changePercent !== null && changePercent !== undefined && (
+                            <div className="flex justify-between gap-8 items-center pt-1 border-t border-slate-50 mt-1">
+                              <span className="text-[10px] font-bold text-slate-500 uppercase">QoQ Change</span>
+                              <span className={`font-mono font-bold text-xs ${changePercent >= 0 ? "text-green-600" : "text-red-600"}`}>
+                                {changePercent >= 0 ? "+" : ""}{changePercent.toFixed(1)}%
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    }
+                    return null;
+                  }}
                 />
                 <Bar dataKey="amount" fill="#004a99" radius={[4, 4, 0, 0]}>
                   {barChartData.map((entry, index) => (
