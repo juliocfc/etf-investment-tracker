@@ -458,10 +458,46 @@ export default function BrokerageTransactions() {
     }
   };
 
+  const getSymbolString = (symbolWrapper: any): string => {
+    if (!symbolWrapper) return "";
+    const s = symbolWrapper.symbol || symbolWrapper;
+    if (typeof s === "string") return s;
+    if (typeof s.raw_symbol === "string") return s.raw_symbol;
+    if (typeof s.symbol === "string") return s.symbol;
+    return "";
+  };
+
+  const getHoldingName = (symbolWrapper: any): string => {
+    if (!symbolWrapper) return "";
+    const s = symbolWrapper.symbol || symbolWrapper;
+    if (typeof s === "string") return "";
+    return s.description || "";
+  };
+
+  const classifyHolding = (h: any): "cash" | "treasury" | "equity" => {
+    const symbolStr = getSymbolString(h.symbol).toUpperCase();
+    const nameStr = getHoldingName(h.symbol).toUpperCase();
+
+    if (["FDRXX", "SPAXX", "FDIC91026"].includes(symbolStr)) {
+      return "cash";
+    }
+    if (nameStr.includes("UNITED STATES TREAS")) {
+      return "treasury";
+    }
+    return "equity";
+  };
+
   const groupedHoldings = useMemo(() => {
     if (!holdings) return [];
     
-    const groups: Record<string, { account: any, holdings: any[], totalMarketValue: number }> = {};
+    const groups: Record<string, { 
+      account: any, 
+      holdings: any[], 
+      totalMarketValue: number,
+      totalCash: number,
+      totalTreasury: number,
+      totalEquity: number
+    }> = {};
     
     holdings.forEach((h: any) => {
       // Filter by account if selected
@@ -474,17 +510,103 @@ export default function BrokerageTransactions() {
         groups[accId] = {
           account: h.account,
           holdings: [],
-          totalMarketValue: 0
+          totalMarketValue: 0,
+          totalCash: 0,
+          totalTreasury: 0,
+          totalEquity: 0
         };
       }
       
       groups[accId].holdings.push(h);
-      groups[accId].totalMarketValue += (h.units || 0) * (h.price || 0);
+      const mktVal = (h.units || 0) * (h.price || 0);
+      groups[accId].totalMarketValue += mktVal;
+
+      const category = classifyHolding(h);
+      if (category === "cash") {
+        groups[accId].totalCash += mktVal;
+      } else if (category === "treasury") {
+        groups[accId].totalTreasury += mktVal;
+      } else {
+        groups[accId].totalEquity += mktVal;
+      }
     });
     
     // Sort groups by total market value DESC
     return Object.values(groups).sort((a, b) => b.totalMarketValue - a.totalMarketValue);
   }, [holdings, selectedHoldingsAccountId]);
+
+  const getMaturityDate = (description: string): string => {
+    const match = description.match(/\b(\d{2})\/(\d{2})\/(\d{4})\b/);
+    if (match) {
+      return match[0];
+    }
+    return "Unknown";
+  };
+
+  const parseMaturityDate = (dateStr: string): Date => {
+    if (dateStr === "Unknown") return new Date(8640000000000000);
+    const [m, d, y] = dateStr.split("/").map(Number);
+    return new Date(y, m - 1, d);
+  };
+
+  const [expandedMaturities, setExpandedMaturities] = useState<Set<string>>(new Set());
+
+  const toggleMaturityExpand = (maturityDate: string) => {
+    setExpandedMaturities((prev) => {
+      const next = new Set(prev);
+      if (next.has(maturityDate)) {
+        next.delete(maturityDate);
+      } else {
+        next.add(maturityDate);
+      }
+      return next;
+    });
+  };
+
+  const treasuryMaturityGroups = useMemo(() => {
+    if (!holdings) return [];
+
+    const groups: Record<string, {
+      maturityDate: string,
+      holdings: any[],
+      totalMarketValue: number
+    }> = {};
+
+    holdings.forEach((h: any) => {
+      if (selectedHoldingsAccountId !== "all" && h.account?.id !== selectedHoldingsAccountId) {
+        return;
+      }
+
+      const category = classifyHolding(h);
+      if (category !== "treasury") return;
+
+      const desc = getHoldingName(h.symbol);
+      const maturity = getMaturityDate(desc);
+
+      if (!groups[maturity]) {
+        groups[maturity] = {
+          maturityDate: maturity,
+          holdings: [],
+          totalMarketValue: 0
+        };
+      }
+
+      groups[maturity].holdings.push(h);
+      groups[maturity].totalMarketValue += (h.units || 0) * (h.price || 0);
+    });
+
+    return Object.values(groups).sort((a, b) => {
+      const dateA = parseMaturityDate(a.maturityDate);
+      const dateB = parseMaturityDate(b.maturityDate);
+      return dateA.getTime() - dateB.getTime();
+    });
+  }, [holdings, selectedHoldingsAccountId]);
+
+  useEffect(() => {
+    if (treasuryMaturityGroups.length > 0 && expandedMaturities.size === 0) {
+      setExpandedMaturities(new Set(treasuryMaturityGroups.map(g => g.maturityDate)));
+    }
+  }, [treasuryMaturityGroups]);
 
   const getLoginUrl = trpc.brokerage.getLoginUrl.useQuery(
     { 
@@ -1016,13 +1138,16 @@ export default function BrokerageTransactions() {
                     <th className="text-right py-3 px-6">Shares</th>
                     <th className="text-right py-3 px-6">Avg Cost</th>
                     <th className="text-right py-3 px-6">Price</th>
+                    <th className="text-right py-3 px-6">Cash</th>
+                    <th className="text-right py-3 px-6">US Treasuries</th>
+                    <th className="text-right py-3 px-6">Equities</th>
                     <th className="text-right py-3 px-6">Market Value</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {isLoadingHoldings ? (
                     <tr>
-                      <td colSpan={7} className="py-20 text-center">
+                      <td colSpan={10} className="py-20 text-center">
                         <RefreshCw className="w-8 h-8 animate-spin text-primary mx-auto mb-4 opacity-50" />
                         <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Fetching Positions...</p>
                       </td>
@@ -1052,43 +1177,66 @@ export default function BrokerageTransactions() {
                               {group.holdings.length} Assets
                             </td>
                             <td className="py-4 px-6" colSpan={2}></td>
+                            <td className="py-4 px-6 text-right font-mono font-bold text-slate-700">
+                              {formatCurrency(group.totalCash)}
+                            </td>
+                            <td className="py-4 px-6 text-right font-mono font-bold text-slate-700">
+                              {formatCurrency(group.totalTreasury)}
+                            </td>
+                            <td className="py-4 px-6 text-right font-mono font-bold text-slate-700">
+                              {formatCurrency(group.totalEquity)}
+                            </td>
                             <td className="py-4 px-6 text-right font-mono font-bold text-slate-900">
                               {formatCurrency(group.totalMarketValue)}
                             </td>
                           </tr>
                           
                           {/* Individual Holdings (Visible if expanded) */}
-                          {isExpanded && group.holdings.map((h: any, hIdx: number) => (
-                            <tr key={`${accId}-${hIdx}`} className="bg-white hover:bg-slate-50/30 border-l-4 border-l-primary/20">
-                              <td></td>
-                              <td className="py-3 px-6 pl-10">
-                                <div className="font-bold text-primary text-sm">{renderSymbol(h.symbol)}</div>
-                              </td>
-                              <td className="py-3 px-6">
-                                <div className="text-[10px] text-slate-500 truncate max-w-[200px]" title={renderDescription(h.symbol)}>
-                                  {renderDescription(h.symbol)}
-                                </div>
-                              </td>
-                              <td className="py-3 px-6 text-right font-mono text-xs font-medium">
-                                {h.units}
-                              </td>
-                              <td className="py-3 px-6 text-right font-mono text-xs text-slate-500">
-                                {formatCurrency(h.average_purchase_price)}
-                              </td>
-                              <td className="py-3 px-6 text-right font-mono text-xs text-slate-500">
-                                {formatCurrency(h.price)}
-                              </td>
-                              <td className="py-3 px-6 text-right font-mono font-bold text-slate-700">
-                                {formatCurrency((h.units || 0) * (h.price || 0))}
-                              </td>
-                            </tr>
-                          ))}
+                          {isExpanded && group.holdings.map((h: any, hIdx: number) => {
+                            const category = classifyHolding(h);
+                            const mktVal = (h.units || 0) * (h.price || 0);
+
+                            return (
+                              <tr key={`${accId}-${hIdx}`} className="bg-white hover:bg-slate-50/30 border-l-4 border-l-primary/20">
+                                <td></td>
+                                <td className="py-3 px-6 pl-10">
+                                  <div className="font-bold text-primary text-sm">{renderSymbol(h.symbol)}</div>
+                                </td>
+                                <td className="py-3 px-6">
+                                  <div className="text-[10px] text-slate-500 truncate max-w-[200px]" title={renderDescription(h.symbol)}>
+                                    {renderDescription(h.symbol)}
+                                  </div>
+                                </td>
+                                <td className="py-3 px-6 text-right font-mono text-xs font-medium">
+                                  {h.units}
+                                </td>
+                                <td className="py-3 px-6 text-right font-mono text-xs text-slate-500">
+                                  {formatCurrency(h.average_purchase_price)}
+                                </td>
+                                <td className="py-3 px-6 text-right font-mono text-xs text-slate-500">
+                                  {formatCurrency(h.price)}
+                                </td>
+                                <td className="py-3 px-6 text-right font-mono text-xs text-slate-600">
+                                  {category === "cash" ? formatCurrency(mktVal) : "-"}
+                                </td>
+                                <td className="py-3 px-6 text-right font-mono text-xs text-slate-600">
+                                  {category === "treasury" ? formatCurrency(mktVal) : "-"}
+                                </td>
+                                <td className="py-3 px-6 text-right font-mono text-xs text-slate-600">
+                                  {category === "equity" ? formatCurrency(mktVal) : "-"}
+                                </td>
+                                <td className="py-3 px-6 text-right font-mono font-bold text-slate-700">
+                                  {formatCurrency(mktVal)}
+                                </td>
+                              </tr>
+                            );
+                          })}
                         </React.Fragment>
                       );
                     })
                   ) : (
                     <tr>
-                      <td colSpan={7} className="py-20 text-center text-slate-400 italic">
+                      <td colSpan={10} className="py-20 text-center text-slate-400 italic">
                         No positions found for these accounts.
                       </td>
                     </tr>
@@ -1105,6 +1253,15 @@ export default function BrokerageTransactions() {
                         {groupedHoldings.reduce((sum: number, group: any) => sum + group.holdings.length, 0)} Assets
                       </td>
                       <td className="py-4 px-6" colSpan={2}></td>
+                      <td className="py-4 px-6 text-right font-mono font-bold text-slate-700">
+                        {formatCurrency(groupedHoldings.reduce((sum: number, group: any) => sum + group.totalCash, 0))}
+                      </td>
+                      <td className="py-4 px-6 text-right font-mono font-bold text-slate-700">
+                        {formatCurrency(groupedHoldings.reduce((sum: number, group: any) => sum + group.totalTreasury, 0))}
+                      </td>
+                      <td className="py-4 px-6 text-right font-mono font-bold text-slate-700">
+                        {formatCurrency(groupedHoldings.reduce((sum: number, group: any) => sum + group.totalEquity, 0))}
+                      </td>
                       <td className="py-4 px-6 text-right font-mono text-lg text-primary">
                         {formatCurrency(groupedHoldings.reduce((sum: number, group: any) => sum + group.totalMarketValue, 0))}
                       </td>
@@ -1114,6 +1271,106 @@ export default function BrokerageTransactions() {
               </table>
             </div>
           </Card>
+
+          {/* US Treasuries by Maturity Date */}
+          {treasuryMaturityGroups.length > 0 && (
+            <Card className="bg-white shadow-sm border border-border overflow-hidden mt-8">
+              <div className="px-6 py-4 border-b border-border bg-slate-50/50">
+                <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">US Treasuries Maturity Schedule</h3>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-border text-slate-600 font-bold uppercase text-[10px] tracking-wider">
+                      <th className="py-3 px-6 text-left w-10"></th>
+                      <th className="text-left py-3 px-6">Maturity Date / Asset</th>
+                      <th className="text-left py-3 px-6">Description</th>
+                      <th className="text-left py-3 px-6">Account</th>
+                      <th className="text-right py-3 px-6">Shares</th>
+                      <th className="text-right py-3 px-6">Price</th>
+                      <th className="text-right py-3 px-6">Market Value</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {treasuryMaturityGroups.map((group) => {
+                      const key = group.maturityDate;
+                      const isExpanded = expandedMaturities.has(key);
+                      return (
+                        <React.Fragment key={key}>
+                          {/* Maturity Group Header Row */}
+                          <tr 
+                            className="bg-slate-50/80 cursor-pointer hover:bg-slate-100 transition-colors"
+                            onClick={() => toggleMaturityExpand(key)}
+                          >
+                            <td className="py-4 px-6 text-center">
+                              {isExpanded ? <ChevronDown className="w-4 h-4 text-slate-400" /> : <ChevronRight className="w-4 h-4 text-slate-400" />}
+                            </td>
+                            <td className="py-4 px-6 font-bold text-slate-800" colSpan={3}>
+                              Maturity: {group.maturityDate}
+                            </td>
+                            <td className="py-4 px-6 text-right font-mono text-xs text-slate-500">
+                              {group.holdings.length} Positions
+                            </td>
+                            <td></td>
+                            <td className="py-4 px-6 text-right font-mono font-bold text-slate-900">
+                              {formatCurrency(group.totalMarketValue)}
+                            </td>
+                          </tr>
+
+                          {/* Individual Holdings under this Maturity */}
+                          {isExpanded && group.holdings.map((h: any, idx: number) => {
+                            const mktVal = (h.units || 0) * (h.price || 0);
+                            return (
+                              <tr key={`${key}-${idx}`} className="bg-white hover:bg-slate-50/30 border-l-4 border-l-orange-500/20">
+                                <td></td>
+                                <td className="py-3 px-6 pl-10">
+                                  <div className="font-bold text-slate-800 text-sm">{renderSymbol(h.symbol)}</div>
+                                </td>
+                                <td className="py-3 px-6">
+                                  <div className="text-xs text-slate-600 truncate max-w-[300px]">
+                                    {renderDescription(h.symbol)}
+                                  </div>
+                                </td>
+                                <td className="py-3 px-6">
+                                  <div className="text-xs text-slate-500 font-medium">
+                                    {h.account?.name} ({h.account?.number})
+                                  </div>
+                                </td>
+                                <td className="py-3 px-6 text-right font-mono text-xs font-medium">
+                                  {h.units}
+                                </td>
+                                <td className="py-3 px-6 text-right font-mono text-xs text-slate-500">
+                                  {formatCurrency(h.price)}
+                                </td>
+                                <td className="py-3 px-6 text-right font-mono font-bold text-slate-700">
+                                  {formatCurrency(mktVal)}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </React.Fragment>
+                      );
+                    })}
+                  </tbody>
+                  <tfoot className="bg-slate-50 border-t-2 border-slate-200">
+                    <tr className="font-bold text-slate-800">
+                      <td className="py-4 px-6"></td>
+                      <td className="py-4 px-6 uppercase text-[10px] tracking-widest text-slate-500" colSpan={3}>
+                        Total US Treasuries Value
+                      </td>
+                      <td className="py-4 px-6 text-right font-mono text-xs text-slate-500">
+                        {treasuryMaturityGroups.reduce((sum: number, group: any) => sum + group.holdings.length, 0)} Positions
+                      </td>
+                      <td></td>
+                      <td className="py-4 px-6 text-right font-mono text-lg text-primary">
+                        {formatCurrency(treasuryMaturityGroups.reduce((sum: number, group: any) => sum + group.totalMarketValue, 0))}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </Card>
+          )}
         </>
       ) : (
         <Card className="p-20 text-center border-dashed border-2 border-slate-200 bg-white">
