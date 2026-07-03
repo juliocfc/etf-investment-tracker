@@ -116,3 +116,4 @@ etf-tracker.db-info
 etf-tracker.db-wal
 etf-tracker.db-wal-revert
 local.db-shm
+etf-tracker.db-shm
