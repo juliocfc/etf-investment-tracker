@@ -604,9 +604,91 @@ export default function BrokerageTransactions() {
 
   useEffect(() => {
     if (treasuryMaturityGroups.length > 0 && expandedMaturities.size === 0) {
-      setExpandedMaturities(new Set(treasuryMaturityGroups.map(g => g.maturityDate)));
+      //setExpandedMaturities(new Set(treasuryMaturityGroups.map(g => g.maturityDate)));
     }
   }, [treasuryMaturityGroups]);
+
+  const getMaturityMonthYear = (maturityDateStr: string): string => {
+    if (maturityDateStr === "Unknown") return "Unknown";
+    const [m, d, y] = maturityDateStr.split("/").map(Number);
+    const months = [
+      "January", "February", "March", "April", "May", "June",
+      "July", "August", "September", "October", "November", "December"
+    ];
+    return `${months[m - 1]} ${y}`;
+  };
+
+  const parseMonthYear = (myStr: string): Date => {
+    if (myStr === "Unknown") return new Date(8640000000000000);
+    const [monthName, yearStr] = myStr.split(" ");
+    const months = [
+      "January", "February", "March", "April", "May", "June",
+      "July", "August", "September", "October", "November", "December"
+    ];
+    const m = months.indexOf(monthName);
+    const y = Number(yearStr);
+    return new Date(y, m, 1);
+  };
+
+  const [expandedMonthMaturities, setExpandedMonthMaturities] = useState<Set<string>>(new Set());
+
+  const toggleMonthMaturityExpand = (monthYear: string) => {
+    setExpandedMonthMaturities((prev) => {
+      const next = new Set(prev);
+      if (next.has(monthYear)) {
+        next.delete(monthYear);
+      } else {
+        next.add(monthYear);
+      }
+      return next;
+    });
+  };
+
+  const treasuryMonthYearGroups = useMemo(() => {
+    if (!holdings) return [];
+
+    const groups: Record<string, {
+      monthYear: string,
+      holdings: any[],
+      totalMarketValue: number
+    }> = {};
+
+    holdings.forEach((h: any) => {
+      if (selectedHoldingsAccountId !== "all" && h.account?.id !== selectedHoldingsAccountId) {
+        return;
+      }
+
+      const category = classifyHolding(h);
+      if (category !== "treasury") return;
+
+      const desc = getHoldingName(h.symbol);
+      const maturity = getMaturityDate(desc);
+      const monthYear = getMaturityMonthYear(maturity);
+
+      if (!groups[monthYear]) {
+        groups[monthYear] = {
+          monthYear: monthYear,
+          holdings: [],
+          totalMarketValue: 0
+        };
+      }
+
+      groups[monthYear].holdings.push(h);
+      groups[monthYear].totalMarketValue += (h.units || 0) * (h.price || 0);
+    });
+
+    return Object.values(groups).sort((a, b) => {
+      const dateA = parseMonthYear(a.monthYear);
+      const dateB = parseMonthYear(b.monthYear);
+      return dateA.getTime() - dateB.getTime();
+    });
+  }, [holdings, selectedHoldingsAccountId]);
+
+  useEffect(() => {
+    if (treasuryMonthYearGroups.length > 0 && expandedMonthMaturities.size === 0) {
+      //setExpandedMonthMaturities(new Set(treasuryMonthYearGroups.map(g => g.monthYear)));
+    }
+  }, [treasuryMonthYearGroups]);
 
   const getLoginUrl = trpc.brokerage.getLoginUrl.useQuery(
     { 
@@ -1364,6 +1446,106 @@ export default function BrokerageTransactions() {
                       <td></td>
                       <td className="py-4 px-6 text-right font-mono text-lg text-primary">
                         {formatCurrency(treasuryMaturityGroups.reduce((sum: number, group: any) => sum + group.totalMarketValue, 0))}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </Card>
+          )}
+
+          {/* US Treasuries by Month/Year */}
+          {treasuryMonthYearGroups.length > 0 && (
+            <Card className="bg-white shadow-sm border border-border overflow-hidden mt-8">
+              <div className="px-6 py-4 border-b border-border bg-slate-50/50">
+                <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">US Treasuries Monthly Maturity Schedule</h3>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-border text-slate-600 font-bold uppercase text-[10px] tracking-wider">
+                      <th className="py-3 px-6 text-left w-10"></th>
+                      <th className="text-left py-3 px-6">Maturity Month / Asset</th>
+                      <th className="text-left py-3 px-6">Description</th>
+                      <th className="text-left py-3 px-6">Account</th>
+                      <th className="text-right py-3 px-6">Shares</th>
+                      <th className="text-right py-3 px-6">Price</th>
+                      <th className="text-right py-3 px-6">Market Value</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {treasuryMonthYearGroups.map((group) => {
+                      const key = group.monthYear;
+                      const isExpanded = expandedMonthMaturities.has(key);
+                      return (
+                        <React.Fragment key={key}>
+                          {/* Maturity Group Header Row */}
+                          <tr 
+                            className="bg-slate-50/80 cursor-pointer hover:bg-slate-100 transition-colors"
+                            onClick={() => toggleMonthMaturityExpand(key)}
+                          >
+                            <td className="py-4 px-6 text-center">
+                              {isExpanded ? <ChevronDown className="w-4 h-4 text-slate-400" /> : <ChevronRight className="w-4 h-4 text-slate-400" />}
+                            </td>
+                            <td className="py-4 px-6 font-bold text-slate-800" colSpan={3}>
+                              Maturity Month: {group.monthYear}
+                            </td>
+                            <td className="py-4 px-6 text-right font-mono text-xs text-slate-500">
+                              {group.holdings.length} Positions
+                            </td>
+                            <td colSpan={1}></td>
+                            <td className="py-4 px-6 text-right font-mono font-bold text-slate-900">
+                              {formatCurrency(group.totalMarketValue)}
+                            </td>
+                          </tr>
+
+                          {/* Individual Holdings under this Maturity */}
+                          {isExpanded && group.holdings.map((h: any, idx: number) => {
+                            const mktVal = (h.units || 0) * (h.price || 0);
+                            return (
+                              <tr key={`${key}-${idx}`} className="bg-white hover:bg-slate-50/30 border-l-4 border-l-orange-500/20">
+                                <td></td>
+                                <td className="py-3 px-6 pl-10">
+                                  <div className="font-bold text-slate-800 text-sm">{renderSymbol(h.symbol)}</div>
+                                </td>
+                                <td className="py-3 px-6">
+                                  <div className="text-xs text-slate-600 truncate max-w-[300px]">
+                                    {renderDescription(h.symbol)}
+                                  </div>
+                                </td>
+                                <td className="py-3 px-6">
+                                  <div className="text-xs text-slate-500 font-medium">
+                                    {h.account?.name} ({h.account?.number})
+                                  </div>
+                                </td>
+                                <td className="py-3 px-6 text-right font-mono text-xs font-medium">
+                                  {h.units}
+                                </td>
+                                <td className="py-3 px-6 text-right font-mono text-xs text-slate-500">
+                                  {formatCurrency(h.price)}
+                                </td>
+                                <td className="py-3 px-6 text-right font-mono font-bold text-slate-700">
+                                  {formatCurrency(mktVal)}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </React.Fragment>
+                      );
+                    })}
+                  </tbody>
+                  <tfoot className="bg-slate-50 border-t-2 border-slate-200">
+                    <tr className="font-bold text-slate-800">
+                      <td className="py-4 px-6"></td>
+                      <td className="py-4 px-6 uppercase text-[10px] tracking-widest text-slate-500" colSpan={3}>
+                        Total US Treasuries Value
+                      </td>
+                      <td className="py-4 px-6 text-right font-mono text-xs text-slate-500">
+                        {treasuryMonthYearGroups.reduce((sum: number, group: any) => sum + group.holdings.length, 0)} Positions
+                      </td>
+                      <td colSpan={1}></td>
+                      <td className="py-4 px-6 text-right font-mono text-lg text-primary">
+                        {formatCurrency(treasuryMonthYearGroups.reduce((sum: number, group: any) => sum + group.totalMarketValue, 0))}
                       </td>
                     </tr>
                   </tfoot>
