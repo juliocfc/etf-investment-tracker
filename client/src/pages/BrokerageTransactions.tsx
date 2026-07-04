@@ -1221,9 +1221,10 @@ export default function BrokerageTransactions() {
                     <th className="text-right py-3 px-6">Avg Cost</th>
                     <th className="text-right py-3 px-6">Price</th>
                     <th className="text-right py-3 px-6">Cash</th>
-                    <th className="text-right py-3 px-6">US Treasuries</th>
+                    <th className="text-right py-3 px-6">Treasuries</th>
+                    <th className="text-right py-3 px-6">Cash Equivalents</th>
                     <th className="text-right py-3 px-6">Equities</th>
-                    <th className="text-right py-3 px-6">Market Value</th>
+                    <th className="text-right py-3 px-6">Account Total</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -1264,6 +1265,9 @@ export default function BrokerageTransactions() {
                             </td>
                             <td className="py-4 px-6 text-right font-mono font-bold text-slate-700">
                               {formatCurrency(group.totalTreasury)}
+                            </td>
+                             <td className="py-4 px-6 text-right font-mono font-bold text-slate-700">
+                              {formatCurrency(group.totalTreasury + group.totalCash)}
                             </td>
                             <td className="py-4 px-6 text-right font-mono font-bold text-slate-700">
                               {formatCurrency(group.totalEquity)}
@@ -1340,6 +1344,9 @@ export default function BrokerageTransactions() {
                       </td>
                       <td className="py-4 px-6 text-right font-mono font-bold text-slate-700">
                         {formatCurrency(groupedHoldings.reduce((sum: number, group: any) => sum + group.totalTreasury, 0))}
+                      </td>
+                      <td className="py-4 px-6 text-right font-mono font-bold text-slate-700">
+                        {formatCurrency(groupedHoldings.reduce((sum: number, group: any) => sum + group.totalCash + group.totalTreasury, 0))}
                       </td>
                       <td className="py-4 px-6 text-right font-mono font-bold text-slate-700">
                         {formatCurrency(groupedHoldings.reduce((sum: number, group: any) => sum + group.totalEquity, 0))}
