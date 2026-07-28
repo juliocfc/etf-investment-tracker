@@ -54,4 +54,18 @@ export const accountRouter = router({
       });
       return { success: true };
     }),
+
+  moveAccount: protectedProcedure
+    .input(
+      z.object({
+        accountId: z.number(),
+        targetPortfolioId: z.number(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const { moveAccount } = await import("./db");
+      await moveAccount(input.accountId, input.targetPortfolioId);
+      return { success: true };
+    }),
 });
+

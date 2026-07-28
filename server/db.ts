@@ -569,6 +569,37 @@ export async function updateAccount(id: number, data: any) {
   return db.update(accounts).set(data).where(eq(accounts.id, id));
 }
 
+export async function moveAccount(accountId: number, targetPortfolioId: number) {
+  const db = await getDb();
+  return db.transaction(async (tx: any) => {
+    // 1. Update the account's portfolioId
+    await tx.update(accounts)
+      .set({ portfolioId: targetPortfolioId })
+      .where(eq(accounts.id, accountId));
+
+    // 2. Update the etfHoldings portfolioId
+    await tx.update(etfHoldings)
+      .set({ portfolioId: targetPortfolioId })
+      .where(eq(etfHoldings.accountId, accountId));
+
+    // 3. Update the purchases portfolioId
+    await tx.update(purchases)
+      .set({ portfolioId: targetPortfolioId })
+      .where(eq(purchases.accountId, accountId));
+
+    // 4. Update the cashBalance portfolioId
+    await tx.update(cashBalance)
+      .set({ portfolioId: targetPortfolioId })
+      .where(eq(cashBalance.accountId, accountId));
+
+    // 5. Update the cashBalanceHistory portfolioId
+    await tx.update(cashBalanceHistory)
+      .set({ portfolioId: targetPortfolioId })
+      .where(eq(cashBalanceHistory.accountId, accountId));
+  });
+}
+
+
 // ETF Holdings queries
 export async function getUserEtfHoldings(userId: number, portfolioId?: number, accountId?: number) {
   const db = await getDb();

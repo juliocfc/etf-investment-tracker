@@ -240,6 +240,8 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
   );
 
   const [editingAccount, setEditingAccount] = useState<{ id: number, name: string, number?: string, accountType: string } | null>(null);
+  const [movingAccount, setMovingAccount] = useState<{ id: number, name: string, portfolioId: number } | null>(null);
+  const [targetPortfolioId, setTargetPortfolioId] = useState<string>("");
 
   // Mutations
   const addAccountMutation = trpc.account.addAccount.useMutation({
@@ -264,6 +266,22 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
       toast.error(error.message || "Failed to update account");
     }
   });
+
+  const moveAccountMutation = trpc.account.moveAccount.useMutation({
+    onSuccess: () => {
+      toast.success("Account moved successfully!");
+      refetchAccounts();
+      refetchHoldings();
+      refetchSummary();
+      utils.portfolio.getConsolidatedSummary.invalidate();
+      setMovingAccount(null);
+      setTargetPortfolioId("");
+    },
+    onError: (error) => {
+      toast.error(error.message || "Failed to move account");
+    }
+  });
+
 
   const deleteAccountMutation = trpc.account.deleteAccount.useMutation({
     onSuccess: () => {
@@ -1000,6 +1018,18 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                                       <Edit2 className="mr-2 h-4 w-4 text-slate-500" />
                                       <span>Edit Account</span>
                                     </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => {
+                                      setMovingAccount({
+                                        id: account.id,
+                                        name: account.name,
+                                        portfolioId: account.portfolioId,
+                                      });
+                                      setTargetPortfolioId("");
+                                    }}>
+                                      <ArrowLeftRight className="mr-2 h-4 w-4 text-blue-600" />
+                                      <span>Move Account</span>
+                                    </DropdownMenuItem>
+
                                     <DropdownMenuSeparator />
                                     <DropdownMenuItem onClick={() => {
                                       setAdjustCashData({
@@ -1195,6 +1225,59 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                 </div>
               </DialogContent>
             </Dialog>
+
+            {/* Move Account Dialog */}
+            <Dialog open={!!movingAccount} onOpenChange={(open) => !open && setMovingAccount(null)}>
+              <DialogContent className="sm:max-w-[425px]">
+                <DialogHeader>
+                  <DialogTitle>Move Account: {movingAccount?.name}</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4 pt-4">
+                  <div className="grid gap-2">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Destination Portfolio</label>
+                    <Select
+                      value={targetPortfolioId}
+                      onValueChange={setTargetPortfolioId}
+                    >
+                      <SelectTrigger className="h-10 border-slate-200">
+                        <SelectValue placeholder="Select Destination Portfolio" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {portfolios
+                          ?.filter((p: any) => p.id !== movingAccount?.portfolioId)
+                          ?.map((p: any) => (
+                            <SelectItem key={p.id} value={p.id.toString()}>
+                              {p.name}
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex gap-2 justify-end pt-2">
+                    <Button
+                      variant="outline"
+                      onClick={() => setMovingAccount(null)}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      disabled={moveAccountMutation.isPending || !targetPortfolioId}
+                      onClick={() => {
+                        if (movingAccount && targetPortfolioId) {
+                          moveAccountMutation.mutate({
+                            accountId: movingAccount.id,
+                            targetPortfolioId: parseInt(targetPortfolioId, 10),
+                          });
+                        }
+                      }}
+                    >
+                      {moveAccountMutation.isPending ? "Moving..." : "Save"}
+                    </Button>
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
+
 
             {/* Main Holdings Table */}
             <Card className="bg-white shadow-sm border border-border overflow-hidden">
