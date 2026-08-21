@@ -1316,7 +1316,110 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                       </Button>
                     </DialogTrigger>
                     <DialogContent className="sm:max-w-[425px]">
-...
+                      <DialogHeader>
+                        <DialogTitle>Add Trade</DialogTitle>
+                      </DialogHeader>
+                      <div className="space-y-4 pt-4">
+                        <div className="grid gap-2">
+                          <label className="text-xs font-bold text-slate-500 uppercase">Trade Type</label>
+                          <div className="flex bg-slate-100 p-1 rounded-md">
+                            <button
+                              onClick={() => setFormData(prev => ({ ...prev, type: "buy" }))}
+                              className={`flex-1 py-1.5 text-xs font-bold rounded shadow-sm transition-all ${formData.type === "buy" ? "bg-white text-primary" : "text-slate-500 hover:text-slate-700"}`}
+                            >
+                              BUY
+                            </button>
+                            <button
+                              onClick={() => setFormData(prev => ({ ...prev, type: "sell" }))}
+                              className={`flex-1 py-1.5 text-xs font-bold rounded shadow-sm transition-all ${formData.type === "sell" ? "bg-white text-destructive" : "text-slate-500 hover:text-slate-700"}`}
+                            >
+                              SELL
+                            </button>
+                          </div>
+                        </div>
+                        <div className="grid gap-2">
+                          <label className="text-xs font-bold text-slate-500 uppercase">Account</label>
+                          <select
+                            className="bg-white border border-input rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary h-10"
+                            value={formData.accountId}
+                            onChange={(e) => setFormData(prev => ({ ...prev, accountId: e.target.value }))}
+                          >
+                            {accounts?.map((acc: any) => (
+                              <option key={acc.id} value={acc.id}>{acc.name} {acc.number ? `(${acc.number})` : ""}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="grid gap-2">
+                          <label className="text-xs font-bold text-slate-500 uppercase">Symbol</label>
+                          <Input
+                            placeholder="e.g., VOO, AAPL"
+                            value={formData.symbol}
+                            onChange={handleSymbolChange}
+                            onBlur={() => fetchAndSetPrice(formData.symbol, formData.purchaseDate)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Tab" && !e.shiftKey) {
+                                e.preventDefault();
+                                quantityInputRef.current?.focus();
+                              }
+                            }}
+                          />
+                        </div>
+                        {formData.type === "buy" && !doesHoldingExistInAccount && (
+                          <div className="grid gap-2">
+                            <label className="text-xs font-bold text-slate-500 uppercase">Investment Name</label>
+                            <Input placeholder="Vanguard S&P 500 ETF" value={formData.name} onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))} />
+                          </div>
+                        )}
+                        <div className="grid gap-2">
+                          <label className="text-xs font-bold text-slate-500 uppercase">Trade Date</label>
+                          <Input type="date" value={formData.purchaseDate} onChange={handleDateChange} />
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="grid gap-2">
+                            <label className="text-xs font-bold text-slate-500 uppercase">Quantity</label>
+                            <Input ref={quantityInputRef} type="number" step="0.001" value={formData.quantity} onChange={(e) => setFormData(prev => ({ ...prev, quantity: e.target.value }))} />
+                          </div>
+                          <div className="grid gap-2">
+                            <label className="text-xs font-bold text-slate-500 uppercase">Price per Share</label>
+                            <Input
+                              type="text"
+                              inputMode="decimal"
+                              value={formData.purchasePrice}
+                              onFocus={handleFocus}
+                              onChange={(e) => handlePriceInputChange(e.target.value, (val) => setFormData(prev => ({ ...prev, purchasePrice: val })))}
+                            />
+                          </div>
+                        </div>
+                        <div className="grid gap-2">
+                          <label className="text-xs font-bold text-slate-500 uppercase">Fees</label>
+                          <Input
+                            type="text"
+                            inputMode="decimal"
+                            placeholder="0.00"
+                            value={formData.fees}
+                            onFocus={handleFocus}
+                            onChange={(e) => handlePriceInputChange(e.target.value, (val) => setFormData(prev => ({ ...prev, fees: val })))}
+                          />
+                        </div>
+                        <div className="grid gap-2 p-3 bg-slate-50 rounded-md border border-slate-100">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                            Estimated Transaction Total
+                          </label>
+                          <div className="text-lg font-mono font-bold text-slate-700">
+                            {formatCurrency(
+                              (parseFloat(formData.quantity || "0") * parseFloat(formData.purchasePrice || "0")) +
+                              (formData.type === "buy" ? parseFloat(formData.fees || "0") : -parseFloat(formData.fees || "0"))
+                            )}
+                          </div>
+                        </div>
+                        <Button
+                          onClick={handleAddHolding}
+                          className={`w-full mt-2 ${formData.type === "sell" ? "bg-destructive hover:bg-destructive/90" : ""}`}
+                          disabled={addHoldingMutation.isPending}
+                        >
+                          Confirm {formData.type === "buy" ? "Purchase" : "Sale"}
+                        </Button>
+                      </div>
                     </DialogContent>
                   </Dialog>
 
