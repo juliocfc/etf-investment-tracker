@@ -68,7 +68,14 @@ export const etfRouter = router({
       const holdingsWithAvgCost = await Promise.all(
         holdings.map(async (holding: any) => {
           const avgCost = await calculateAverageCost(holding.id);
-          return { ...holding, averageCost: avgCost };
+          // Re-fetch the holding to get the updated quantity after avg cost calculation
+          const db = await getDb();
+          const fresh = await db
+            .select()
+            .from(etfHoldings)
+            .where(eq(etfHoldings.id, holding.id))
+            .then((rows: any[]) => rows[0]);
+          return { ...fresh, averageCost: avgCost };
         })
       );
 
@@ -92,15 +99,18 @@ export const etfRouter = router({
           existing.totalCost += qty * avgCost;
         }
 
-        return Array.from(consolidatedMap.values()).map((h: any) => ({
+        // Build consolidated holdings and filter out zero quantities
+        const consolidated = Array.from(consolidatedMap.values()).map((h: any) => ({
           ...h,
           quantity: h.quantity.toString(),
           averageCost: h.quantity > 0 ? (h.totalCost / h.quantity).toString() : "0",
           totalCost: undefined, // Remove temporary field
         }));
+        return consolidated.filter((h: any) => parseFloat(h.quantity) > 0);
       }
 
-      return holdingsWithAvgCost;
+      // Filter out holdings with zero quantity before returning
+      return holdingsWithAvgCost.filter((h: any) => parseFloat(h.quantity) > 0);
     }),
 
   addHolding: protectedProcedure
@@ -1709,6 +1719,9 @@ export const etfRouter = router({
             h.totalCostNum > 0 ? ((h.gainNum / h.totalCostNum) * 100).toFixed(2) : "0",
         }));
       }
+
+      // Filter out zero-quantity holdings from the final output
+      processedHoldings = processedHoldings.filter((h: any) => parseFloat(h.quantity) > 1e-6);
 
       const cashAmount = currentCashBalance ? parseFloat(currentCashBalance.amount.toString()) : 0;
       const totalValue = truncateNumber(totalInvestmentValue + cashAmount);

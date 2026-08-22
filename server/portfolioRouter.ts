@@ -567,9 +567,15 @@ export const portfolioRouter = router({
       .from(holdingsTable)
       .where(eq(holdingsTable.userId, ctx.user.id));
 
-    console.log(`[Portfolio] Found ${holdings.length} holdings for user ${ctx.user.id}`);
+    // Filter out fully-sold holdings (zero or negligible quantity)
+    const activeHoldings = holdings.filter((h: any) => {
+      const qty = parseFloat(String(h.quantity ?? "0"));
+      return Number.isFinite(qty) && qty > 1e-6;
+    });
+
+    console.log(`[Portfolio] Found ${activeHoldings.length} active holdings (${holdings.length} total) for user ${ctx.user.id}`);
     
-    const holdingsWithDividends = holdings.map(h => ({
+    const holdingsWithDividends = activeHoldings.map(h => ({
       ...h,
       annualDividendPerShare: parseFloat(h.annualDividendPerShare || "0")
     }));

@@ -601,7 +601,7 @@ export async function moveAccount(accountId: number, targetPortfolioId: number) 
 
 
 // ETF Holdings queries
-export async function getUserEtfHoldings(userId: number, portfolioId?: number, accountId?: number) {
+export async function getUserEtfHoldings(userId: number, portfolioId?: number, accountId?: number, includeZeroQuantity: boolean = false) {
   const db = await getDb();
   let conditions = [
     eq(etfHoldings.userId, userId),
@@ -612,7 +612,15 @@ export async function getUserEtfHoldings(userId: number, portfolioId?: number, a
   if (accountId) {
     conditions.push(eq(etfHoldings.accountId, accountId));
   }
-  return db.select().from(etfHoldings).where(and(...conditions));
+  const results = await db.select().from(etfHoldings).where(and(...conditions));
+  if (includeZeroQuantity) {
+    return results;
+  }
+  // Filter out holdings with zero or negligible quantity (fully sold positions)
+  return results.filter((h: any) => {
+    const qty = parseFloat(String(h.quantity ?? "0"));
+    return Number.isFinite(qty) && qty > QUANTITY_EPSILON;
+  });
 }
 
 export async function createEtfHolding(data: any) {
@@ -684,6 +692,68 @@ export async function deletePurchase(purchaseId: number) {
 export async function updatePurchase(purchaseId: number, data: any) {
   const db = await getDb();
   return db.update(purchases).set(data).where(eq(purchases.id, purchaseId));
+}
+
+/** Lots smaller than this are treated as fully sold (float dust from FIFO splits). */
+export const QUANTITY_EPSILON = 1e-6;
+
+export function hasActiveQuantity(quantity: string | number | null | undefined): boolean {
+  const qty = parseFloat(String(quantity ?? "0"));
+  return Number.isFinite(qty) && qty > QUANTITY_EPSILON;
+}
+
+export async function applyFifoSale(
+  holdingId: number,
+  quantityToSell: number,
+  soldDate: Date,
+  soldPrice: string
+) {
+  const db = await getDb();
+  const unsoldPurchases = await db.select()
+    .from(purchases)
+    .where(and(eq(purchases.holdingId, holdingId), eq(purchases.isSold, false)))
+    .orderBy(purchases.purchaseDate, purchases.id);
+
+  let remainingToSell = quantityToSell;
+  for (const purchase of unsoldPurchases) {
+    if (remainingToSell <= QUANTITY_EPSILON) break;
+
+    const purchaseQty = parseFloat(purchase.quantity);
+    if (!hasActiveQuantity(purchaseQty) || purchaseQty <= remainingToSell + QUANTITY_EPSILON) {
+      await updatePurchase(purchase.id, {
+        isSold: true,
+        soldDate,
+        soldPrice,
+      });
+      remainingToSell -= purchaseQty;
+      continue;
+    }
+
+    const remainingQty = purchaseQty - remainingToSell;
+    await updatePurchase(purchase.id, {
+      quantity: remainingToSell.toString(),
+      isSold: true,
+      soldDate,
+      soldPrice,
+    });
+
+    if (hasActiveQuantity(remainingQty)) {
+      await addPurchase({
+        userId: purchase.userId,
+        portfolioId: purchase.portfolioId,
+        accountId: purchase.accountId,
+        holdingId: purchase.holdingId,
+        symbol: purchase.symbol,
+        quantity: remainingQty.toString(),
+        price: purchase.price,
+        fees: "0",
+        purchaseDate: purchase.purchaseDate,
+        isSold: false,
+      });
+    }
+
+    remainingToSell = 0;
+  }
 }
 
 // Price History queries
@@ -1127,12 +1197,24 @@ export async function calculateAverageCost(holdingId: number) {
   const db = await getDb();
   const allPurchases = await db.select().from(purchases).where(and(eq(purchases.holdingId, holdingId), eq(purchases.isSold, false))).orderBy(desc(purchases.purchaseDate));
 
-  if (allPurchases.length === 0) {
-    // Check if there are ANY purchases at all (even sold ones)
+  const activePurchases = allPurchases.filter((p: any) => hasActiveQuantity(p.quantity));
+
+  if (activePurchases.length === 0) {
+    // Close out float-dust lots so they are not treated as open positions
+    for (const p of allPurchases) {
+      if (!hasActiveQuantity(p.quantity)) {
+        await updatePurchase(p.id, {
+          isSold: true,
+          soldDate: p.soldDate || new Date(),
+          soldPrice: p.soldPrice || p.price,
+        });
+      }
+    }
+
     const hasAnyPurchases = await db.select({ id: purchases.id }).from(purchases).where(eq(purchases.holdingId, holdingId)).limit(1).then((rows: any[]) => rows.length > 0);
 
     if (hasAnyPurchases) {
-      // Asset is fully sold, keep the holding but set quantity to 0
+      // Keep the holding row so sold purchase history still has a parent, but qty is 0
       await db
         .update(etfHoldings)
         .set({
@@ -1141,7 +1223,6 @@ export async function calculateAverageCost(holdingId: number) {
         .where(eq(etfHoldings.id, holdingId));
       return "0";
     } else {
-      // No purchases at all, delete the holding
       await deleteEtfHolding(holdingId);
       return "0";
     }
@@ -1150,7 +1231,7 @@ export async function calculateAverageCost(holdingId: number) {
   let totalQty = 0;
   let totalCost = 0;
 
-  for (const p of allPurchases) {
+  for (const p of activePurchases) {
     const qty = parseFloat(p.quantity.toString());
     const price = parseFloat(p.price.toString());
     totalQty += qty;
