@@ -3,7 +3,8 @@ export { eq, and, desc, isNotNull, inArray };
 import { drizzle } from "drizzle-orm/libsql";
 import { createClient } from "@libsql/client";
 import { connect } from "@tursodatabase/sync";
-import { InsertUser, users, portfolios, accounts, etfHoldings, purchases, priceHistory, balanceHistory, dividendHistory, cashBalance, cashBalanceHistory, assetPrices, importedTransactions, brokerageTransactions, brokerageSyncs, brokerageHoldings } from "../drizzle/schema";
+import { users, portfolios, accounts, etfHoldings, purchases, priceHistory, balanceHistory, dividendHistory, cashBalance, cashBalanceHistory, assetPrices, importedTransactions, brokerageTransactions, brokerageSyncs, brokerageHoldings, bondHoldings, bondPurchases } from "../drizzle/schema";
+import type { InsertUser } from "../drizzle/schema";
 export { brokerageSyncs };
 
 let _db: any = null;
@@ -692,6 +693,109 @@ export async function deletePurchase(purchaseId: number) {
 export async function updatePurchase(purchaseId: number, data: any) {
   const db = await getDb();
   return db.update(purchases).set(data).where(eq(purchases.id, purchaseId));
+}
+
+// Bond holdings helpers
+export async function getUserBondHoldings(userId: number, portfolioId?: number, accountId?: number, includeZeroQuantity: boolean = false) {
+  const db = await getDb();
+  let conditions = [eq(bondHoldings.userId, userId)];
+  if (portfolioId) conditions.push(eq(bondHoldings.portfolioId, portfolioId));
+  if (accountId) conditions.push(eq(bondHoldings.accountId, accountId));
+  const results = await db.select().from(bondHoldings).where(and(...conditions));
+  if (includeZeroQuantity) return results;
+  return results.filter((h: any) => {
+    const qty = parseFloat(String(h.quantity ?? "0"));
+    return Number.isFinite(qty) && qty > QUANTITY_EPSILON;
+  });
+}
+
+export async function createBondHolding(data: any) {
+  const db = await getDb();
+  const result = await db.insert(bondHoldings).values(data);
+  if ((result as any).lastInsertRowid !== undefined) return (result as any).lastInsertRowid;
+  const row = await db.select({ id: bondHoldings.id }).from(bondHoldings).where(eq(bondHoldings.userId, data.userId)).orderBy(desc(bondHoldings.id)).limit(1).then((rows: any[]) => rows[0]);
+  return row?.id;
+}
+
+export async function updateBondHolding(id: number, data: any) {
+  const db = await getDb();
+  return db.update(bondHoldings).set(data).where(eq(bondHoldings.id, id));
+}
+
+export async function updateBondHoldingBySymbol(userId: number, symbol: string, data: any) {
+  const db = await getDb();
+  return db.update(bondHoldings).set(data).where(and(eq(bondHoldings.userId, userId), eq(bondHoldings.symbol, symbol.toUpperCase())));
+}
+
+export async function deleteBondHolding(id: number) {
+  const db = await getDb();
+  return db.delete(bondHoldings).where(eq(bondHoldings.id, id));
+}
+
+export async function getBondPurchases(holdingId: number) {
+  const db = await getDb();
+  return db.select().from(bondPurchases).where(eq(bondPurchases.holdingId, holdingId)).orderBy(desc(sql`COALESCE(${bondPurchases.soldDate}, ${bondPurchases.purchaseDate})`));
+}
+
+export async function addBondPurchase(data: any) {
+  const db = await getDb();
+  const result = await db.insert(bondPurchases).values(data).returning({ id: bondPurchases.id });
+  if (result && result[0]?.id) return result[0].id;
+  if ((result as any).lastInsertRowid !== undefined) return (result as any).lastInsertRowid;
+  return undefined;
+}
+
+export async function deleteBondPurchase(purchaseId: number) {
+  const db = await getDb();
+  return db.delete(bondPurchases).where(eq(bondPurchases.id, purchaseId));
+}
+
+export async function updateBondPurchase(purchaseId: number, data: any) {
+  const db = await getDb();
+  return db.update(bondPurchases).set(data).where(eq(bondPurchases.id, purchaseId));
+}
+
+export async function calculateBondAverageCost(holdingId: number): Promise<string> {
+  const db = await getDb();
+  const unsold = await db.select().from(bondPurchases).where(and(eq(bondPurchases.holdingId, holdingId), eq(bondPurchases.isSold, false)));
+  let totalQty = 0;
+  let totalCost = 0;
+  for (const p of unsold) {
+    const qty = parseFloat(String(p.quantity));
+    const price = parseFloat(String(p.price));
+    const interest = parseFloat(String((p as any).interest || "0"));
+    const fees = parseFloat(String((p as any).fees || "0"));
+    if (qty <= QUANTITY_EPSILON) continue;
+    totalQty += qty;
+    totalCost += qty * price + interest + fees;
+  }
+  const avg = totalQty > 0 ? totalCost / totalQty : 0;
+  // update holding quantity to reflect unsold total
+  await db.update(bondHoldings).set({ quantity: totalQty.toString(), updatedAt: new Date() }).where(eq(bondHoldings.id, holdingId));
+  return avg.toString();
+}
+
+export async function getBondPriceFromBrokerage(cusip: string): Promise<string | null> {
+  try {
+    const db = await getDb();
+    const up = cusip.toUpperCase().trim();
+    const rows = await db.select().from(brokerageHoldings);
+    for (const r of rows) {
+      try {
+        const raw = r.symbol as unknown as string;
+        const j = JSON.parse(raw);
+        const sym = (j?.symbol?.symbol || j?.raw_symbol || j?.symbol || "").toString().toUpperCase();
+        // also check raw string contains cusip as fallback
+        if (sym === up || raw.toUpperCase().includes(`"${up}"`)) {
+          const p = parseFloat(String((r as any).price));
+          if (Number.isFinite(p) && p > 0) {
+            return p.toFixed(4);
+          }
+        }
+      } catch {}
+    }
+  } catch {}
+  return null;
 }
 
 /** Lots smaller than this are treated as fully sold (float dust from FIFO splits). */

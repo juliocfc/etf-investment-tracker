@@ -33,6 +33,8 @@ function DashboardRouter() {
       utils.portfolio.getConsolidatedSummary.invalidate();
       utils.etf.getPortfolioSummary.invalidate();
       utils.etf.getHoldings.invalidate();
+      (utils as any).bond?.getHoldings?.invalidate();
+      (utils as any).bond?.getPrice?.invalidate();
     },
     onError: (error) => {
       console.error("Failed to update prices on load:", error);

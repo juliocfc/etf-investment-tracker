@@ -20,7 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Trash2, RefreshCw, ShoppingCart, History, FolderPlus, FileUp, Wallet, TrendingUp, Info, ArrowUpCircle, ArrowDownCircle, CheckCircle2, MoreVertical, CalendarPlus, Download, List, Activity, DollarSign, LayoutDashboard, Edit2, ArrowUpDown, ChevronUp, ChevronDown, ChevronRight, ArrowLeftRight, CheckSquare, Square } from "lucide-react";
+import { Plus, Trash2, RefreshCw, ShoppingCart, History, FolderPlus, FileUp, Wallet, TrendingUp, Info, ArrowUpCircle, ArrowDownCircle, CheckCircle2, MoreVertical, CalendarPlus, Download, List, Activity, DollarSign, LayoutDashboard, Edit2, ArrowUpDown, ChevronUp, ChevronDown, ChevronRight, ArrowLeftRight, CheckSquare, Square, Briefcase, PieChart, Landmark } from "lucide-react";
 import { toast } from "sonner";
 import { formatCurrency, formatNumber, formatDate, formatUTCDate, truncateNumber } from "@/lib/utils";
 import React, { useEffect, useRef, useState, useMemo } from "react";
@@ -111,6 +111,39 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
     type: "buy" as "buy" | "sell",
   });
 
+  const [isAddBondDialogOpen, setIsAddBondDialogOpen] = useState(false);
+  const [isBondTradeDialogOpen, setIsBondTradeDialogOpen] = useState<{ id: number, symbol: string } | null>(null);
+  const [bondPurchaseHistoryOpen, setBondPurchaseHistoryOpen] = useState<{ id: number, symbol: string } | null>(null);
+  const [expandedBonds, setExpandedBonds] = useState<Set<string>>(new Set());
+  const [bondFormData, setBondFormData] = useState({
+    symbol: "",
+    name: "",
+    quantity: "",
+    purchasePrice: "",
+    purchaseDate: defaultDate,
+    redemptionDate: "",
+    couponRate: "",
+    accountId: "",
+    interest: "",
+    fees: "",
+    type: "buy" as "buy" | "sell",
+  });
+  const [bondTradeData, setBondTradeData] = useState({
+    quantity: "",
+    price: "",
+    purchaseDate: defaultDate,
+    accountId: "",
+    interest: "",
+    fees: "",
+    type: "buy" as "buy" | "sell",
+  });
+  const toggleBondExpand = (symbol: string) => {
+    const next = new Set(expandedBonds);
+    if (next.has(symbol)) next.delete(symbol);
+    else next.add(symbol);
+    setExpandedBonds(next);
+  };
+
   // Automatically fetch price when Trade dialog opens
   useEffect(() => {
     if (isTradeDialogOpen) {
@@ -121,6 +154,23 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
       }
     }
   }, [isTradeDialogOpen]);
+
+  useEffect(() => {
+    if (isBondTradeDialogOpen) {
+      const holding = bondHoldings?.find(h => h.id === isBondTradeDialogOpen.id);
+      if (holding && (holding as any).accountId) {
+        setBondTradeData(prev => ({ ...prev, accountId: (holding as any).accountId.toString() }));
+      }
+      // auto-fill current brokerage price for the bond
+      (async () => {
+        try {
+          const res: any = await (utils as any).bond.getPrice.fetch({ symbol: isBondTradeDialogOpen.symbol });
+          if (res?.price) setBondTradeData(prev => ({ ...prev, price: res.price }));
+          else if (holding?.currentPrice) setBondTradeData(prev => ({ ...prev, price: (holding as any).currentPrice }));
+        } catch {}
+      })();
+    }
+  }, [isBondTradeDialogOpen]);
 
   const [isCSVImportOpen, setIsCSVImportOpen] = useState<{ id: number, symbol: string } | null>(null);
   const [isGeneralCSVImportOpen, setIsGeneralCSVImportOpen] = useState(false);
@@ -174,6 +224,12 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
       if (!tradeData.accountId || !isAccountValid(tradeData.accountId)) {
         setTradeData(prev => ({ ...prev, accountId: firstAccountId }));
       }
+      if (!bondFormData.accountId || !isAccountValid(bondFormData.accountId)) {
+        setBondFormData(prev => ({ ...prev, accountId: firstAccountId }));
+      }
+      if (!bondTradeData.accountId || !isAccountValid(bondTradeData.accountId)) {
+        setBondTradeData(prev => ({ ...prev, accountId: firstAccountId }));
+      }
       if (!adjustCashData.accountId || !isAccountValid(adjustCashData.accountId)) {
         setAdjustCashData(prev => ({ ...prev, accountId: firstAccountId }));
       }
@@ -184,6 +240,8 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
       // Clear if no accounts
       setFormData(prev => ({ ...prev, accountId: "" }));
       setTradeData(prev => ({ ...prev, accountId: "" }));
+      setBondFormData(prev => ({ ...prev, accountId: "" }));
+      setBondTradeData(prev => ({ ...prev, accountId: "" }));
       setAdjustCashData(prev => ({ ...prev, accountId: "" }));
       setHistoricalCashData(prev => ({ ...prev, accountId: "" }));
     }
@@ -208,7 +266,8 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
 
   const sortedHoldings = useMemo(() => {
     if (!summary?.holdings) return [];
-    const sortableItems = [...summary.holdings];
+    const equityOnly = summary.holdings.filter((h: any) => !h.assetType || h.assetType === "etf" || h.assetType === "equity");
+    const sortableItems = [...equityOnly];
     if (sortConfig !== null) {
       sortableItems.sort((a, b) => {
         let aValue = a[sortConfig.key];
@@ -238,6 +297,33 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
     },
     { enabled: !!selectedPortfolioId }
   );
+
+  const { data: bondHoldings, refetch: refetchBondHoldings } = trpc.bond.getHoldings.useQuery(
+    {
+      portfolioId: selectedPortfolioId,
+      accountId: selectedAccountId,
+      accountType: selectedAccountType === "all" ? undefined : selectedAccountType
+    },
+    { enabled: !!selectedPortfolioId }
+  );
+
+  // Bond holdings summary (sorted) - bonds are shown together via summary.holdings but we keep dedicated sorted list for Bonds card
+  const sortedBondHoldings = useMemo(() => {
+    if (!bondHoldings) return [];
+    // Bond holdings are already per-account when filtered, but we display as-is. Sort by symbol.
+    const items = [...bondHoldings];
+    if (sortConfig !== null) {
+      items.sort((a: any, b: any) => {
+        let av = a[sortConfig.key]; let bv = b[sortConfig.key];
+        if (typeof av === 'string' && !isNaN(Number(av))) av = Number(av);
+        if (typeof bv === 'string' && !isNaN(Number(bv))) bv = Number(bv);
+        if (av < bv) return sortConfig.direction === "asc" ? -1 : 1;
+        if (av > bv) return sortConfig.direction === "asc" ? 1 : -1;
+        return 0;
+      });
+    }
+    return items;
+  }, [bondHoldings, sortConfig]);
 
   const [editingAccount, setEditingAccount] = useState<{ id: number, name: string, number?: string, accountType: string } | null>(null);
   const [movingAccount, setMovingAccount] = useState<{ id: number, name: string, portfolioId: number } | null>(null);
@@ -449,21 +535,121 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
     },
   });
 
+  // Bond mutations
+  const addBondHoldingMutation = trpc.bond.addHolding.useMutation({
+    onSuccess: () => {
+      toast.success("Bond added successfully!");
+      refetchBondHoldings();
+      refetchSummary();
+      utils.portfolio.getConsolidatedSummary.invalidate();
+      setBondFormData({
+        symbol: "",
+        name: "",
+        quantity: "",
+        purchasePrice: "",
+        purchaseDate: defaultDate,
+        redemptionDate: "",
+        couponRate: "",
+        accountId: accounts?.[0]?.id.toString() || "",
+        interest: "",
+        fees: "",
+        type: "buy",
+      });
+      setIsAddBondDialogOpen(false);
+    },
+    onError: (error) => {
+      toast.error(error.message || "Failed to add Bond");
+    },
+  });
+
+  const deleteBondHoldingMutation = trpc.bond.deleteHolding.useMutation({
+    onSuccess: () => {
+      toast.success("Bond deleted successfully!");
+      refetchBondHoldings();
+      refetchSummary();
+      utils.portfolio.getConsolidatedSummary.invalidate();
+    },
+    onError: () => {
+      toast.error("Failed to delete Bond");
+    },
+  });
+
+  const deleteBondHoldingBySymbolMutation = trpc.bond.deleteHoldingBySymbol.useMutation({
+    onSuccess: () => {
+      toast.success("Bond deleted successfully!");
+      refetchBondHoldings();
+      refetchSummary();
+      utils.portfolio.getConsolidatedSummary.invalidate();
+    },
+    onError: () => {
+      toast.error("Failed to delete Bond");
+    },
+  });
+
+  const executeBondTradeMutation = trpc.bond.executeTrade.useMutation({
+    onSuccess: (data) => {
+      toast.success(`${bondTradeData.type === "buy" ? "Bought" : "Sold"} successfully! New quantity: ${data.newQuantity}`);
+      refetchBondHoldings();
+      refetchSummary();
+      utils.portfolio.getConsolidatedSummary.invalidate();
+      setBondTradeData({
+        quantity: "",
+        price: "",
+        purchaseDate: defaultDate,
+        accountId: "",
+        interest: "",
+        fees: "",
+        type: "buy",
+      });
+      setIsBondTradeDialogOpen(null);
+    },
+    onError: (error) => {
+      toast.error(error.message || `Failed to ${bondTradeData.type} bonds`);
+    },
+  });
+
+  const deleteBondPurchaseMutation = trpc.bond.deletePurchase.useMutation({
+    onSuccess: (data, variables) => {
+      toast.success("Bond purchase deleted!");
+      refetchBondHoldings();
+      refetchSummary();
+      utils.portfolio.getConsolidatedSummary.invalidate();
+      utils.bond.getPurchases.invalidate({
+        holdingId: variables.holdingId,
+        symbol: variables.symbol,
+        portfolioId: selectedPortfolioId
+      });
+    },
+    onError: (error) => {
+      toast.error(error.message || "Failed to delete bond purchase");
+    },
+  });
+
+  const updateBondHoldingMutation = trpc.bond.updateHolding.useMutation({
+    onSuccess: () => {
+      refetchBondHoldings();
+      refetchSummary();
+    },
+    onError: (error) => {
+      toast.error(error.message || "Failed to update bond holding");
+    },
+  });
+
   const handleAdjustCashAccountChange = async (accountId: string) => {
     setAdjustCashData(prev => ({ ...prev, accountId }));
   };
 
   // Helper to format price with automatic decimal point (e.g. 3085 -> 30.85)
-  const handlePriceInputChange = (value: string, setter: (val: string) => void) => {
+  const handlePriceInputChange = (value: string, setter: (val: string) => void, decimals: number = 2) => {
     // Remove all non-digits
     const digits = value.replace(/\D/g, "");
     if (!digits) {
       setter("");
       return;
     }
-    // Convert to number and shift decimal 2 places
-    const amount = parseInt(digits, 10) / 100;
-    setter(amount.toFixed(2));
+    const divisor = Math.pow(10, decimals);
+    const amount = parseInt(digits, 10) / divisor;
+    setter(amount.toFixed(decimals));
   };
 
   const handleFocus = (e: React.FocusEvent<HTMLInputElement>) => {
@@ -530,6 +716,29 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
           console.error("Error looking up investment name:", error);
         }
       }, 500);
+    }
+  };
+
+  const bondLookupTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const handleBondSymbolChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const symbol = e.target.value.toUpperCase();
+    setBondFormData(prev => ({ ...prev, symbol }));
+    if (bondLookupTimeoutRef.current) clearTimeout(bondLookupTimeoutRef.current);
+    if (symbol.length >= 6) {
+      bondLookupTimeoutRef.current = setTimeout(async () => {
+        try {
+          const res: any = await (utils as any).bond.getPrice.fetch({ symbol });
+          if (res?.price) {
+            setBondFormData(prev => {
+              // only auto-fill if price empty or user hasn't typed price yet
+              if (!prev.purchasePrice || prev.purchasePrice === "0" || prev.purchasePrice === "0.00" || prev.purchasePrice === "0.0000") {
+                return { ...prev, purchasePrice: res.price };
+              }
+              return prev;
+            });
+          }
+        } catch {}
+      }, 400);
     }
   };
 
@@ -619,6 +828,66 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
       } else {
         deleteHoldingMutation.mutate({ id });
       }
+    }
+  };
+
+  // Bond handlers
+  const doesBondExistInAccount = useMemo(() => {
+    if (!bondFormData.symbol || !bondFormData.accountId || !bondHoldings) return false;
+    return bondHoldings.some(h => h.symbol.toUpperCase() === bondFormData.symbol.toUpperCase() && (h as any).accountId.toString() === bondFormData.accountId);
+  }, [bondFormData.symbol, bondFormData.accountId, bondHoldings]);
+
+  const handleAddBondHolding = async () => {
+    if (!selectedPortfolioId) { toast.error("Please select a portfolio"); return; }
+    if (!bondFormData.accountId) { toast.error("Please select an account"); return; }
+    if (!bondFormData.symbol || !bondFormData.quantity || !bondFormData.purchasePrice) { toast.error("Please fill in all fields"); return; }
+    addBondHoldingMutation.mutate({
+      portfolioId: selectedPortfolioId,
+      accountId: Number(bondFormData.accountId),
+      symbol: bondFormData.symbol,
+      name: bondFormData.name || bondFormData.symbol,
+      quantity: bondFormData.quantity,
+      purchasePrice: bondFormData.purchasePrice,
+      purchaseDate: mergeDateWithCurrentTime(bondFormData.purchaseDate),
+      redemptionDate: bondFormData.redemptionDate ? mergeDateWithCurrentTime(bondFormData.redemptionDate) : undefined,
+      couponRate: bondFormData.couponRate || "0",
+      interest: bondFormData.interest || "0",
+      fees: bondFormData.fees || "0",
+      type: bondFormData.type,
+    });
+  };
+
+  const handleExecuteBondTrade = async (holdingId: number, symbol: string, accountId?: number) => {
+    if (!selectedPortfolioId) { toast.error("Please select a portfolio"); return; }
+    if (!accountId) { toast.error("Please select an account"); return; }
+    if (!bondTradeData.quantity || !bondTradeData.price) { toast.error("Please fill in quantity and price"); return; }
+    executeBondTradeMutation.mutate({
+      portfolioId: selectedPortfolioId,
+      holdingId,
+      symbol,
+      accountId,
+      quantity: bondTradeData.quantity,
+      price: bondTradeData.price,
+      purchaseDate: mergeDateWithCurrentTime(bondTradeData.purchaseDate),
+      interest: bondTradeData.interest || "0",
+      fees: bondTradeData.fees || "0",
+      type: bondTradeData.type,
+    });
+  };
+
+  const handleDeleteBondHolding = (id: number, symbol: string) => {
+    if (confirm("Are you sure you want to delete this bond?")) {
+      if (id === -1) {
+        deleteBondHoldingBySymbolMutation.mutate({ portfolioId: selectedPortfolioId, symbol });
+      } else {
+        deleteBondHoldingMutation.mutate({ id });
+      }
+    }
+  };
+
+  const handleDeleteBondPurchase = (purchaseId: number, holdingId: number, portfolioId: number, symbol?: string) => {
+    if (confirm("Are you sure you want to delete this bond purchase record?")) {
+      deleteBondPurchaseMutation.mutate({ purchaseId, holdingId, portfolioId, symbol: symbol || "" });
     }
   };
 
@@ -818,7 +1087,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
 
           <>
             {/* Stats Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
               <div className="data-card border-l-4 border-l-primary">
                 <div className="data-card-title">Total Portfolio</div>
                 <div className="data-card-value">{formatCurrency(summary?.totalValue)}</div>
@@ -840,14 +1109,27 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                 </div>
               </div>
 
-              <div className="data-card border-l-4 border-l-green-600">
-                <div className="data-card-title">Investment Value</div>
-                <div className="data-card-value">{formatCurrency(summary?.investmentValue)}</div>
+              <div className="data-card border-l-4 border-l-blue-600">
+                <div className="data-card-title">Equities</div>
+                <div className="data-card-value">{formatCurrency((summary as any)?.equityInvestmentValue ?? summary?.investmentValue)}</div>
                 <div className="data-card-subtitle flex items-center justify-between text-slate-500">
-                  <span>Market Assets</span>
-                  <span className="font-bold text-primary bg-slate-100 px-1.5 py-0.5 rounded text-[10px]">
+                  <span>Stocks & ETFs</span>
+                  <span className="font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded text-[10px]">
                     {summary?.totalValue && parseFloat(summary.totalValue) > 0
-                      ? ((parseFloat(summary.investmentValue) / parseFloat(summary.totalValue)) * 100).toFixed(1)
+                      ? ((parseFloat((summary as any)?.equityInvestmentValue ?? summary?.investmentValue ?? "0") / parseFloat(summary.totalValue)) * 100).toFixed(1)
+                      : "0"}%
+                  </span>
+                </div>
+              </div>
+
+              <div className="data-card border-l-4 border-l-purple-600">
+                <div className="data-card-title">Fixed Income</div>
+                <div className="data-card-value">{formatCurrency((summary as any)?.fixedIncomeInvestmentValue ?? "0.00")}</div>
+                <div className="data-card-subtitle flex items-center justify-between text-slate-500">
+                  <span>Bonds & Treasuries</span>
+                  <span className="font-bold text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded text-[10px]">
+                    {summary?.totalValue && parseFloat(summary.totalValue) > 0
+                      ? ((parseFloat((summary as any)?.fixedIncomeInvestmentValue ?? "0") / parseFloat(summary.totalValue)) * 100).toFixed(1)
                       : "0"}%
                   </span>
                 </div>
@@ -1285,9 +1567,9 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                 <div className="flex items-center gap-3">
                   <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
                     <TrendingUp className="w-5 h-5 text-primary" />
-                    Active Holdings
+                    Equities
                   </h2>
-                  <span className="text-[10px] font-bold text-slate-400 bg-slate-200/50 px-2 py-0.5 rounded-full uppercase tracking-widest">{summary?.holdings?.length || 0} Assets</span>
+                  <span className="text-[10px] font-bold text-slate-400 bg-slate-200/50 px-2 py-0.5 rounded-full uppercase tracking-widest">{summary?.holdings?.filter((h:any)=> !h.assetType || h.assetType==="etf").length || 0} Assets</span>
                 </div>
 
                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto">
@@ -1740,29 +2022,216 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                       );
                     })}
                   </tbody>
-                  {summary?.holdings && summary.holdings.length > 0 && (
+                  {summary?.holdings && summary.holdings.filter((h:any)=> !h.assetType || h.assetType==="etf").length > 0 && (
                     <tfoot className="bg-slate-50 border-t-2 border-slate-200">
                       <tr className="font-bold text-slate-800">
-                        <td colSpan={6} className="py-4 px-3 uppercase text-[10px] tracking-widest text-slate-500">Total Portfolio Performance</td>
-                        <td className="text-right py-4 px-3 font-mono text-sm">{formatCurrency(summary.investmentValue)}</td>
-                        <td className={`text-right py-4 px-3 font-mono text-sm ${(summary?.holdings?.reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0) || 0) >= 0
+                        <td colSpan={6} className="py-4 px-3 uppercase text-[10px] tracking-widest text-slate-500">Total Equities Performance</td>
+                        <td className="text-right py-4 px-3 font-mono text-sm">{formatCurrency((summary as any).equityInvestmentValue ?? summary.investmentValue)}</td>
+                        <td className={`text-right py-4 px-3 font-mono text-sm ${(summary?.holdings?.filter((h:any)=> !h.assetType || h.assetType==="etf").reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0) || 0) >= 0
                           ? "text-green-600"
                           : "text-red-600"
                           }`}>
-                          {(summary?.holdings?.reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0) || 0) >= 0 ? "+" : ""}
-                          {formatCurrency(summary?.holdings?.reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0) || 0)}
+                          {(summary?.holdings?.filter((h:any)=> !h.assetType || h.assetType==="etf").reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0) || 0) >= 0 ? "+" : ""}
+                          {formatCurrency(summary?.holdings?.filter((h:any)=> !h.assetType || h.assetType==="etf").reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0) || 0)}
                         </td>
-                        <td className={`text-right py-4 px-3 font-mono text-sm ${((summary?.holdings?.reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0) || 0) /
-                          (summary?.holdings?.reduce((acc: number, h: any) => acc + (parseFloat(h.averageCost || h.purchasePrice) * parseFloat(h.quantity)), 0) || 1) * 100) >= 0
+                        <td className={`text-right py-4 px-3 font-mono text-sm ${((summary?.holdings?.filter((h:any)=> !h.assetType || h.assetType==="etf").reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0) || 0) /
+                          (summary?.holdings?.filter((h:any)=> !h.assetType || h.assetType==="etf").reduce((acc: number, h: any) => acc + (parseFloat(h.averageCost || h.purchasePrice) * parseFloat(h.quantity)), 0) || 1) * 100) >= 0
                           ? "text-green-600"
                           : "text-red-600"
                           }`}>
                           {(
-                            ((summary?.holdings?.reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0) || 0) /
-                              (summary?.holdings?.reduce((acc: number, h: any) => acc + (parseFloat(h.averageCost || h.purchasePrice) * parseFloat(h.quantity)), 0) || 1)) * 100
+                            ((summary?.holdings?.filter((h:any)=> !h.assetType || h.assetType==="etf").reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0) || 0) /
+                              (summary?.holdings?.filter((h:any)=> !h.assetType || h.assetType==="etf").reduce((acc: number, h: any) => acc + (parseFloat(h.averageCost || h.purchasePrice) * parseFloat(h.quantity)), 0) || 1)) * 100
                           ).toFixed(2)}%
                         </td>
                         <td className="text-right py-4 px-3 font-mono text-slate-500 text-xs">100%</td>
+                        <td></td>
+                      </tr>
+                    </tfoot>
+                  )}
+                </table>
+              </div>
+            </Card>
+
+            {/* Bonds / Treasuries Section */}
+            <Card className="bg-white shadow-sm border border-border overflow-hidden">
+              <div className="px-6 py-4 border-b border-border bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                    <DollarSign className="w-5 h-5 text-primary" />
+                    Fixed Income
+                  </h2>
+                  <span className="text-[10px] font-bold text-slate-400 bg-slate-200/50 px-2 py-0.5 rounded-full uppercase tracking-widest">{bondHoldings?.length || 0} Issues</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <Dialog open={isAddBondDialogOpen} onOpenChange={(open) => {
+                    setIsAddBondDialogOpen(open);
+                    if (!open) {
+                      setBondFormData({
+                        symbol: "",
+                        name: "",
+                        quantity: "",
+                        purchasePrice: "",
+                        purchaseDate: defaultDate,
+                        redemptionDate: "",
+                        couponRate: "",
+                        accountId: accounts?.[0]?.id.toString() || "",
+                        interest: "",
+                        fees: "",
+                        type: "buy",
+                      });
+                    } else if (accounts && accounts.length > 0 && !bondFormData.accountId) {
+                      setBondFormData(prev => ({ ...prev, accountId: accounts[0].id.toString() }));
+                    }
+                  }}>
+                    <DialogTrigger asChild>
+                      <Button size="sm" className="bg-primary hover:bg-primary/90 text-white shadow-md shadow-primary/10 text-xs font-bold uppercase tracking-wider h-9">
+                        <Plus className="mr-2 h-3.5 w-3.5" />
+                        Add Bond
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="sm:max-w-[425px]">
+                      <DialogHeader>
+                        <DialogTitle>Add Bond / Treasury</DialogTitle>
+                      </DialogHeader>
+                      <div className="space-y-4 pt-4">
+                        <div className="grid gap-2">
+                          <label className="text-xs font-bold text-slate-500 uppercase">Trade Type</label>
+                          <div className="flex bg-slate-100 p-1 rounded-md">
+                            <button onClick={() => setBondFormData(prev => ({ ...prev, type: "buy" }))} className={`flex-1 py-1.5 text-xs font-bold rounded shadow-sm transition-all ${bondFormData.type === "buy" ? "bg-white text-primary" : "text-slate-500 hover:text-slate-700"}`}>BUY</button>
+                            <button onClick={() => setBondFormData(prev => ({ ...prev, type: "sell" }))} className={`flex-1 py-1.5 text-xs font-bold rounded shadow-sm transition-all ${bondFormData.type === "sell" ? "bg-white text-destructive" : "text-slate-500 hover:text-slate-700"}`}>SELL / REDEEM</button>
+                          </div>
+                        </div>
+                        <div className="grid gap-2">
+                          <label className="text-xs font-bold text-slate-500 uppercase">Account</label>
+                          <select className="bg-white border border-input rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary h-10" value={bondFormData.accountId} onChange={(e) => setBondFormData(prev => ({ ...prev, accountId: e.target.value }))}>
+                            {accounts?.map((acc: any) => (<option key={acc.id} value={acc.id}>{acc.name} {acc.number ? `(${acc.number})` : ""}</option>))}
+                          </select>
+                        </div>
+                        <div className="grid gap-2">
+                          <label className="text-xs font-bold text-slate-500 uppercase">CUSIP (Symbol)</label>
+                          <Input placeholder="e.g., 91282CAZ4" value={bondFormData.symbol} onChange={handleBondSymbolChange} className="uppercase" />
+                        </div>
+                        {bondFormData.type === "buy" && !doesBondExistInAccount && (
+                          <div className="grid gap-2">
+                            <label className="text-xs font-bold text-slate-500 uppercase">Bond Name</label>
+                            <Input placeholder="US Treasury Note 1.5% 2028" value={bondFormData.name} onChange={(e) => setBondFormData(prev => ({ ...prev, name: e.target.value }))} />
+                          </div>
+                        )}
+                        <div className="grid gap-2">
+                          <label className="text-xs font-bold text-slate-500 uppercase">Purchase Date</label>
+                          <Input type="date" value={bondFormData.purchaseDate} onChange={(e) => setBondFormData(prev => ({ ...prev, purchaseDate: e.target.value }))} />
+                        </div>
+                        <div className="grid gap-2">
+                          <label className="text-xs font-bold text-slate-500 uppercase">Redemption Date (Maturity)</label>
+                          <Input type="date" value={bondFormData.redemptionDate} onChange={(e) => setBondFormData(prev => ({ ...prev, redemptionDate: e.target.value }))} />
+                        </div>
+                        <div className="grid gap-2">
+                          <label className="text-xs font-bold text-slate-500 uppercase">Yearly Interest Rate (%)</label>
+                          <Input type="number" step="0.001" placeholder="4.125" value={bondFormData.couponRate} onChange={(e) => setBondFormData(prev => ({ ...prev, couponRate: e.target.value }))} />
+                          {bondFormData.redemptionDate && bondFormData.couponRate && parseFloat(bondFormData.couponRate) > 0 && bondFormData.quantity && (
+                            <div className="text-[10px] text-slate-500 bg-slate-50 p-2 rounded border border-slate-100">
+                              Coupon {formatCurrency(parseFloat(bondFormData.quantity || "0") * parseFloat(bondFormData.couponRate) / 2)} every {new Date(bondFormData.redemptionDate).toLocaleDateString(undefined,{month:"2-digit",day:"2-digit"})} & {(() => { const d=new Date(bondFormData.redemptionDate); const nd=new Date(d); nd.setMonth(d.getMonth()+6); return nd.toLocaleDateString(undefined,{month:"2-digit",day:"2-digit"}); })()} until {new Date(bondFormData.redemptionDate).toLocaleDateString()}
+                            </div>
+                          )}
+                          {bondFormData.redemptionDate && bondFormData.couponRate && (
+                            <div className="text-[9px] text-slate-400">Paid twice a year on redemption anniversary (e.g. 02/15 & 08/15)</div>
+                          )}
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="grid gap-2">
+                            <label className="text-xs font-bold text-slate-500 uppercase">Quantity</label>
+                            <Input type="number" step="0.001" value={bondFormData.quantity} onChange={(e) => setBondFormData(prev => ({ ...prev, quantity: e.target.value }))} />
+                          </div>
+                          <div className="grid gap-2">
+                            <label className="text-xs font-bold text-slate-500 uppercase">Price per Bond</label>
+                            <Input type="text" inputMode="decimal" value={bondFormData.purchasePrice} onFocus={handleFocus} onChange={(e) => handlePriceInputChange(e.target.value, (val) => setBondFormData(prev => ({ ...prev, purchasePrice: val })), 4)} placeholder="0.0000" />
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="grid gap-2">
+                            <label className="text-xs font-bold text-slate-500 uppercase">Accrued Interest (optional)</label>
+                            <Input type="text" inputMode="decimal" placeholder="0.00" value={bondFormData.interest} onFocus={handleFocus} onChange={(e) => handlePriceInputChange(e.target.value, (val) => setBondFormData(prev => ({ ...prev, interest: val })))} />
+                          </div>
+                          <div className="grid gap-2">
+                            <label className="text-xs font-bold text-slate-500 uppercase">Fees</label>
+                            <Input type="text" inputMode="decimal" placeholder="0.00" value={bondFormData.fees} onFocus={handleFocus} onChange={(e) => handlePriceInputChange(e.target.value, (val) => setBondFormData(prev => ({ ...prev, fees: val })))} />
+                          </div>
+                        </div>
+                        <div className="text-[10px] text-slate-400">Interest is added to total cost: quantity × price + interest + fees</div>
+                        <div className="grid gap-2 p-3 bg-slate-50 rounded-md border border-slate-100">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Estimated Transaction Total</label>
+                          <div className="text-lg font-mono font-bold text-slate-700">
+                            {formatCurrency((parseFloat(bondFormData.quantity || "0") * parseFloat(bondFormData.purchasePrice || "0")) + parseFloat(bondFormData.interest || "0") + (bondFormData.type === "buy" ? parseFloat(bondFormData.fees || "0") : -parseFloat(bondFormData.fees || "0")))}
+                          </div>
+                        </div>
+                        <Button onClick={handleAddBondHolding} className={`w-full mt-2 ${bondFormData.type === "sell" ? "bg-destructive hover:bg-destructive/90" : ""}`} disabled={addBondHoldingMutation.isPending}>
+                          Confirm {bondFormData.type === "buy" ? "Purchase" : "Sale / Redemption"}
+                        </Button>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+                </div>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-border">
+                      <th className="text-left py-3 px-3 text-slate-600 text-xs font-bold uppercase">CUSIP</th>
+                      <th className="text-right py-3 px-3 text-slate-600 text-xs font-bold uppercase">Qty</th>
+                      <th className="text-right py-3 px-3 text-slate-600 text-xs font-bold uppercase">Avg Cost</th>
+                      <th className="text-right py-3 px-3 text-slate-600 text-xs font-bold uppercase">Total Cost</th>
+                      <th className="text-right py-3 px-3 text-slate-600 text-xs font-bold uppercase">Price</th>
+                      <th className="text-right py-3 px-3 text-slate-600 text-xs font-bold uppercase">Market Value</th>
+                      <th className="text-right py-3 px-3 text-slate-600 text-xs font-bold uppercase">Gain/Loss</th>
+                      <th className="text-right py-3 px-3 text-slate-600 text-xs font-bold uppercase">Gain/Loss %</th>
+                      <th className="text-right py-3 px-3 text-slate-600 text-xs font-bold uppercase">Coupon</th>
+                      <th className="text-right py-3 px-3 text-slate-600 text-xs font-bold uppercase">Annual Interest</th>
+                      <th className="text-left py-3 px-3 text-slate-600 text-xs font-bold uppercase">Redemption</th>
+                      <th className="text-center py-3 px-3 text-slate-600 text-xs font-bold uppercase">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sortedBondHoldings.length === 0 ? (
+                      <tr><td colSpan={12} className="py-10 text-center text-slate-400 text-sm">No bonds yet. Use Add Bond to buy a Treasury.</td></tr>
+                    ) : sortedBondHoldings.map((holding: any) => (
+                      <tr key={holding.id} className="border-b border-border hover:bg-slate-50 transition-colors text-sm">
+                        <td className="py-3 px-3">
+                          <div className="font-bold text-primary text-sm leading-tight">{holding.symbol}</div>
+                          <div className="text-slate-500 text-[10px] leading-tight">{holding.name}</div>
+                          {holding.redemptionDate && <div className="text-[10px] text-slate-400">Matures {new Date(holding.redemptionDate).toLocaleDateString()}</div>}
+                        </td>
+                        <td className="text-right py-3 px-3 font-mono text-xs">{formatNumber(holding.quantity, 3)}</td>
+                        <td className="text-right py-3 px-3 font-mono text-xs text-slate-600">{formatCurrency(holding.averageCost || holding.purchasePrice, 4)}</td>
+                        <td className="text-right py-3 px-3 font-mono text-xs text-slate-600">{formatCurrency((parseFloat(holding.quantity) * parseFloat(holding.averageCost || holding.purchasePrice)).toFixed(2))}</td>
+                        <td className="text-right py-3 px-3 font-mono text-xs text-slate-600">{formatCurrency(holding.currentPrice, 4)}</td>
+                        <td className="text-right py-3 px-3 font-mono text-xs font-bold">{formatCurrency((parseFloat(holding.quantity) * parseFloat(holding.currentPrice)).toFixed(2))}</td>
+                        <td className={`text-right py-3 px-3 font-mono text-xs font-bold ${(parseFloat(holding.quantity) * parseFloat(holding.currentPrice) - parseFloat(holding.quantity) * parseFloat(holding.averageCost || holding.purchasePrice)) >= 0 ? "text-green-600" : "text-red-600"}`}>{(parseFloat(holding.quantity) * parseFloat(holding.currentPrice) - parseFloat(holding.quantity) * parseFloat(holding.averageCost || holding.purchasePrice)) >= 0 ? "+" : ""}{formatCurrency((parseFloat(holding.quantity) * parseFloat(holding.currentPrice) - parseFloat(holding.quantity) * parseFloat(holding.averageCost || holding.purchasePrice)).toFixed(2))}</td>
+                        <td className={`text-right py-3 px-3 font-mono text-xs font-bold ${(parseFloat(holding.quantity) * parseFloat(holding.averageCost || holding.purchasePrice)) > 0 ? ((parseFloat(holding.quantity) * parseFloat(holding.currentPrice) - parseFloat(holding.quantity) * parseFloat(holding.averageCost || holding.purchasePrice)) / (parseFloat(holding.quantity) * parseFloat(holding.averageCost || holding.purchasePrice)) * 100) >= 0 ? "text-green-600" : "text-red-600" : "text-slate-400"}`}>{(parseFloat(holding.quantity) * parseFloat(holding.averageCost || holding.purchasePrice)) > 0 ? (((parseFloat(holding.quantity) * parseFloat(holding.currentPrice) - parseFloat(holding.quantity) * parseFloat(holding.averageCost || holding.purchasePrice)) / (parseFloat(holding.quantity) * parseFloat(holding.averageCost || holding.purchasePrice)) * 100).toFixed(2) + "%") : "-"}</td>
+                        <td className="text-right py-3 px-3 font-mono text-xs text-slate-600">{holding.couponRate && parseFloat(holding.couponRate) > 0 ? `${parseFloat(holding.couponRate).toFixed(3)}%` : "-"}</td>
+                        <td className="text-right py-3 px-3 font-mono text-xs font-bold text-green-600">{holding.couponRate && parseFloat(holding.couponRate) > 0 ? formatCurrency(parseFloat(holding.quantity) * parseFloat(holding.couponRate)) : "-"}</td>
+                        <td className="py-3 px-3 text-xs text-slate-600">{holding.redemptionDate ? formatUTCDate(new Date(holding.redemptionDate)) : "-"}</td>
+                        <td className="text-center py-3 px-3">
+                          <div className="flex items-center justify-center gap-1">
+                            <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setIsBondTradeDialogOpen({ id: holding.id, symbol: holding.symbol })}>Trade</Button>
+                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setBondPurchaseHistoryOpen({ id: holding.id, symbol: holding.symbol })}><History className="h-3 w-3" /></Button>
+                            <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500" onClick={() => handleDeleteBondHolding(holding.id, holding.symbol)}><Trash2 className="h-3 w-3" /></Button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  {sortedBondHoldings.length > 0 && (
+                    <tfoot className="bg-slate-50 border-t-2 border-slate-200">
+                      <tr className="font-bold text-slate-800">
+                        <td colSpan={4} className="py-4 px-3 uppercase text-[10px] tracking-widest text-slate-500">Total Bonds Performance</td>
+                        <td className="text-right py-4 px-3 font-mono text-sm">{formatCurrency(sortedBondHoldings.reduce((acc: number, h: any) => acc + parseFloat(h.quantity) * parseFloat(h.averageCost || h.purchasePrice), 0).toFixed(2))}</td>
+                        <td className="text-right py-4 px-3 font-mono text-sm">{formatCurrency(sortedBondHoldings.reduce((acc: number, h: any) => acc + parseFloat(h.quantity) * parseFloat(h.currentPrice), 0).toFixed(2))}</td>
+                        <td className={`text-right py-4 px-3 font-mono text-sm ${(sortedBondHoldings.reduce((acc: number, h: any) => acc + parseFloat(h.quantity) * parseFloat(h.currentPrice), 0) - sortedBondHoldings.reduce((acc: number, h: any) => acc + parseFloat(h.quantity) * parseFloat(h.averageCost || h.purchasePrice), 0)) >= 0 ? "text-green-600" : "text-red-600"}`}>{(sortedBondHoldings.reduce((acc: number, h: any) => acc + parseFloat(h.quantity) * parseFloat(h.currentPrice), 0) - sortedBondHoldings.reduce((acc: number, h: any) => acc + parseFloat(h.quantity) * parseFloat(h.averageCost || h.purchasePrice), 0)) >= 0 ? "+" : ""}{formatCurrency((sortedBondHoldings.reduce((acc: number, h: any) => acc + parseFloat(h.quantity) * parseFloat(h.currentPrice), 0) - sortedBondHoldings.reduce((acc: number, h: any) => acc + parseFloat(h.quantity) * parseFloat(h.averageCost || h.purchasePrice), 0)).toFixed(2))}</td>
+                        <td className={`text-right py-4 px-3 font-mono text-sm ${(sortedBondHoldings.reduce((acc: number, h: any) => acc + parseFloat(h.quantity) * parseFloat(h.averageCost || h.purchasePrice), 0) > 0 ? ((sortedBondHoldings.reduce((acc: number, h: any) => acc + parseFloat(h.quantity) * parseFloat(h.currentPrice), 0) - sortedBondHoldings.reduce((acc: number, h: any) => acc + parseFloat(h.quantity) * parseFloat(h.averageCost || h.purchasePrice), 0)) / sortedBondHoldings.reduce((acc: number, h: any) => acc + parseFloat(h.quantity) * parseFloat(h.averageCost || h.purchasePrice), 0) * 100) >= 0 ? "text-green-600" : "text-red-600" : "text-slate-400")}`}>{sortedBondHoldings.reduce((acc: number, h: any) => acc + parseFloat(h.quantity) * parseFloat(h.averageCost || h.purchasePrice), 0) > 0 ? (((sortedBondHoldings.reduce((acc: number, h: any) => acc + parseFloat(h.quantity) * parseFloat(h.currentPrice), 0) - sortedBondHoldings.reduce((acc: number, h: any) => acc + parseFloat(h.quantity) * parseFloat(h.averageCost || h.purchasePrice), 0)) / sortedBondHoldings.reduce((acc: number, h: any) => acc + parseFloat(h.quantity) * parseFloat(h.averageCost || h.purchasePrice), 0) * 100).toFixed(2) + "%") : "-"}</td>
+                        <td className="text-right py-4 px-3"></td>
+                        <td className="text-right py-4 px-3 font-mono text-sm text-green-600">{formatCurrency(sortedBondHoldings.reduce((acc: number, h: any) => acc + parseFloat(h.quantity) * parseFloat(h.couponRate || "0"), 0).toFixed(2))}</td>
+                        <td className="py-4 px-3"></td>
                         <td></td>
                       </tr>
                     </tfoot>
@@ -2142,6 +2611,73 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
             </Dialog>
           )}
 
+          {isBondTradeDialogOpen && (
+            <Dialog open={!!isBondTradeDialogOpen} onOpenChange={() => setIsBondTradeDialogOpen(null)}>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Bond Trade for {isBondTradeDialogOpen.symbol}</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4 pt-4">
+                  <div className="grid gap-2">
+                    <label className="text-xs font-bold text-slate-500 uppercase">Trade Type</label>
+                    <div className="flex bg-slate-100 p-1 rounded-md">
+                      <button onClick={() => setBondTradeData(prev => ({ ...prev, type: "buy" }))} className={`flex-1 py-1.5 text-xs font-bold rounded shadow-sm transition-all ${bondTradeData.type === "buy" ? "bg-white text-primary" : "text-slate-500"}`}>BUY</button>
+                      <button onClick={() => setBondTradeData(prev => ({ ...prev, type: "sell" }))} className={`flex-1 py-1.5 text-xs font-bold rounded shadow-sm transition-all ${bondTradeData.type === "sell" ? "bg-white text-destructive" : "text-slate-500"}`}>SELL / REDEEM</button>
+                    </div>
+                  </div>
+                  <div className="grid gap-2">
+                    <label className="text-xs font-bold text-slate-500 uppercase">Account</label>
+                    <select className="bg-white border border-input rounded px-3 py-2 text-sm h-10 w-full" value={bondTradeData.accountId} onChange={(e) => setBondTradeData(prev => ({ ...prev, accountId: e.target.value }))}>
+                      {accounts?.map((acc: any) => (<option key={acc.id} value={acc.id}>{acc.name} {acc.number ? `(${acc.number})` : ""}</option>))}
+                    </select>
+                  </div>
+                  <div className="grid gap-2">
+                    <label className="text-xs font-bold text-slate-500 uppercase">Quantity</label>
+                    <Input type="number" step="0.001" value={bondTradeData.quantity} onChange={(e) => setBondTradeData(prev => ({ ...prev, quantity: e.target.value }))} />
+                  </div>
+                  <div className="grid gap-2">
+                    <label className="text-xs font-bold text-slate-500 uppercase">Trade Date</label>
+                    <Input type="date" value={bondTradeData.purchaseDate} onChange={(e) => setBondTradeData(prev => ({ ...prev, purchaseDate: e.target.value }))} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="grid gap-2">
+                      <label className="text-xs font-bold text-slate-500 uppercase">Price per Bond</label>
+                      <Input type="text" inputMode="decimal" value={bondTradeData.price} onFocus={handleFocus} onChange={(e) => handlePriceInputChange(e.target.value, (val) => setBondTradeData(prev => ({ ...prev, price: val })), 4)} placeholder="0.0000" />
+                    </div>
+                    <div className="grid gap-2">
+                      <label className="text-xs font-bold text-slate-500 uppercase">Accrued Interest</label>
+                      <Input type="text" inputMode="decimal" placeholder="0.00" value={bondTradeData.interest} onFocus={handleFocus} onChange={(e) => handlePriceInputChange(e.target.value, (val) => setBondTradeData(prev => ({ ...prev, interest: val })))} />
+                    </div>
+                  </div>
+                  <div className="grid gap-2">
+                    <label className="text-xs font-bold text-slate-500 uppercase">Fees</label>
+                    <Input type="text" inputMode="decimal" placeholder="0.00" value={bondTradeData.fees} onFocus={handleFocus} onChange={(e) => handlePriceInputChange(e.target.value, (val) => setBondTradeData(prev => ({ ...prev, fees: val })))} />
+                  </div>
+                  <div className="grid gap-2 p-3 bg-slate-50 rounded-md border border-slate-100">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Estimated Transaction Total</label>
+                    <div className="text-lg font-mono font-bold text-slate-700">
+                      {formatCurrency((parseFloat(bondTradeData.quantity || "0") * parseFloat(bondTradeData.price || "0")) + parseFloat(bondTradeData.interest || "0") + (bondTradeData.type === "buy" ? parseFloat(bondTradeData.fees || "0") : -parseFloat(bondTradeData.fees || "0")))}
+                    </div>
+                  </div>
+                  <Button onClick={() => handleExecuteBondTrade(isBondTradeDialogOpen.id, isBondTradeDialogOpen.symbol, Number(bondTradeData.accountId))} className={`w-full ${bondTradeData.type === "sell" ? "bg-destructive hover:bg-destructive/90" : ""}`} disabled={executeBondTradeMutation.isPending}>
+                    Confirm {bondTradeData.type === "buy" ? "Purchase" : "Sale / Redemption"}
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+          )}
+
+          {bondPurchaseHistoryOpen && (
+            <Dialog open={!!bondPurchaseHistoryOpen} onOpenChange={() => setBondPurchaseHistoryOpen(null)}>
+              <DialogContent className="sm:max-w-[1100px]">
+                <DialogHeader>
+                  <DialogTitle>Bond Purchase History for {bondPurchaseHistoryOpen.symbol}</DialogTitle>
+                </DialogHeader>
+                <BondPurchaseHistoryTable holdingId={bondPurchaseHistoryOpen.id} symbol={bondPurchaseHistoryOpen.symbol} portfolioId={selectedPortfolioId} onDelete={handleDeleteBondPurchase} accounts={accounts || []} />
+              </DialogContent>
+            </Dialog>
+          )}
+
           {isCSVImportOpen && (
             <Dialog open={!!isCSVImportOpen} onOpenChange={() => setIsCSVImportOpen(null)}>
               <DialogContent>
@@ -2186,7 +2722,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
         <div className="space-y-8">
           {/* Main Portfolio Summary Stats */}
           {summary ? (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
               <Card className="p-6 bg-white shadow-sm border border-border border-t-4 border-t-primary">
                 <div className="flex justify-between items-start mb-4">
                   <div>
@@ -2233,26 +2769,42 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
               <Card className="p-6 bg-white shadow-sm border border-border border-t-4 border-t-blue-600">
                 <div className="flex justify-between items-start mb-4">
                   <div>
-                    <div className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Investment Value</div>
-                    <div className="text-3xl font-bold text-slate-800 font-mono">
-                      {formatCurrency(summary.investmentValue)}
+                    <div className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Equities</div>
+                    <div className="text-2xl font-bold text-slate-800 font-mono">
+                      {formatCurrency((summary as any).equityInvestmentValue ?? summary.investmentValue)}
                     </div>
                   </div>
                   <div className="p-2 bg-blue-50 rounded-lg">
-                    <PieChart className="w-5 h-5 text-blue-600" />
+                    <TrendingUp className="w-5 h-5 text-blue-600" />
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-slate-500">Total unrealized gains:</span>
-                  <span className={`text-xs font-bold font-mono ${parseFloat(summary.totalGain) >= 0 ? "text-green-600" : "text-red-600"}`}>
-                    {parseFloat(summary.totalGain) >= 0 ? "+" : ""}{formatCurrency(summary.totalGain)}
-                  </span>
+                <div className="flex items-center gap-2 text-xs">
+                  <span className="text-slate-500">Stocks & ETFs</span>
+                  <span className="font-bold text-slate-700">{(summary as any).equityInvestmentValue ? ((parseFloat((summary as any).equityInvestmentValue)/parseFloat(summary.totalValue)*100).toFixed(1)) : "0"}%</span>
+                </div>
+              </Card>
+
+              <Card className="p-6 bg-white shadow-sm border border-border border-t-4 border-t-purple-600">
+                <div className="flex justify-between items-start mb-4">
+                  <div>
+                    <div className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Fixed Income</div>
+                    <div className="text-2xl font-bold text-slate-800 font-mono">
+                      {formatCurrency((summary as any).fixedIncomeInvestmentValue ?? "0.00")}
+                    </div>
+                  </div>
+                  <div className="p-2 bg-purple-50 rounded-lg">
+                    <Landmark className="w-5 h-5 text-purple-600" />
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 text-xs">
+                  <span className="text-slate-500">Bonds & Treasuries</span>
+                  <span className="font-bold text-slate-700">{(summary as any).fixedIncomeInvestmentValue ? ((parseFloat((summary as any).fixedIncomeInvestmentValue)/parseFloat(summary.totalValue)*100).toFixed(1)) : "0"}%</span>
                 </div>
               </Card>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 animate-pulse">
-              {[1, 2, 3].map((i) => (
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6 animate-pulse">
+              {[1, 2, 3, 4].map((i) => (
                 <Card key={i} className="h-32 bg-slate-50 border-slate-100" />
               ))}
             </div>
@@ -2430,7 +2982,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
               <div className="px-6 py-4 border-b border-border bg-slate-50/50 flex justify-between items-center">
                 <div className="flex items-center gap-2">
                   <TrendingUp className="w-5 h-5 text-primary" />
-                  <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Active Holdings</h3>
+                  <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Equities</h3>
                 </div>
                 {summary?.holdings && summary.holdings.length > 0 && (
                   <Badge variant="secondary" className="font-mono text-[10px]">
@@ -2651,11 +3203,11 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                       <tr className="font-bold text-slate-800">
                         <td colSpan={5} className="py-4 px-6 uppercase text-[10px] tracking-widest text-slate-500">Total Portfolio Performance</td>
                         <td className="text-right py-4 px-6 font-mono text-sm">{formatCurrency(summary.investmentValue)}</td>
-                        <td className={`text-right py-4 px-6 font-mono text-sm ${(summary?.holdings?.reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0) || 0) >= 0 ? "text-green-600" : "text-red-600"}`}>
-                          {(summary?.holdings?.reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0) || 0) >= 0 ? "+" : ""}{formatCurrency(summary.holdings?.reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0) || 0)}
+                        <td className={`text-right py-4 px-6 font-mono text-sm ${(summary?.holdings?.filter((h:any)=> !h.assetType || h.assetType==="etf").reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0) || 0) >= 0 ? "text-green-600" : "text-red-600"}`}>
+                          {(summary?.holdings?.filter((h:any)=> !h.assetType || h.assetType==="etf").reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0) || 0) >= 0 ? "+" : ""}{formatCurrency(summary.holdings?.reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0) || 0)}
                         </td>
-                        <td className={`text-right py-4 px-6 font-mono text-sm ${((summary?.holdings?.reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0) || 0) / (summary?.holdings?.reduce((acc: number, h: any) => acc + parseFloat(h.averageCost || h.purchasePrice) * parseFloat(h.quantity), 0) || 1) * 100) >= 0 ? "text-green-600" : "text-red-600"}`}>
-                          {(((summary?.holdings?.reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0) || 0) / (summary?.holdings?.reduce((acc: number, h: any) => acc + parseFloat(h.averageCost || h.purchasePrice) * parseFloat(h.quantity), 0) || 1) * 100)).toFixed(2)}%
+                        <td className={`text-right py-4 px-6 font-mono text-sm ${((summary?.holdings?.filter((h:any)=> !h.assetType || h.assetType==="etf").reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0) || 0) / (summary?.holdings?.reduce((acc: number, h: any) => acc + parseFloat(h.averageCost || h.purchasePrice) * parseFloat(h.quantity), 0) || 1) * 100) >= 0 ? "text-green-600" : "text-red-600"}`}>
+                          {(((summary?.holdings?.filter((h:any)=> !h.assetType || h.assetType==="etf").reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0) || 0) / (summary?.holdings?.reduce((acc: number, h: any) => acc + parseFloat(h.averageCost || h.purchasePrice) * parseFloat(h.quantity), 0) || 1) * 100)).toFixed(2)}%
                         </td>
                         <td className="text-right py-4 px-6 font-mono text-slate-500 text-xs">100%</td>
                         <td />
@@ -3283,6 +3835,69 @@ function PurchaseHistoryTable({
           </DialogContent>
         </Dialog>
       )}
+    </div>
+  );
+}
+
+function BondPurchaseHistoryTable({
+  holdingId,
+  symbol,
+  portfolioId,
+  onDelete,
+  accounts
+}: {
+  holdingId: number,
+  symbol: string,
+  portfolioId: number,
+  onDelete: (purchaseId: number, holdingId: number, portfolioId: number, symbol?: string) => void,
+  accounts: any[]
+}) {
+  const { data: purchases } = trpc.bond.getPurchases.useQuery({ holdingId, symbol, portfolioId });
+  const filtered = purchases || [];
+  return (
+    <div className="space-y-4">
+      <div className="overflow-auto max-h-[60vh] custom-scrollbar border border-border rounded-lg">
+        <table className="w-full text-sm">
+          <thead className="sticky top-0 bg-slate-50">
+            <tr className="border-b border-border">
+              <th className="text-left py-3 px-4 text-[10px] font-bold uppercase text-slate-500">Date</th>
+              <th className="text-left py-3 px-4 text-[10px] font-bold uppercase text-slate-500">Account</th>
+              <th className="text-right py-3 px-4 text-[10px] font-bold uppercase text-slate-500">Qty</th>
+              <th className="text-right py-3 px-4 text-[10px] font-bold uppercase text-slate-500">Price</th>
+              <th className="text-right py-3 px-4 text-[10px] font-bold uppercase text-slate-500">Interest</th>
+              <th className="text-right py-3 px-4 text-[10px] font-bold uppercase text-slate-500">Total Cost</th>
+              <th className="text-center py-3 px-4 text-[10px] font-bold uppercase text-slate-500">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered?.map((purchase: any) => {
+              const dateStr = formatUTCDate(purchase.isSold && purchase.soldDate ? purchase.soldDate : purchase.purchaseDate);
+              const accountName = accounts?.find((a: any) => a.id === purchase.accountId)?.name || "Default";
+              const isSale = !!purchase.isSold;
+              const qty = parseFloat(purchase.quantity);
+              const price = parseFloat(isSale ? (purchase.soldPrice || purchase.price) : purchase.price);
+              const interest = parseFloat(purchase.interest || "0");
+              const totalCost = truncateNumber(qty * price + (isSale ? 0 : interest));
+              return (
+                <tr key={purchase.id} className={`border-b hover:bg-white ${isSale ? "bg-slate-50/50 italic opacity-60" : ""}`}>
+                  <td className="py-3 px-4 font-mono text-xs text-slate-500">{dateStr}</td>
+                  <td className="py-3 px-4"><span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border">{accountName}</span></td>
+                  <td className="text-right py-3 px-4 font-mono">{isSale ? "-" : ""}{formatNumber(purchase.quantity, 3)}</td>
+                  <td className="text-right py-3 px-4 font-mono">{formatCurrency(price, 4)}</td>
+                  <td className="text-right py-3 px-4 font-mono text-slate-500">{formatCurrency(interest)}</td>
+                  <td className="text-right py-3 px-4 font-mono font-bold">{isSale ? "-" : ""}{formatCurrency(totalCost)}</td>
+                  <td className="text-center py-3 px-4">
+                    {isSale ? <Badge variant="outline" className="text-[8px] bg-red-50 text-red-600 border-red-100">Sale</Badge> : (
+                      <Button size="sm" variant="ghost" onClick={() => onDelete(purchase.id, holdingId, portfolioId, symbol)} className="text-slate-400 hover:text-destructive"><Trash2 className="h-4 w-4" /></Button>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+            {filtered.length === 0 && <tr><td colSpan={7} className="py-8 text-center text-slate-400 italic">No bond purchases found.</td></tr>}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

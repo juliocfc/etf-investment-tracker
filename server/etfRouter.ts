@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
-import { etfHoldings, purchases, accounts, cashBalanceHistory, cashBalance } from "../drizzle/schema";
+import { etfHoldings, purchases, accounts, cashBalanceHistory, cashBalance, bondHoldings, bondPurchases } from "../drizzle/schema";
 import {
   getUserEtfHoldings,
   createEtfHolding,
@@ -23,6 +23,9 @@ import {
   getPurchases,
   calculateAverageCost,
   deletePurchase,
+  getUserBondHoldings,
+  calculateBondAverageCost,
+  getBondPriceFromBrokerage,
   updatePurchase,
   parseCSVContent,
   bulkImportPurchases,
@@ -1647,6 +1650,8 @@ export const etfRouter = router({
         }
       });
 
+      let equityInvestmentValue = 0;
+      let fixedIncomeInvestmentValue = 0;
       let totalInvestmentValue = 0;
       const holdingsWithValues = await Promise.all(
         holdings.map(async (holding: any) => {
@@ -1664,7 +1669,7 @@ export const etfRouter = router({
           const purchaseValue = truncateNumber(avgCostValue * quantity);
           const gain = value - purchaseValue;
 
-          totalInvestmentValue += value;
+          equityInvestmentValue += value;
 
           return {
             ...holding,
@@ -1672,14 +1677,51 @@ export const etfRouter = router({
             totalCostNum: purchaseValue,
             currentValueNum: value,
             gainNum: gain,
+            assetType: "etf",
           };
         })
       );
 
+      // Include bond holdings in investment value and holdings list
+      let bondHoldingsRaw = await getUserBondHoldings(ctx.user.id, input.portfolioId, input.accountId);
+      if (input.accountType && input.accountId === undefined) {
+        bondHoldingsRaw = bondHoldingsRaw.filter((h: any) => filteredAccountIds.includes(h.accountId));
+      }
+      const bondHoldingsWithValues = await Promise.all(
+        bondHoldingsRaw.map(async (holding: any) => {
+          const brokeragePriceStr = await getBondPriceFromBrokerage(holding.symbol);
+          const effectivePrice = brokeragePriceStr ? parseFloat(brokeragePriceStr) : (holding.currentPrice ? parseFloat(holding.currentPrice.toString()) : 0);
+          const quantity = parseFloat(holding.quantity.toString());
+          const value = truncateNumber(effectivePrice * quantity);
+          const avgCost = await calculateBondAverageCost(holding.id);
+          const avgCostValue = avgCost ? parseFloat(avgCost.toString()) : parseFloat(holding.purchasePrice.toString());
+          const purchaseValue = truncateNumber(avgCostValue * quantity);
+          const gain = value - purchaseValue;
+          fixedIncomeInvestmentValue += value;
+          // keep currentPrice in sync if brokerage has newer
+          if (brokeragePriceStr && holding.currentPrice !== brokeragePriceStr) {
+            const dbInner = await getDb();
+            await dbInner.update(bondHoldings).set({ currentPrice: brokeragePriceStr }).where(eq(bondHoldings.id, holding.id));
+            holding.currentPrice = brokeragePriceStr;
+          }
+          return {
+            ...holding,
+            currentPrice: brokeragePriceStr || holding.currentPrice,
+            averageCost: avgCost,
+            totalCostNum: purchaseValue,
+            currentValueNum: value,
+            gainNum: gain,
+            assetType: "bond",
+          };
+        })
+      );
+      totalInvestmentValue = truncateNumber(equityInvestmentValue + fixedIncomeInvestmentValue);
+      const allHoldingsWithValues = [...holdingsWithValues, ...bondHoldingsWithValues];
+
       let processedHoldings: any[];
       if (input.accountId === undefined) {
         const consolidatedMap = new Map<string, any>();
-        for (const h of holdingsWithValues) {
+        for (const h of allHoldingsWithValues) {
           if (!consolidatedMap.has(h.symbol)) {
             consolidatedMap.set(h.symbol, {
               ...h,
@@ -1725,7 +1767,7 @@ export const etfRouter = router({
             h.totalCostNum > 0 ? ((h.gainNum / h.totalCostNum) * 100).toFixed(2) : "0",
         }));
       } else {
-        processedHoldings = holdingsWithValues.map((h) => ({
+        processedHoldings = allHoldingsWithValues.map((h) => ({
           ...h,
           totalCost: truncateNumber(h.totalCostNum).toFixed(2),
           currentValue: truncateNumber(h.currentValueNum).toFixed(2),
@@ -1774,7 +1816,7 @@ export const etfRouter = router({
       });
 
       // Add investment values and assets
-      holdingsWithValues.forEach((h: any) => {
+      allHoldingsWithValues.forEach((h: any) => {
         if (h.accountId !== undefined && h.accountId !== null) {
           const account = portfolioAccounts.find((a: any) => a.id === h.accountId);
           const existing = accountSummaries[h.accountId] || { 
@@ -1833,6 +1875,8 @@ export const etfRouter = router({
         accountSummaries,
         accountTypeBreakdown,
         investmentValue: truncateNumber(totalInvestmentValue).toFixed(2),
+        equityInvestmentValue: truncateNumber(equityInvestmentValue).toFixed(2),
+        fixedIncomeInvestmentValue: truncateNumber(fixedIncomeInvestmentValue).toFixed(2),
         totalValue: totalValue.toFixed(2),
         allocationBreakdown: processedHoldings.map((h: any) => ({
           symbol: h.symbol,

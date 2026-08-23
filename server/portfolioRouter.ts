@@ -23,7 +23,7 @@ export const portfolioRouter = router({
     const db = await getDb();
     if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database unavailable" });
 
-    const { getUserEtfHoldings } = await import("./db");
+    const { getUserEtfHoldings, getUserBondHoldings, getBondPriceFromBrokerage, calculateBondAverageCost } = await import("./db");
     const { accounts: accountsTable, cashBalance: cashBalanceTable } = await import("../drizzle/schema");
 
     const userPortfolios = await db
@@ -44,12 +44,17 @@ export const portfolioRouter = router({
 
       const accountDetails = [];
       let portfolioInvestmentValue = 0;
+      let portfolioEquityValue = 0;
+      let portfolioFixedIncomeValue = 0;
       let portfolioCashValue = 0;
 
       for (const account of portfolioAccounts) {
-        // Calculate investment value for this account
+        // Calculate investment value for this account (ETF + Bonds)
         const holdings = await getUserEtfHoldings(ctx.user.id, portfolio.id, account.id);
+        const bondHoldings = await getUserBondHoldings(ctx.user.id, portfolio.id, account.id);
         let accountInvestmentValue = 0;
+        let accountEquityValue = 0;
+        let accountFixedIncomeValue = 0;
         let accountTotalCost = 0;
 
         for (const holding of holdings) {
@@ -57,8 +62,21 @@ export const portfolioRouter = router({
           const purchasePrice = holding.purchasePrice ? parseFloat(holding.purchasePrice.toString()) : 0;
           const quantity = parseFloat(holding.quantity.toString());
           
-          accountInvestmentValue += truncateNumber(currentPrice * quantity);
+          const val = truncateNumber(currentPrice * quantity);
+          accountInvestmentValue += val;
+          accountEquityValue += val;
           accountTotalCost += truncateNumber(purchasePrice * quantity);
+        }
+        for (const holding of bondHoldings) {
+          const brokeragePrice = await getBondPriceFromBrokerage(holding.symbol);
+          const currentPrice = brokeragePrice ? parseFloat(brokeragePrice) : (holding.currentPrice ? parseFloat(holding.currentPrice.toString()) : 0);
+          const avgCostStr = await calculateBondAverageCost(holding.id);
+          const avgCost = parseFloat(avgCostStr || holding.purchasePrice || "0");
+          const quantity = parseFloat(holding.quantity.toString());
+          const val = truncateNumber(currentPrice * quantity);
+          accountInvestmentValue += val;
+          accountFixedIncomeValue += val;
+          accountTotalCost += truncateNumber(avgCost * quantity);
         }
 
         // Calculate cash value for this account
@@ -82,6 +100,8 @@ export const portfolioRouter = router({
           number: account.number,
           accountType: account.accountType,
           investmentValue: accountInvestmentValue.toFixed(2),
+          equityInvestmentValue: accountEquityValue.toFixed(2),
+          fixedIncomeInvestmentValue: accountFixedIncomeValue.toFixed(2),
           totalCost: accountTotalCost.toFixed(2),
           gain: accountGain.toFixed(2),
           gainPercent: accountGainPercent.toFixed(2),
@@ -90,6 +110,8 @@ export const portfolioRouter = router({
         });
 
         portfolioInvestmentValue += accountInvestmentValue;
+        portfolioEquityValue += accountEquityValue;
+        portfolioFixedIncomeValue += accountFixedIncomeValue;
         portfolioCashValue += accountCashValue;
       }
 
@@ -130,6 +152,8 @@ export const portfolioRouter = router({
         name: portfolio.name,
         description: portfolio.description,
         investmentValue: portfolioInvestmentValue.toFixed(2),
+        equityInvestmentValue: portfolioEquityValue.toFixed(2),
+        fixedIncomeInvestmentValue: portfolioFixedIncomeValue.toFixed(2),
         totalCost: portfolioTotalCost.toFixed(2),
         gain: portfolioGain.toFixed(2),
         gainPercent: portfolioGainPercent.toFixed(2),
@@ -147,7 +171,7 @@ export const portfolioRouter = router({
     const db = await getDb();
     if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database unavailable" });
 
-    const { getUserEtfHoldings } = await import("./db");
+    const { getUserEtfHoldings, getUserBondHoldings, getBondPriceFromBrokerage, calculateBondAverageCost } = await import("./db");
 
     const userPortfolios = await db
       .select()
@@ -160,15 +184,28 @@ export const portfolioRouter = router({
       .where(eq(cashBalance.userId, ctx.user.id));
 
     let totalInvestmentValue = 0;
+    let equityInvestmentValue = 0;
+    let fixedIncomeInvestmentValue = 0;
     let totalCashBalance = 0;
 
-    // Calculate total ETF value across all portfolios
+    // Calculate total ETF + Bond value across all portfolios
     for (const portfolio of userPortfolios) {
       const holdings = await getUserEtfHoldings(ctx.user.id, portfolio.id);
       for (const holding of holdings) {
         const currentPrice = holding.currentPrice ? parseFloat(holding.currentPrice.toString()) : 0;
         const quantity = parseFloat(holding.quantity.toString());
-        totalInvestmentValue += truncateNumber(currentPrice * quantity);
+        const val = truncateNumber(currentPrice * quantity);
+        totalInvestmentValue += val;
+        equityInvestmentValue += val;
+      }
+      const bondHoldings = await getUserBondHoldings(ctx.user.id, portfolio.id);
+      for (const holding of bondHoldings) {
+        const brokeragePrice = await getBondPriceFromBrokerage(holding.symbol);
+        const currentPrice = brokeragePrice ? parseFloat(brokeragePrice) : (holding.currentPrice ? parseFloat(holding.currentPrice.toString()) : 0);
+        const quantity = parseFloat(holding.quantity.toString());
+        const val = truncateNumber(currentPrice * quantity);
+        totalInvestmentValue += val;
+        fixedIncomeInvestmentValue += val;
       }
     }
 
@@ -182,8 +219,12 @@ export const portfolioRouter = router({
     return {
       totalValue: totalValue.toFixed(2),
       investmentValue: totalInvestmentValue.toFixed(2),
+      equityInvestmentValue: equityInvestmentValue.toFixed(2),
+      fixedIncomeInvestmentValue: fixedIncomeInvestmentValue.toFixed(2),
       cashBalance: totalCashBalance.toFixed(2),
       investmentPercent: totalValue > 0 ? ((totalInvestmentValue / totalValue) * 100).toFixed(1) : "0",
+      equityPercent: totalValue > 0 ? ((equityInvestmentValue / totalValue) * 100).toFixed(1) : "0",
+      fixedIncomePercent: totalValue > 0 ? ((fixedIncomeInvestmentValue / totalValue) * 100).toFixed(1) : "0",
       cashPercent: totalValue > 0 ? ((totalCashBalance / totalValue) * 100).toFixed(1) : "0",
     };
   }),
@@ -560,7 +601,8 @@ export const portfolioRouter = router({
     const db = await getDb();
     if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database unavailable" });
 
-    const { etfHoldings: holdingsTable } = await import("../drizzle/schema");
+    const { etfHoldings: holdingsTable, bondHoldings: bondTable } = await import("../drizzle/schema");
+    const { getBondPriceFromBrokerage } = await import("./db");
 
     const holdings = await db
       .select()
@@ -573,14 +615,30 @@ export const portfolioRouter = router({
       return Number.isFinite(qty) && qty > 1e-6;
     });
 
-    console.log(`[Portfolio] Found ${activeHoldings.length} active holdings (${holdings.length} total) for user ${ctx.user.id}`);
+    const bondHoldingsRaw = await db
+      .select()
+      .from(bondTable)
+      .where(eq(bondTable.userId, ctx.user.id));
+    const activeBonds = bondHoldingsRaw.filter((h: any) => {
+      const qty = parseFloat(String(h.quantity ?? "0"));
+      return Number.isFinite(qty) && qty > 1e-6;
+    });
+    // Enrich bond currentPrice from brokerage if available
+    const enrichedBonds = await Promise.all(activeBonds.map(async (h: any) => {
+      const brokeragePrice = await getBondPriceFromBrokerage(h.symbol);
+      if (brokeragePrice) h.currentPrice = brokeragePrice;
+      return { ...h, assetType: "bond", annualDividendPerShare: 0 };
+    }));
+
+    console.log(`[Portfolio] Found ${activeHoldings.length} active ETF holdings + ${enrichedBonds.length} bond holdings (${holdings.length} total) for user ${ctx.user.id}`);
     
     const holdingsWithDividends = activeHoldings.map(h => ({
       ...h,
+      assetType: "etf",
       annualDividendPerShare: parseFloat(h.annualDividendPerShare || "0")
     }));
 
     console.log(`[Portfolio] Finished processing all holdings for user ${ctx.user.id}`);
-    return holdingsWithDividends;
+    return [...holdingsWithDividends, ...enrichedBonds];
   }),
 });

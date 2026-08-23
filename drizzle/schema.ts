@@ -231,6 +231,46 @@ export const fiFullSimulationAssets = sqliteTable("fifullsimulationassets", {
   createdAt: integer("createdAt", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
+
+export const bondHoldings = sqliteTable("bondholdings", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("userId").notNull(),
+  portfolioId: integer("portfolioId").notNull(),
+  accountId: integer("accountId").default(0).notNull(),
+  symbol: text("symbol").notNull(),
+  name: text("name").notNull(),
+  quantity: text("quantity").notNull(),
+  purchasePrice: text("purchasePrice").notNull(),
+  currentPrice: text("currentPrice").notNull(),
+  purchaseDate: integer("purchaseDate", { mode: "timestamp" }).notNull(),
+  redemptionDate: integer("redemptionDate", { mode: "timestamp" }),
+  couponRate: text("couponRate").default("0").notNull(),
+  desiredAllocation: text("desiredAllocation").default("0").notNull(),
+  createdAt: integer("createdAt", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+  updatedAt: integer("updatedAt", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+export const bondPurchases = sqliteTable("bondpurchases", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("userId").notNull(),
+  portfolioId: integer("portfolioId").notNull(),
+  accountId: integer("accountId").default(0).notNull(),
+  holdingId: integer("holdingId").notNull(),
+  symbol: text("symbol").notNull(),
+  quantity: text("quantity").notNull(),
+  price: text("price").notNull(),
+  interest: text("interest").default("0").notNull(),
+  couponRate: text("couponRate").default("0").notNull(),
+  fees: text("fees").default("0").notNull(),
+  cashTransactionId: integer("cashTransactionId"),
+  purchaseDate: integer("purchaseDate", { mode: "timestamp" }).notNull(),
+  redemptionDate: integer("redemptionDate", { mode: "timestamp" }),
+  isSold: integer("isSold", { mode: "boolean" }).default(false),
+  soldDate: integer("soldDate", { mode: "timestamp" }),
+  soldPrice: text("soldPrice"),
+  createdAt: integer("createdAt", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
 export type Expense = typeof expenses.$inferSelect;
 export type InsertExpense = typeof expenses.$inferInsert;
 export type FiSimulationAsset = typeof fiSimulationAssets.$inferSelect;

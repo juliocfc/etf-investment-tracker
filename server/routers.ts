@@ -3,6 +3,7 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, router } from "./_core/trpc";
 import { etfRouter } from "./etfRouter";
+import { bondRouter } from "./bondRouter";
 import { portfolioRouter } from "./portfolioRouter";
 import { accountRouter } from "./accountRouter";
 import { brokerageRouter } from "./brokerageRouter";
@@ -23,6 +24,7 @@ export const appRouter = router({
   portfolio: portfolioRouter,
   account: accountRouter,
   etf: etfRouter,
+  bond: bondRouter,
   brokerage: brokerageRouter,
   fi: fiRouter,
 });

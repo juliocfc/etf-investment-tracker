@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
-import { Briefcase, ChevronDown, ChevronRight, Edit2, Trash2, PieChart, Wallet, DollarSign, Plus, BarChart3, Calendar, CalendarPlus, List, RefreshCw, TrendingUp, ArrowRightLeft } from "lucide-react";
+import { Briefcase, ChevronDown, ChevronRight, Edit2, Trash2, PieChart, Wallet, DollarSign, Plus, BarChart3, Calendar, CalendarPlus, List, RefreshCw, TrendingUp, ArrowRightLeft, Landmark } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import { motion, AnimatePresence } from "framer-motion";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, Legend } from "recharts";
@@ -378,8 +378,13 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
   });
 
   const totals = useMemo(() => {
-    if (!portfolios) return { investment: 0, cash: 0, overall: 0, totalCost: 0, gain: 0, gainPercent: "0", investmentPercent: "0", cashPercent: "0" };
+    if (!portfolios) return { investment: 0, equity: 0, fixedIncome: 0, cash: 0, overall: 0, totalCost: 0, gain: 0, gainPercent: "0", investmentPercent: "0", equityPercent: "0", fixedIncomePercent: "0", cashPercent: "0" };
     const investment = portfolios.reduce((acc, p) => acc + parseFloat(p.investmentValue), 0);
+    const equity = portfolios.reduce((acc, p) => acc + parseFloat((p as any).equityInvestmentValue ?? p.investmentValue ?? "0"), 0);
+    const fixedIncome = portfolios.reduce((acc, p) => acc + parseFloat((p as any).fixedIncomeInvestmentValue ?? "0"), 0);
+    // fallback: if split not present, derive from investment
+    const safeEquity = equity || investment - fixedIncome;
+    const safeFixed = fixedIncome;
     const cash = portfolios.reduce((acc, p) => acc + parseFloat(p.cashValue), 0);
     const totalCost = portfolios.reduce((acc, p) => acc + parseFloat(p.totalCost || "0"), 0);
     const overall = investment + cash;
@@ -388,12 +393,16 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
 
     return {
       investment,
+      equity: safeEquity,
+      fixedIncome: safeFixed,
       cash,
       overall,
       totalCost,
       gain,
       gainPercent,
       investmentPercent: overall > 0 ? ((investment / overall) * 100).toFixed(1) : "0",
+      equityPercent: overall > 0 ? ((safeEquity / overall) * 100).toFixed(1) : "0",
+      fixedIncomePercent: overall > 0 ? ((safeFixed / overall) * 100).toFixed(1) : "0",
       cashPercent: overall > 0 ? ((cash / overall) * 100).toFixed(1) : "0",
     };
   }, [portfolios]);
@@ -506,7 +515,7 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <Card className="bg-white border-none shadow-sm shadow-slate-200/50">
           <CardContent className="pt-6 text-primary">
             <div className="flex items-center justify-between mb-2">
@@ -537,17 +546,35 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
         <Card className="bg-white border-none shadow-sm shadow-slate-200/50">
           <CardContent className="pt-6">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total Investments</span>
-              <PieChart className="w-4 h-4 text-green-500" />
+              <span className="text-[10px] font-bold text-blue-600 uppercase tracking-widest">Equities</span>
+              <TrendingUp className="w-4 h-4 text-blue-500" />
             </div>
             <div className="flex items-baseline gap-2">
               <div className="text-2xl font-bold text-slate-800 font-mono">
-                {formatCurrency(totals.investment)}
+                {formatCurrency(totals.equity)}
               </div>
-              <div className="text-xs font-bold text-green-600 bg-green-50 px-1.5 py-0.5 rounded">
-                {totals.investmentPercent}%
+              <div className="text-xs font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">
+                {totals.equityPercent}%
               </div>
             </div>
+            <div className="text-[10px] text-slate-400 mt-1">Stocks & ETFs</div>
+          </CardContent>
+        </Card>
+        <Card className="bg-white border-none shadow-sm shadow-slate-200/50">
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[10px] font-bold text-purple-600 uppercase tracking-widest">Fixed Income</span>
+              <Landmark className="w-4 h-4 text-purple-500" />
+            </div>
+            <div className="flex items-baseline gap-2">
+              <div className="text-2xl font-bold text-slate-800 font-mono">
+                {formatCurrency(totals.fixedIncome)}
+              </div>
+              <div className="text-xs font-bold text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded">
+                {totals.fixedIncomePercent}%
+              </div>
+            </div>
+            <div className="text-[10px] text-slate-400 mt-1">Bonds & Treasuries</div>
           </CardContent>
         </Card>
       </div>
