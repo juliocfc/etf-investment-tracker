@@ -204,78 +204,6 @@ export default function Dividends({
         </div>
       </div>
 
-      {/* Main Dividend Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {/* All Time Panel */}
-        <Card className="p-6 bg-white shadow-sm border border-border border-t-4 border-t-yellow-500">
-          <div className="flex justify-between items-start mb-4">
-            <div>
-              <div className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Received (All Time)</div>
-              <div className="text-3xl font-bold text-slate-800 font-mono">
-                {formatCurrency(displayAllTimeTotal)}
-              </div>
-            </div>
-            <div className="p-2 bg-yellow-50 rounded-lg">
-              <Trophy className="w-5 h-5 text-yellow-600" />
-            </div>
-          </div>
-        </Card>
-
-        {/* Monthly Average Panel */}
-        <Card className="p-6 bg-white shadow-sm border border-border border-t-4 border-t-green-600">
-          <div className="flex justify-between items-start mb-4">
-            <div>
-              <div className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Monthly Avg (L12M)</div>
-              <div className="text-3xl font-bold text-slate-800 font-mono">
-                {formatCurrency(displayMonthlyAverage)}
-              </div>
-            </div>
-            <div className="p-2 bg-green-50 rounded-lg">
-              <DollarSign className="w-5 h-5 text-green-600" />
-            </div>
-          </div>
-        </Card>
-
-        {/* Last Year Panel */}
-        <Card className="p-6 bg-white shadow-sm border border-border border-t-4 border-t-primary">
-          <div className="flex justify-between items-start mb-4">
-            <div>
-              <div className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Total (Last 12M)</div>
-              <div className="text-3xl font-bold text-slate-800 font-mono">{formatCurrency(displayLastYearTotal)}</div>
-            </div>
-            <div className="p-2 bg-slate-50 rounded-lg">
-              <Calendar className="w-5 h-5 text-slate-600" />
-            </div>
-          </div>
-          <div className="grid grid-cols-4 gap-1">
-            {displayQuarterlyBreakdown?.map((q: any) => (
-              <div key={q.quarter} className="text-center p-1 bg-slate-50 rounded border border-slate-100">
-                <div className="text-[8px] font-bold text-slate-400 uppercase truncate">{q.quarter.split(' ')[1]}</div>
-                <div className="text-[10px] font-bold text-slate-700">{formatCurrency(q.amount, 0)}</div>
-              </div>
-            ))}
-          </div>
-        </Card>
-
-        {/* Asset Distribution */}
-        <Card className="p-6 bg-white shadow-sm border border-border border-t-4 border-t-pink-600">
-          <div className="flex justify-between items-start mb-4">
-            <div className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">Distribution (L12M)</div>
-            <div className="p-2 bg-pink-50 rounded-lg">
-              <TrendingUp className="w-5 h-5 text-pink-600" />
-            </div>
-          </div>
-          <div className="space-y-2 max-h-[80px] overflow-y-auto pr-2 custom-scrollbar">
-            {report?.etfBreakdown.map((etf: any) => (
-              <div key={etf.symbol} className="flex justify-between items-center pb-1 border-b border-slate-100 last:border-0">
-                <div className="font-bold text-slate-700 text-[10px]">{etf.symbol}</div>
-                <div className="font-mono text-green-600 text-[10px] font-bold">{formatCurrency(etf.totalLastYear)}</div>
-              </div>
-            ))}
-          </div>
-        </Card>
-      </div>
-
       {/* Bond & Consolidated Income */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Card className="p-6 bg-white shadow-sm border border-border border-t-4 border-t-purple-600">
@@ -372,6 +300,78 @@ export default function Dividends({
                 <Bar dataKey="amount" fill="#059669" radius={[2, 2, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
+          </div>
+        </Card>
+      </div>
+
+            {/* Main Dividend Metrics */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        {/* All Time Panel */}
+        <Card className="p-6 bg-white shadow-sm border border-border border-t-4 border-t-yellow-500">
+          <div className="flex justify-between items-start mb-4">
+            <div>
+              <div className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Received (All Time)</div>
+              <div className="text-3xl font-bold text-slate-800 font-mono">
+                {formatCurrency(displayAllTimeTotal)}
+              </div>
+            </div>
+            <div className="p-2 bg-yellow-50 rounded-lg">
+              <Trophy className="w-5 h-5 text-yellow-600" />
+            </div>
+          </div>
+        </Card>
+
+        {/* Monthly Average Panel */}
+        <Card className="p-6 bg-white shadow-sm border border-border border-t-4 border-t-green-600">
+          <div className="flex justify-between items-start mb-4">
+            <div>
+              <div className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Monthly Avg (L12M)</div>
+              <div className="text-3xl font-bold text-slate-800 font-mono">
+                {formatCurrency(displayMonthlyAverage)}
+              </div>
+            </div>
+            <div className="p-2 bg-green-50 rounded-lg">
+              <DollarSign className="w-5 h-5 text-green-600" />
+            </div>
+          </div>
+        </Card>
+
+        {/* Last Year Panel */}
+        <Card className="p-6 bg-white shadow-sm border border-border border-t-4 border-t-primary">
+          <div className="flex justify-between items-start mb-4">
+            <div>
+              <div className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Total (Last 12M)</div>
+              <div className="text-3xl font-bold text-slate-800 font-mono">{formatCurrency(displayLastYearTotal)}</div>
+            </div>
+            <div className="p-2 bg-slate-50 rounded-lg">
+              <Calendar className="w-5 h-5 text-slate-600" />
+            </div>
+          </div>
+          <div className="grid grid-cols-4 gap-1">
+            {displayQuarterlyBreakdown?.map((q: any) => (
+              <div key={q.quarter} className="text-center p-1 bg-slate-50 rounded border border-slate-100">
+                <div className="text-[8px] font-bold text-slate-400 uppercase truncate">{q.quarter.split(' ')[1]}</div>
+                <div className="text-[10px] font-bold text-slate-700">{formatCurrency(q.amount, 0)}</div>
+              </div>
+            ))}
+          </div>
+        </Card>
+
+        {/* Asset Distribution */}
+        <Card className="p-6 bg-white shadow-sm border border-border border-t-4 border-t-pink-600">
+          <div className="flex justify-between items-start mb-4">
+            <div className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">Distribution (L12M)</div>
+            <div className="p-2 bg-pink-50 rounded-lg">
+              <TrendingUp className="w-5 h-5 text-pink-600" />
+            </div>
+          </div>
+          <div className="space-y-2 max-h-[80px] overflow-y-auto pr-2 custom-scrollbar">
+            {report?.etfBreakdown.map((etf: any) => (
+              <div key={etf.symbol} className="flex justify-between items-center pb-1 border-b border-slate-100 last:border-0">
+                <div className="font-bold text-slate-700 text-[10px]">{etf.symbol}</div>
+                <div className="font-mono text-green-600 text-[10px] font-bold">{formatCurrency(etf.totalLastYear)}</div>
+              </div>
+            ))}
           </div>
         </Card>
       </div>
