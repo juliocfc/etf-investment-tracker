@@ -92,6 +92,8 @@ export default function Performance({
     }),
     value: parseFloat(item.value),
     investmentValue: parseFloat((item as any).investmentValue || "0"),
+    equitiesValue: parseFloat(((item as any).equitiesValue ?? (item as any).investmentValue) || "0"),
+    fixedIncomeValue: parseFloat((item as any).fixedIncomeValue || "0"),
     cashValue: parseFloat((item as any).cashValue || "0"),
     rawDate: item.date,
   })) || [];
@@ -108,8 +110,12 @@ export default function Performance({
               <span className="font-bold text-slate-800">{formatCurrency(data.value)}</span>
             </div>
             <div className="flex justify-between gap-8">
-              <span className="text-slate-400 font-bold uppercase text-[10px]">Investments:</span>
-              <span className="font-mono text-primary">{formatCurrency(data.investmentValue)}</span>
+              <span className="text-slate-400 font-bold uppercase text-[10px]">Equities:</span>
+              <span className="font-mono text-primary">{formatCurrency(data.equitiesValue ?? data.investmentValue)}</span>
+            </div>
+            <div className="flex justify-between gap-8">
+              <span className="text-slate-400 font-bold uppercase text-[10px]">Fixed Income:</span>
+              <span className="font-mono text-purple-600">{formatCurrency(data.fixedIncomeValue || 0)}</span>
             </div>
             <div className="flex justify-between gap-8">
               <span className="text-slate-400 font-bold uppercase text-[10px]">Cash:</span>
@@ -289,10 +295,18 @@ export default function Performance({
                   wrapperStyle={{ fontSize: '10px', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.05em', paddingBottom: '20px' }}
                 />
                 <Bar
-                  dataKey="investmentValue"
-                  name="Investments"
+                  dataKey="equitiesValue"
+                  name="Equities"
                   stackId="a"
                   fill="#004a99"
+                  radius={[0, 0, 0, 0]}
+                  animationDuration={1500}
+                />
+                <Bar
+                  dataKey="fixedIncomeValue"
+                  name="Fixed Income"
+                  stackId="a"
+                  fill="#9333ea"
                   radius={[0, 0, 0, 0]}
                   animationDuration={1500}
                 />

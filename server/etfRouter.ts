@@ -2145,7 +2145,15 @@ export const etfRouter = router({
     )
     .query(async ({ ctx, input }) => {
       try {
-        let holdings = await getUserEtfHoldings(ctx.user.id, input.portfolioId, input.accountId);
+        let holdings: any[] = await getUserEtfHoldings(ctx.user.id, input.portfolioId, input.accountId);
+        let bondHoldings: any[] = await getUserBondHoldings(ctx.user.id, input.portfolioId, input.accountId);
+        // Enrich bond holdings with assetType and brokerage price
+        bondHoldings = await Promise.all(bondHoldings.map(async (h:any)=>{
+          const bp = await getBondPriceFromBrokerage(h.symbol);
+          if(bp) h.currentPrice = bp;
+          return {...h, assetType: "bond"};
+        }));
+        holdings = holdings.map((h:any)=>({...h, assetType: "etf"})).concat(bondHoldings);
         
         if (input.accountType && input.accountId === undefined) {
           const db = await getDb();
@@ -2175,6 +2183,8 @@ export const etfRouter = router({
           date: d.date,
           value: d.totalValue.toFixed(2),
           investmentValue: d.investmentValue.toFixed(2),
+          equitiesValue: (d as any).equitiesValue?.toFixed(2) ?? d.investmentValue.toFixed(2),
+          fixedIncomeValue: (d as any).fixedIncomeValue?.toFixed(2) ?? "0.00",
           cashValue: d.cashValue.toFixed(2)
         }));
       } catch (error) {
@@ -2420,9 +2430,17 @@ export const etfRouter = router({
     }))
     .query(async ({ ctx, input }) => {
       const db = await getDb();
-      const holdings = await getUserEtfHoldings(ctx.user.id, input.portfolioId, input.accountId);
+      let holdings: any[] = await getUserEtfHoldings(ctx.user.id, input.portfolioId, input.accountId);
+      let bondHoldings: any[] = await getUserBondHoldings(ctx.user.id, input.portfolioId, input.accountId);
+      // Enrich bonds with brokerage price
+      bondHoldings = await Promise.all(bondHoldings.map(async (h:any)=>{
+        const bp = await getBondPriceFromBrokerage(h.symbol);
+        if(bp) h.currentPrice = bp;
+        return {...h, assetType:"bond"};
+      }));
+      holdings = holdings.map((h:any)=>({...h, assetType:"etf"})).concat(bondHoldings);
       
-      const purchaseConditions = [
+      const purchaseConditions: any[] = [
         eq(purchases.userId, ctx.user.id),
         eq(purchases.portfolioId, input.portfolioId)
       ];
@@ -2430,10 +2448,19 @@ export const etfRouter = router({
         purchaseConditions.push(eq(purchases.accountId, input.accountId));
       }
 
-      const allPurchases = await db.select()
+      const allPurchasesEtf = await db.select()
         .from(purchases)
         .where(and(...purchaseConditions))
         .orderBy(purchases.purchaseDate);
+      const bondPurchaseConditions: any[] = [
+        eq(bondPurchases.userId, ctx.user.id),
+        eq(bondPurchases.portfolioId, input.portfolioId)
+      ];
+      if (input.accountId !== undefined) {
+        bondPurchaseConditions.push(eq(bondPurchases.accountId, input.accountId));
+      }
+      const allBondPurchases = await db.select().from(bondPurchases).where(and(...bondPurchaseConditions)).orderBy(bondPurchases.purchaseDate);
+      const allPurchases: any[] = [...allPurchasesEtf, ...allBondPurchases];
       const cashHistory = await getCashBalanceHistory(ctx.user.id, input.portfolioId, input.accountId);
 
       const now = new Date();
@@ -2453,14 +2480,22 @@ export const etfRouter = router({
         years.push(y);
       }
 
-      // Pre-fetch all symbols price history once
+      // Pre-fetch all symbols price history once (bonds use constant brokerage price)
       const symbolsOwned: string[] = Array.from(new Set(allPurchases.map((p: any) => p.symbol.toUpperCase())));
       const symbolPriceHistories = new Map<string, any[]>();
       
       const daysToFetch = Math.ceil((now.getTime() - new Date(startYear, 0, 1).getTime()) / (1000 * 60 * 60 * 24)) + 10;
       for (const symbol of symbolsOwned) {
-        const history = await getSmartHistoricalPrices(symbol, daysToFetch, '1mo');
-        symbolPriceHistories.set(symbol, history);
+        const isBondSymbol = holdings.some((h:any) => h.symbol.toUpperCase() === symbol && ((h as any).assetType === "bond" || (h as any).couponRate !== undefined));
+        if (isBondSymbol) {
+          const bondHolding = holdings.find((h:any) => h.symbol.toUpperCase() === symbol);
+          const price = bondHolding ? parseFloat(bondHolding.currentPrice || "0") : 0;
+          // Constant price history for bonds
+          symbolPriceHistories.set(symbol, [{ timestamp: new Date(startYear, 0, 1), price }, { timestamp: now, price }]);
+        } else {
+          const history = await getSmartHistoricalPrices(symbol, daysToFetch, '1mo');
+          symbolPriceHistories.set(symbol, history);
+        }
       }
 
       const result = [];
@@ -2587,7 +2622,7 @@ export const etfRouter = router({
     .query(async ({ ctx, input }) => {
       const db = await getDb();
       
-      const purchaseConditions = [
+      const purchaseConditions: any[] = [
         eq(purchases.userId, ctx.user.id),
         eq(purchases.portfolioId, input.portfolioId)
       ];
@@ -2595,10 +2630,19 @@ export const etfRouter = router({
         purchaseConditions.push(eq(purchases.accountId, input.accountId));
       }
 
-      const allPurchases = await db.select()
+      const allPurchasesEtf = await db.select()
         .from(purchases)
         .where(and(...purchaseConditions))
         .orderBy(purchases.purchaseDate);
+      const bondPurchaseConditions: any[] = [
+        eq(bondPurchases.userId, ctx.user.id),
+        eq(bondPurchases.portfolioId, input.portfolioId)
+      ];
+      if (input.accountId !== undefined) {
+        bondPurchaseConditions.push(eq(bondPurchases.accountId, input.accountId));
+      }
+      const allBondPurchases = await db.select().from(bondPurchases).where(and(...bondPurchaseConditions)).orderBy(bondPurchases.purchaseDate);
+      const allPurchases: any[] = [...allPurchasesEtf, ...allBondPurchases];
       
       const now = new Date();
       const months = [];
@@ -2618,8 +2662,16 @@ export const etfRouter = router({
       const daysToFetch = Math.ceil((now.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 35;
       
       for (const symbol of symbolsOwned) {
-        const history = await getSmartHistoricalPrices(symbol, daysToFetch, '1mo');
-        symbolPriceHistories.set(symbol, history);
+        const looksLikeCusip = /^[0-9A-Z]{9}$/.test(symbol);
+        if (looksLikeCusip) {
+          // Find a purchase to get price, or use 0
+          const samplePurchase = allPurchases.find((p:any) => p.symbol.toUpperCase() === symbol);
+          const price = samplePurchase ? parseFloat(samplePurchase.price || "0") : 0;
+          symbolPriceHistories.set(symbol, [{ timestamp: startDate, price }, { timestamp: now, price }]);
+        } else {
+          const history = await getSmartHistoricalPrices(symbol, daysToFetch, '1mo');
+          symbolPriceHistories.set(symbol, history);
+        }
       }
 
       const result = [];
@@ -2821,13 +2873,22 @@ async function getProcessedEvolution(userId: number, holdings: any[], range: "1m
   const holdingData: any[] = [];
 
   for (const holding of holdings) {
-    // Fetch a bit more to have "warm up" data for lastPrices
-    const priceHistory = await getSmartHistoricalPrices(holding.symbol as string, days + 10, interval);
+    const isBond = (holding as any).assetType === "bond" || (holding as any).couponRate !== undefined || (holding as any).symbol?.length === 9 && /^[0-9A-Z]{9}$/.test(holding.symbol);
+    // For bonds, use brokerage price as constant, no price history needed
+    let priceHistory: any[] = [];
+    if (isBond) {
+      const brokeragePriceStr = await getBondPriceFromBrokerage(holding.symbol);
+      const price = brokeragePriceStr ? parseFloat(brokeragePriceStr) : parseFloat(holding.currentPrice || "0");
+      // Create a single price point for today and startDate
+      priceHistory = [{ timestamp: new Date(), price }];
+    } else {
+      priceHistory = await getSmartHistoricalPrices(holding.symbol as string, days + 10, interval);
+    }
     
     const db = await getDb();
-    const purchaseConditions = [
-      eq(purchases.holdingId, holding.id)
-    ];
+    // Choose correct purchases table based on asset type
+    const isBondHolding = isBond;
+    const purchaseConditions: any[] = isBondHolding ? [eq(bondPurchases.holdingId, holding.id)] : [eq(purchases.holdingId, holding.id)];
     
     if (accountId !== undefined) {
       purchaseConditions.push(eq(purchases.accountId, accountId));
@@ -2847,10 +2908,9 @@ async function getProcessedEvolution(userId: number, holdings: any[], range: "1m
       }
     }
 
-    const holdingPurchases = await db.select()
-      .from(purchases)
-      .where(and(...purchaseConditions))
-      .orderBy(desc(purchases.purchaseDate));
+    const holdingPurchases = isBondHolding
+      ? await db.select().from(bondPurchases).where(and(...purchaseConditions)).orderBy(desc(bondPurchases.purchaseDate))
+      : await db.select().from(purchases).where(and(...purchaseConditions)).orderBy(desc(purchases.purchaseDate));
 
     const pricesMap = new Map<string, number>();
     
@@ -2994,6 +3054,8 @@ async function getProcessedEvolution(userId: number, holdings: any[], range: "1m
   for (const dateKey of resultDates) {
     const currentDate = new Date(dateKey + "T12:00:00");
     let investmentValue = 0;
+    let equitiesValue = 0;
+    let fixedIncomeValue = 0;
     let totalCashValue = 0;
     let totalCurrentQtyValue = 0;
 
@@ -3013,7 +3075,11 @@ async function getProcessedEvolution(userId: number, holdings: any[], range: "1m
           qtyOwned += parseFloat(p.quantity.toString());
         }
       }
-      investmentValue += qtyOwned * price;
+      const isBondItem = (item.holding as any).assetType === "bond" || (item.holding as any).couponRate !== undefined;
+      const val = qtyOwned * price;
+      investmentValue += val;
+      if (isBondItem) fixedIncomeValue += val;
+      else equitiesValue += val;
 
       // 2. Market Performance Value (Current Quantity * Historical Price)
       totalCurrentQtyValue += item.currentQty * price;
@@ -3034,6 +3100,8 @@ async function getProcessedEvolution(userId: number, holdings: any[], range: "1m
       date: dateKey,
       totalValue: investmentValue + totalCashValue,
       investmentValue: investmentValue,
+      equitiesValue: equitiesValue,
+      fixedIncomeValue: fixedIncomeValue,
       cashValue: totalCashValue,
       priceOnlyValue: totalCurrentQtyValue
     });
