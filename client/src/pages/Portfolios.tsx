@@ -433,6 +433,16 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
     })).sort((a, b) => parseFloat(b.value) - parseFloat(a.value));
   }, [portfolios, portfolioFilter]);
 
+  const assetClassBreakdown = useMemo(() => {
+    if (!portfolios) return [];
+    const total = totals.overall;
+    return [
+      { type: "Cash", value: totals.cash.toFixed(2), percentage: total > 0 ? ((totals.cash / total) * 100).toFixed(2) : "0" },
+      { type: "Equities", value: totals.equity.toFixed(2), percentage: total > 0 ? ((totals.equity / total) * 100).toFixed(2) : "0" },
+      { type: "Fixed Income", value: totals.fixedIncome.toFixed(2), percentage: total > 0 ? ((totals.fixedIncome / total) * 100).toFixed(2) : "0" },
+    ].filter(item => parseFloat(item.value) > 0);
+  }, [totals, portfolios, portfolioFilter]);
+
   if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center h-96 gap-4">
@@ -1481,6 +1491,49 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
           </div>
         </CardContent>
       </Card>
+
+      {/* Asset Class Distribution - Cash / Equities / Bonds */}
+      {assetClassBreakdown && assetClassBreakdown.length > 0 && (
+        <Card className="p-6 bg-white shadow-sm border border-border">
+          <div className="flex items-center gap-2 mb-6">
+            <div className="p-1.5 bg-slate-100 rounded text-slate-600">
+              <PieChart className="w-4 h-4" />
+            </div>
+            <h2 className="text-lg font-bold text-slate-800">Asset Class Distribution</h2>
+          </div>
+          <div className="flex flex-col md:flex-row items-center justify-center gap-16">
+            <div className="shrink-0 flex items-center justify-center">
+              <AccountTypeAllocationChart data={assetClassBreakdown} />
+            </div>
+            <div className="flex-1 w-full max-w-2xl">
+              <div className="space-y-3">
+                {assetClassBreakdown.map((item: any, index: number) => {
+                  const ASSET_COLORS: Record<string, string> = {
+                    "Cash": "#94a3b8",
+                    "Equities": "#004a99",
+                    "Fixed Income": "#9333ea"
+                  };
+                  return (
+                    <div key={item.type} className="flex justify-between items-center text-sm p-3 hover:bg-slate-50 rounded transition-colors">
+                      <div className="flex items-center gap-4">
+                        <div
+                          className="w-4 h-4 rounded-full shrink-0"
+                          style={{ backgroundColor: ASSET_COLORS[item.type] || CHART_COLORS[index % CHART_COLORS.length] }}
+                        />
+                        <span className="font-bold text-slate-700">{item.type}</span>
+                      </div>
+                      <div className="flex items-center gap-6">
+                        <span className="font-mono font-bold text-slate-600 text-sm">{formatCurrency(item.value)}</span>
+                        <span className="font-mono font-bold text-slate-700 text-base w-16 text-right">{item.percentage}%</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </Card>
+      )}
 
       {/* Account Type Allocation Pie Chart */}
       {accountTypeBreakdown && accountTypeBreakdown.length > 0 && (

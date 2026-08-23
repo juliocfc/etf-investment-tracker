@@ -49,6 +49,34 @@ export default function Dividends({
     return bondHoldings.reduce((sum: number, h: any) => sum + parseFloat(h.quantity || "0") * parseFloat(h.couponRate || "0"), 0);
   }, [bondHoldings]);
 
+  const bondMonthlyProjection = useMemo(() => {
+    if (!bondHoldings || bondHoldings.length === 0) return [];
+    const monthNames = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    const now = new Date();
+    const result: any[] = [];
+    for (let i = 0; i < 12; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+      const targetMonth = d.getMonth();
+      const targetYear = d.getFullYear();
+      let total = 0;
+      for (const h of bondHoldings as any[]) {
+        if (!h.redemptionDate || !h.couponRate) continue;
+        const redemption = new Date(h.redemptionDate);
+        const couponMonth1 = redemption.getMonth();
+        const couponMonth2 = (couponMonth1 + 6) % 12;
+        if (targetMonth !== couponMonth1 && targetMonth !== couponMonth2) continue;
+        const redemptionYear = redemption.getFullYear();
+        const redemptionMonth = redemption.getMonth();
+        if (targetYear > redemptionYear || (targetYear === redemptionYear && targetMonth > redemptionMonth)) continue;
+        const qty = parseFloat(h.quantity || "0");
+        const rate = parseFloat(h.couponRate || "0");
+        if (qty && rate) total += qty * rate / 2;
+      }
+      result.push({ month: `${monthNames[targetMonth]} ${targetYear}`, amount: total.toFixed(2) });
+    }
+    return result;
+  }, [bondHoldings]);
+
   const { data: projections, isLoading: isProjectionLoading } = trpc.etf.getProjectedDividends.useQuery(
     { 
       portfolioId: selectedPortfolioId, 
@@ -297,6 +325,57 @@ export default function Dividends({
         </Card>
       </div>
 
+      {/* Monthly Bond & Consolidated Forecast */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <Card className="p-6 bg-white shadow-sm border border-border border-l-4 border-l-purple-600">
+          <div className="flex items-center gap-2 mb-4">
+            <Landmark className="w-4 h-4 text-purple-600" />
+            <div className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">Monthly Bond Coupon Forecast</div>
+          </div>
+          <div className="h-[120px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={bondMonthlyProjection}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                <XAxis dataKey="month" stroke="#94a3b8" fontSize={8} tickLine={false} axisLine={false} />
+                <YAxis hide />
+                <Tooltip
+                  contentStyle={{ backgroundColor: "#fff", border: "1px solid #e2e8f0", borderRadius: "8px", fontSize: "10px" }}
+                  formatter={(value) => [formatCurrency(value as number), "Coupon"]}
+                />
+                <Bar dataKey="amount" fill="#9333ea" radius={[2, 2, 0, 0]}>
+                  {bondMonthlyProjection.map((entry: any, index: number) => (
+                    <Cell key={`c-${index}`} fill="#9333ea" fillOpacity={0.6 + (index/12)*0.4} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="text-[10px] text-slate-500 mt-2">Half-coupon on redemption anniversary months</div>
+        </Card>
+        <Card className="p-6 bg-white shadow-sm border border-border md:col-span-2">
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">Consolidated Monthly Income Forecast</div>
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-700">Dividends + Bonds</span>
+          </div>
+          <div className="h-[120px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={(() => {
+                const map = new Map<string, number>();
+                (projections?.monthlyProjection || []).forEach((m:any)=> map.set(m.month, parseFloat(m.amount||"0")));
+                bondMonthlyProjection.forEach((m:any)=> map.set(m.month, (map.get(m.month)||0) + parseFloat(m.amount||"0")));
+                return Array.from(map.entries()).map(([month, amount])=>({month, amount: amount.toFixed(2)}));
+              })()}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                <XAxis dataKey="month" stroke="#94a3b8" fontSize={8} tickLine={false} axisLine={false} />
+                <YAxis hide />
+                <Tooltip formatter={(value) => [formatCurrency(value as number), "Total"]} />
+                <Bar dataKey="amount" fill="#059669" radius={[2, 2, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </Card>
+      </div>
+
       {/* Dividend Payout Chart */}
       <Card className="p-8 bg-white shadow-sm border border-border">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-6">
@@ -386,7 +465,7 @@ export default function Dividends({
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             <TrendingUp className="w-5 h-5 text-primary" />
-            <h2 className="text-xl font-bold text-slate-800">Forward-Looking Income Projection</h2>
+            <h2 className="text-xl font-bold text-slate-800">Dividend Forward-Looking Projection</h2>
           </div>
           <div className="flex items-center gap-3 bg-white px-3 py-1.5 rounded-md border border-border shadow-sm">
             <Switch 
@@ -468,6 +547,42 @@ export default function Dividends({
                 </div>
               </Card>
             </div>
+
+            <Card className="bg-white shadow-sm border border-border overflow-hidden">
+              <div className="px-6 py-4 border-b border-border bg-slate-50/50 flex items-center gap-2">
+                <Landmark className="w-4 h-4 text-purple-600" />
+                <h3 className="text-sm font-bold text-slate-700">Bond Coupon Projection by Asset</h3>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-slate-50">
+                    <tr className="border-b border-border">
+                      <th className="text-left py-3 px-6 text-slate-600 font-bold">CUSIP</th>
+                      <th className="text-right py-3 px-6 text-slate-600 font-bold">Qty</th>
+                      <th className="text-right py-3 px-6 text-slate-600 font-bold">Coupon Rate</th>
+                      <th className="text-right py-3 px-6 text-slate-600 font-bold">Per Half</th>
+                      <th className="text-right py-3 px-6 text-slate-600 font-bold">Annual</th>
+                      <th className="text-left py-3 px-6 text-slate-600 font-bold">Redemption</th>
+                      <th className="text-left py-3 px-6 text-slate-600 font-bold">Schedule</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(bondHoldings || []).map((h: any) => (
+                      <tr key={h.symbol} className="border-b border-border hover:bg-slate-50">
+                        <td className="py-3 px-6 font-bold text-primary">{h.symbol}</td>
+                        <td className="py-3 px-6 text-right font-mono">{formatNumber(h.quantity, 3)}</td>
+                        <td className="py-3 px-6 text-right font-mono">{parseFloat(h.couponRate||"0").toFixed(3)}%</td>
+                        <td className="py-3 px-6 text-right font-mono text-purple-600">{formatCurrency(parseFloat(h.quantity||"0") * parseFloat(h.couponRate||"0") / 2)}</td>
+                        <td className="py-3 px-6 text-right font-mono font-bold text-green-600">{formatCurrency(parseFloat(h.quantity||"0") * parseFloat(h.couponRate||"0"))}</td>
+                        <td className="py-3 px-6 text-right font-mono text-slate-500">{h.redemptionDate ? new Date(h.redemptionDate).toLocaleDateString() : "-"}</td>
+                        <td className="py-3 px-6 text-[10px] text-slate-500">{(() => { if(!h.redemptionDate) return "-"; const m=new Date(h.redemptionDate).toLocaleDateString(undefined,{month:"2-digit",day:"2-digit"}); const d2=new Date(h.redemptionDate); d2.setMonth(d2.getMonth()+6); const m2=d2.toLocaleDateString(undefined,{month:"2-digit",day:"2-digit"}); return `${m} & ${m2}`; })()}</td>
+                      </tr>
+                    ))}
+                    {(!bondHoldings || bondHoldings.length===0) && <tr><td colSpan={7} className="py-6 text-center text-slate-400">No bonds</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
 
             <Card className="bg-white shadow-sm border border-border overflow-hidden">
               <div className="px-6 py-4 border-b border-border bg-slate-50/50">
