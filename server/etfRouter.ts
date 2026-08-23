@@ -1083,8 +1083,23 @@ export const etfRouter = router({
         };
       });
 
+      // Blended dividend yield weighted by current allocation (market value)
+      let totalMarketValue = 0;
+      let weightedYieldSum = 0;
+      for (const [symbol, data] of Array.from(symbolDataMap.entries())) {
+        const marketValue = data.initialQuantity * data.currentPrice;
+        const divYield = data.currentPrice > 0 ? (data.trueAnnualDPS / data.currentPrice) * 100 : 0;
+        if (marketValue > 0) {
+          totalMarketValue += marketValue;
+          weightedYieldSum += divYield * marketValue;
+        }
+      }
+      const blendedYield = totalMarketValue > 0 ? weightedYieldSum / totalMarketValue : 0;
+
       return {
         totalProjectedAnnual: totalProjectedAnnual.toFixed(2),
+        blendedYield: blendedYield.toFixed(2),
+        totalMarketValue: totalMarketValue.toFixed(2),
         assets,
         monthlyProjection: monthlyProjections
       };

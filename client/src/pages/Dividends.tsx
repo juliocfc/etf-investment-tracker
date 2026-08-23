@@ -362,6 +362,18 @@ export default function Dividends({
                 <div className="text-sm text-slate-500">
                   Monthly average: <span className="font-bold text-slate-700">{formatCurrency(parseFloat(projections.totalProjectedAnnual) / 12)}</span>
                 </div>
+                <div className="mt-4 pt-3 border-t border-slate-100">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Blended Yield</span>
+                      <span className="text-[10px] text-slate-300 cursor-help" title="Weighted by current market allocation (shares × price). Σ(yield_i × allocation_i). Yield_i = annualDPS / price.">ⓘ</span>
+                    </div>
+                    <span className="text-lg font-mono font-bold text-green-600">{(projections as any).blendedYield ?? "0.00"}%</span>
+                  </div>
+                  <div className="text-[10px] text-slate-400 mt-1">
+                    Weighted by current allocation
+                  </div>
+                </div>
               </Card>
 
               <Card className="p-6 bg-white shadow-sm border border-border md:col-span-2">
