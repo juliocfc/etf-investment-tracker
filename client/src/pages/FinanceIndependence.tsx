@@ -188,8 +188,12 @@ const FinanceIndependence: React.FC = () => {
     if (!holdings) return 0;
     const totalAnnual = holdings.reduce((sum, h) => {
       const qty = parseFloat(h.quantity.toString());
-      const dps = h.annualDividendPerShare || 0;
-      return sum + (qty * dps);
+      if ((h as any).assetType === "bond") {
+        const couponRate = parseFloat((h as any).couponRate || "0");
+        return sum + qty * couponRate;
+      }
+      const dps = (h as any).annualDividendPerShare || 0;
+      return sum + qty * dps;
     }, 0);
     return totalAnnual / 12;
   }, [holdings]);

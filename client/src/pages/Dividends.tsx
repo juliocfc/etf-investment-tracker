@@ -15,7 +15,7 @@ import {
   ResponsiveContainer,
   Cell
 } from "recharts";
-import { DollarSign, Calendar, ListFilter, Trophy, RefreshCw, BarChart3, TrendingUp } from "lucide-react";
+import { DollarSign, Calendar, ListFilter, Trophy, RefreshCw, BarChart3, TrendingUp, Landmark } from "lucide-react";
 
 export default function Dividends({ 
   selectedPortfolioId,
@@ -39,6 +39,16 @@ export default function Dividends({
     { enabled: !!selectedPortfolioId }
   );
 
+  const { data: bondHoldings } = trpc.bond.getHoldings.useQuery(
+    { portfolioId: selectedPortfolioId, accountType: selectedAccountType === "all" ? undefined : selectedAccountType },
+    { enabled: !!selectedPortfolioId }
+  );
+
+  const bondAnnualInterest = useMemo(() => {
+    if (!bondHoldings) return 0;
+    return bondHoldings.reduce((sum: number, h: any) => sum + parseFloat(h.quantity || "0") * parseFloat(h.couponRate || "0"), 0);
+  }, [bondHoldings]);
+
   const { data: projections, isLoading: isProjectionLoading } = trpc.etf.getProjectedDividends.useQuery(
     { 
       portfolioId: selectedPortfolioId, 
@@ -47,6 +57,9 @@ export default function Dividends({
     },
     { enabled: !!selectedPortfolioId }
   );
+
+  const dividendProjectedAnnual = useMemo(() => parseFloat(projections?.totalProjectedAnnual || "0"), [projections]);
+  const consolidatedAnnualIncome = useMemo(() => dividendProjectedAnnual + bondAnnualInterest, [dividendProjectedAnnual, bondAnnualInterest]);
 
   const [globalFilterSymbol, setGlobalFilterSymbol] = useState<string>("ALL");
   const [filterAccountId, setFilterAccountId] = useState<string>("ALL");
@@ -141,8 +154,8 @@ export default function Dividends({
             <DollarSign className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="text-lg font-bold text-slate-800">Dividend Analytics</h2>
-            <p className="text-xs text-slate-500 font-medium">Passive income audit and payout timelines</p>
+            <h2 className="text-lg font-bold text-slate-800">Income Analytics</h2>
+            <p className="text-xs text-slate-500 font-medium">Dividends & bond coupons audit and payout timelines</p>
           </div>
         </div>
 
@@ -231,6 +244,55 @@ export default function Dividends({
                 <div className="font-mono text-green-600 text-[10px] font-bold">{formatCurrency(etf.totalLastYear)}</div>
               </div>
             ))}
+          </div>
+        </Card>
+      </div>
+
+      {/* Bond & Consolidated Income */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <Card className="p-6 bg-white shadow-sm border border-border border-t-4 border-t-purple-600">
+          <div className="flex justify-between items-start mb-4">
+            <div>
+              <div className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Bond Interest (Projected Annual)</div>
+              <div className="text-3xl font-bold text-slate-800 font-mono">{formatCurrency(bondAnnualInterest)}</div>
+              <div className="text-[10px] text-slate-500 mt-1">{bondHoldings?.length || 0} issues • {formatCurrency(bondAnnualInterest/12)}/mo avg</div>
+            </div>
+            <div className="p-2 bg-purple-50 rounded-lg">
+              <Landmark className="w-5 h-5 text-purple-600" />
+            </div>
+          </div>
+          <div className="text-[10px] text-slate-400">Coupons twice a year per redemption schedule</div>
+        </Card>
+
+        <Card className="p-6 bg-white shadow-sm border border-border border-t-4 border-t-blue-600">
+          <div className="flex justify-between items-start mb-4">
+            <div>
+              <div className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Dividend Income (Projected Annual)</div>
+              <div className="text-3xl font-bold text-slate-800 font-mono">{formatCurrency(projections?.totalProjectedAnnual || "0")}</div>
+              <div className="text-[10px] text-slate-500 mt-1">{report?.etfBreakdown?.length || 0} payers • {formatCurrency(parseFloat(projections?.totalProjectedAnnual || "0")/12)}/mo avg</div>
+            </div>
+            <div className="p-2 bg-blue-50 rounded-lg">
+              <TrendingUp className="w-5 h-5 text-blue-600" />
+            </div>
+          </div>
+          <div className="text-[10px] text-slate-400">Based on last 12M DPS × holdings</div>
+        </Card>
+
+        <Card className="p-6 bg-white shadow-sm border border-border border-t-4 border-t-emerald-600 bg-gradient-to-br from-white to-emerald-50/30">
+          <div className="flex justify-between items-start mb-4">
+            <div>
+              <div className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Total Income (Next 12M)</div>
+              <div className="text-3xl font-bold text-slate-800 font-mono">{formatCurrency(consolidatedAnnualIncome)}</div>
+              <div className="text-[10px] text-slate-500 mt-1">{formatCurrency(consolidatedAnnualIncome/12)}/mo • Dividends + Bonds</div>
+            </div>
+            <div className="p-2 bg-emerald-100 rounded-lg">
+              <DollarSign className="w-5 h-5 text-emerald-700" />
+            </div>
+          </div>
+          <div className="flex items-center gap-2 text-[10px] font-bold">
+            <span className="px-2 py-0.5 rounded bg-blue-100 text-blue-700">{formatCurrency(dividendProjectedAnnual)} div</span>
+            <span className="text-slate-300">+</span>
+            <span className="px-2 py-0.5 rounded bg-purple-100 text-purple-700">{formatCurrency(bondAnnualInterest)} bonds</span>
           </div>
         </Card>
       </div>

@@ -579,6 +579,101 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
         </Card>
       </div>
 
+      {/* Projected Annual Income - All Portfolios */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="bg-white border-none shadow-sm shadow-slate-200/50 rounded-lg border p-6 border-t-4 border-t-purple-600">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[10px] font-bold text-purple-600 uppercase tracking-widest">Bond Interest (Projected Annual)</span>
+            <Landmark className="w-4 h-4 text-purple-500" />
+          </div>
+          <div className="text-2xl font-bold text-slate-800 font-mono">
+            {(() => {
+              const holdings = (allHoldings as any[]) || [];
+              const bonds = holdings.filter((h:any) => h.assetType === "bond");
+              const total = bonds.reduce((s:number, h:any) => s + parseFloat(h.quantity||"0") * parseFloat((h as any).couponRate||"0"), 0);
+              return formatCurrency(total);
+            })()}
+          </div>
+          <div className="text-[10px] text-slate-400 mt-1">
+            {(() => {
+              const holdings = (allHoldings as any[]) || [];
+              const bonds = holdings.filter((h:any) => h.assetType === "bond");
+              const total = bonds.reduce((s:number, h:any) => s + parseFloat(h.quantity||"0") * parseFloat((h as any).couponRate||"0"), 0);
+              return bonds.length + " issues • " + formatCurrency(total/12) + "/mo avg";
+            })()}
+          </div>
+          <div className="text-[10px] text-slate-400 mt-2">Coupons twice a year per redemption</div>
+        </div>
+        <div className="bg-white border-none shadow-sm shadow-slate-200/50 rounded-lg border p-6 border-t-4 border-t-blue-600">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[10px] font-bold text-blue-600 uppercase tracking-widest">Dividend Income (Projected Annual)</span>
+            <TrendingUp className="w-4 h-4 text-blue-500" />
+          </div>
+          <div className="text-2xl font-bold text-slate-800 font-mono">
+            {(() => {
+              const holdings = (allHoldings as any[]) || [];
+              const etfs = holdings.filter((h:any) => h.assetType === "etf");
+              const total = etfs.reduce((s:number, h:any) => s + parseFloat(h.quantity||"0") * parseFloat(h.annualDividendPerShare||"0"), 0);
+              return formatCurrency(total);
+            })()}
+          </div>
+          <div className="text-[10px] text-slate-400 mt-1">
+            {(() => {
+              const holdings = (allHoldings as any[]) || [];
+              const etfs = holdings.filter((h:any) => h.assetType === "etf");
+              const total = etfs.reduce((s:number, h:any) => s + parseFloat(h.quantity||"0") * parseFloat(h.annualDividendPerShare||"0"), 0);
+              return etfs.length + " payers • " + formatCurrency(total/12) + "/mo avg";
+            })()}
+          </div>
+          <div className="text-[10px] text-slate-400 mt-2">Based on last 12M DPS × holdings</div>
+        </div>
+        <div className="bg-white border-none shadow-sm shadow-slate-200/50 rounded-lg border p-6 border-t-4 border-t-emerald-600 bg-gradient-to-br from-white to-emerald-50/30">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-widest">Total Income (Next 12M)</span>
+            <DollarSign className="w-4 h-4 text-emerald-600" />
+          </div>
+          <div className="text-2xl font-bold text-slate-800 font-mono">
+            {(() => {
+              const holdings = (allHoldings as any[]) || [];
+              const bonds = holdings.filter((h:any) => h.assetType === "bond");
+              const etfs = holdings.filter((h:any) => h.assetType === "etf");
+              const bondTotal = bonds.reduce((s:number, h:any) => s + parseFloat(h.quantity||"0") * parseFloat((h as any).couponRate||"0"), 0);
+              const divTotal = etfs.reduce((s:number, h:any) => s + parseFloat(h.quantity||"0") * parseFloat(h.annualDividendPerShare||"0"), 0);
+              return formatCurrency(bondTotal + divTotal);
+            })()}
+          </div>
+          <div className="text-[10px] text-slate-400 mt-1">
+            {(() => {
+              const holdings = (allHoldings as any[]) || [];
+              const bonds = holdings.filter((h:any) => h.assetType === "bond");
+              const etfs = holdings.filter((h:any) => h.assetType === "etf");
+              const bondTotal = bonds.reduce((s:number, h:any) => s + parseFloat(h.quantity||"0") * parseFloat((h as any).couponRate||"0"), 0);
+              const divTotal = etfs.reduce((s:number, h:any) => s + parseFloat(h.quantity||"0") * parseFloat(h.annualDividendPerShare||"0"), 0);
+              return formatCurrency((bondTotal+divTotal)/12) + "/mo • Dividends + Bonds";
+            })()}
+          </div>
+          <div className="flex items-center gap-2 text-[10px] font-bold mt-2">
+            <span className="px-2 py-0.5 rounded bg-blue-100 text-blue-700">
+              {(() => {
+                const holdings = (allHoldings as any[]) || [];
+                const etfs = holdings.filter((h:any) => h.assetType === "etf");
+                const total = etfs.reduce((s:number, h:any) => s + parseFloat(h.quantity||"0") * parseFloat(h.annualDividendPerShare||"0"), 0);
+                return formatCurrency(total);
+              })()} div
+            </span>
+            <span className="text-slate-300">+</span>
+            <span className="px-2 py-0.5 rounded bg-purple-100 text-purple-700">
+              {(() => {
+                const holdings = (allHoldings as any[]) || [];
+                const bonds = holdings.filter((h:any) => h.assetType === "bond");
+                const total = bonds.reduce((s:number, h:any) => s + parseFloat(h.quantity||"0") * parseFloat((h as any).couponRate||"0"), 0);
+                return formatCurrency(total);
+              })()} bonds
+            </span>
+          </div>
+        </div>
+      </div>
+
       <div className="bg-white rounded-lg shadow-sm border border-border overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
