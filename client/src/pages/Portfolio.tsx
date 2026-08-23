@@ -157,9 +157,29 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
 
   useEffect(() => {
     if (isBondTradeDialogOpen) {
-      const holding = bondHoldings?.find(h => h.id === isBondTradeDialogOpen.id);
+      let holding: any = bondHoldings?.find(h => h.id === isBondTradeDialogOpen.id);
+      // For consolidated holdings (id -1), find any holding with that symbol
+      if (!holding || holding.id === -1) {
+        const candidates = (bondHoldings || []).filter((h:any) => h.symbol === isBondTradeDialogOpen.symbol);
+        // Prefer holding with quantity >0
+        holding = candidates.find((h:any) => parseFloat(h.quantity) > 0) || candidates[0];
+        // Also try fetching directly via holdings that may be per-account when viewing all
+        if (!holding) {
+          // fallback: try to find in allHoldings via bondHoldings already is consolidated, so look for first account that has it
+          // We will let server handle account resolution, just default to first account that has the bond
+        }
+      }
       if (holding && (holding as any).accountId) {
         setBondTradeData(prev => ({ ...prev, accountId: (holding as any).accountId.toString() }));
+      } else if (holding) {
+        // If consolidated holding has no accountId, try to find actual account holding
+        (async () => {
+          try {
+            const all = await (utils as any).bond.getHoldings.fetch({ portfolioId: selectedPortfolioId });
+            const real = (all as any[]).find((h:any) => h.symbol === isBondTradeDialogOpen.symbol && h.accountId);
+            if (real) setBondTradeData(prev => ({ ...prev, accountId: real.accountId.toString() }));
+          } catch {}
+        })();
       }
       // auto-fill current brokerage price for the bond
       (async () => {
@@ -2195,7 +2215,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                     {sortedBondHoldings.length === 0 ? (
                       <tr><td colSpan={12} className="py-10 text-center text-slate-400 text-sm">No bonds yet. Use Add Bond to buy a Treasury.</td></tr>
                     ) : sortedBondHoldings.map((holding: any) => (
-                      <tr key={holding.id} className="border-b border-border hover:bg-slate-50 transition-colors text-sm">
+                      <tr key={`bond-${holding.symbol}-${holding.id}`} className="border-b border-border hover:bg-slate-50 transition-colors text-sm">
                         <td className="py-3 px-3">
                           <div className="font-bold text-primary text-sm leading-tight">{holding.symbol}</div>
                           <div className="text-slate-500 text-[10px] leading-tight">{holding.name}</div>

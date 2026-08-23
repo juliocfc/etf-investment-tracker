@@ -311,8 +311,11 @@ export const bondRouter = router({
       let holdingId = input.holdingId;
       let holding: any;
       if (holdingId === -1) {
-        const holdings = await getUserBondHoldings(ctx.user.id, input.portfolioId, input.accountId);
-        holding = holdings.find((h: any) => h.symbol === input.symbol.toUpperCase());
+        // Consolidated view: search across all accounts for this symbol, prefer the requested account if it has it
+        const allHoldings = await getUserBondHoldings(ctx.user.id, input.portfolioId);
+        const candidates = allHoldings.filter((h: any) => h.symbol === input.symbol.toUpperCase());
+        let holdingForAccount = candidates.find((h: any) => h.accountId === input.accountId);
+        holding = holdingForAccount || candidates.find((h: any) => parseFloat(h.quantity) > 0) || candidates[0];
         if (!holding) {
           if (input.type === "sell") throw new Error("Cannot sell: No bond holding found for this symbol");
           const newId = await createBondHolding({
@@ -329,6 +332,8 @@ export const bondRouter = router({
           holdingId = newId;
         } else {
           holdingId = holding.id;
+          // Use the actual holding's accountId for the trade if caller provided a different one
+          input.accountId = holding.accountId;
         }
       } else {
         holding = await dbInstance.select().from(bondHoldings).where(eq(bondHoldings.id, holdingId)).then((rows: any[]) => rows[0]);
