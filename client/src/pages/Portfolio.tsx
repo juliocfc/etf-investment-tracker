@@ -1850,9 +1850,12 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                   </thead>
                   <tbody>
                     {sortedHoldings.map((holding: any) => {
+                      const equityTotal = parseFloat((summary as any)?.equityInvestmentValue || summary?.investmentValue || "0");
                       const allocation = summary?.investmentAllocationBreakdown?.find((a: any) => a.symbol === holding.symbol);
+                      const equityAllocation = equityTotal > 0 ? ((parseFloat(holding.currentValue) / equityTotal) * 100).toFixed(2) : "0.00";
+                      const displayAllocation = { percentage: equityAllocation } as any;
                       const isGain = parseFloat(holding.gain) >= 0;
-                      const isUnderWeight = parseFloat(allocation?.percentage || "0") < (parseFloat(holding.desiredAllocation) || 0);
+                      const isUnderWeight = parseFloat(displayAllocation.percentage || "0") < (parseFloat(holding.desiredAllocation) || 0);
                       const isConsolidated = holding.isConsolidated || holding.id === -1;
                       const isExpanded = expandedHoldings.has(holding.symbol);
 
@@ -1895,7 +1898,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                             </td>
                             <td className="text-right py-3 px-3 font-mono">
                               <div className="flex flex-col items-end gap-1">
-                                <div className="text-xs font-bold text-slate-700 leading-none">{allocation?.percentage || "0.00"}%</div>
+                                <div className="text-xs font-bold text-slate-700 leading-none">{displayAllocation.percentage || "0.00"}%</div>
                                 <div className="flex items-center gap-1.5 mt-0.5">
                                   {isUnderWeight && (
                                     <div className="flex items-center text-[8px] font-bold text-green-600 animate-pulse">
@@ -2250,7 +2253,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                         <td className="text-right py-4 px-3 font-mono text-sm">{formatCurrency(sortedBondHoldings.reduce((acc: number, h: any) => acc + parseFloat(h.quantity) * parseFloat(h.currentPrice), 0).toFixed(2))}</td>
                         <td className={`text-right py-4 px-3 font-mono text-sm ${(sortedBondHoldings.reduce((acc: number, h: any) => acc + parseFloat(h.quantity) * parseFloat(h.currentPrice), 0) - sortedBondHoldings.reduce((acc: number, h: any) => acc + parseFloat(h.quantity) * parseFloat(h.averageCost || h.purchasePrice), 0)) >= 0 ? "text-green-600" : "text-red-600"}`}>{(sortedBondHoldings.reduce((acc: number, h: any) => acc + parseFloat(h.quantity) * parseFloat(h.currentPrice), 0) - sortedBondHoldings.reduce((acc: number, h: any) => acc + parseFloat(h.quantity) * parseFloat(h.averageCost || h.purchasePrice), 0)) >= 0 ? "+" : ""}{formatCurrency((sortedBondHoldings.reduce((acc: number, h: any) => acc + parseFloat(h.quantity) * parseFloat(h.currentPrice), 0) - sortedBondHoldings.reduce((acc: number, h: any) => acc + parseFloat(h.quantity) * parseFloat(h.averageCost || h.purchasePrice), 0)).toFixed(2))}</td>
                         <td className={`text-right py-4 px-3 font-mono text-sm ${(sortedBondHoldings.reduce((acc: number, h: any) => acc + parseFloat(h.quantity) * parseFloat(h.averageCost || h.purchasePrice), 0) > 0 ? ((sortedBondHoldings.reduce((acc: number, h: any) => acc + parseFloat(h.quantity) * parseFloat(h.currentPrice), 0) - sortedBondHoldings.reduce((acc: number, h: any) => acc + parseFloat(h.quantity) * parseFloat(h.averageCost || h.purchasePrice), 0)) / sortedBondHoldings.reduce((acc: number, h: any) => acc + parseFloat(h.quantity) * parseFloat(h.averageCost || h.purchasePrice), 0) * 100) >= 0 ? "text-green-600" : "text-red-600" : "text-slate-400")}`}>{sortedBondHoldings.reduce((acc: number, h: any) => acc + parseFloat(h.quantity) * parseFloat(h.averageCost || h.purchasePrice), 0) > 0 ? (((sortedBondHoldings.reduce((acc: number, h: any) => acc + parseFloat(h.quantity) * parseFloat(h.currentPrice), 0) - sortedBondHoldings.reduce((acc: number, h: any) => acc + parseFloat(h.quantity) * parseFloat(h.averageCost || h.purchasePrice), 0)) / sortedBondHoldings.reduce((acc: number, h: any) => acc + parseFloat(h.quantity) * parseFloat(h.averageCost || h.purchasePrice), 0) * 100).toFixed(2) + "%") : "-"}</td>
-                        <td className="text-right py-4 px-3 font-mono text-sm text-purple-600">{(() => { const totalMarket = sortedBondHoldings.reduce((acc: number, h: any) => acc + parseFloat(h.quantity) * parseFloat(h.currentPrice), 0); const totalAnnual = sortedBondHoldings.reduce((acc: number, h: any) => acc + parseFloat(h.quantity) * parseFloat(h.couponRate || "0"), 0); const y = totalMarket > 0 ? (totalAnnual / totalMarket * 100) : 0; return y.toFixed(3) + "%"; })()}</td>
+                        <td className="text-right py-4 px-3 font-mono text-sm text-purple-600">{(() => { const totalCost = sortedBondHoldings.reduce((acc: number, h: any) => acc + parseFloat(h.quantity) * parseFloat(h.averageCost || h.purchasePrice), 0); const totalAnnual = sortedBondHoldings.reduce((acc: number, h: any) => acc + parseFloat(h.quantity) * parseFloat(h.couponRate || "0"), 0); const y = totalCost > 0 ? (totalAnnual / totalCost * 100) : 0; return y.toFixed(3) + "%"; })()}</td>
                         <td className="text-right py-4 px-3 font-mono text-sm text-green-600">{formatCurrency(sortedBondHoldings.reduce((acc: number, h: any) => acc + parseFloat(h.quantity) * parseFloat(h.couponRate || "0"), 0).toFixed(2))}</td>
                         <td className="py-4 px-3"></td>
                         <td></td>
