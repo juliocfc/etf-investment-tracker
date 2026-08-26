@@ -580,6 +580,16 @@ export default function Dividends({
                     ))}
                     {(!bondHoldings || bondHoldings.length===0) && <tr><td colSpan={7} className="py-6 text-center text-slate-400">No bonds</td></tr>}
                   </tbody>
+                  {bondHoldings && bondHoldings.length > 0 && (
+                    <tfoot className="bg-slate-50 border-t-2 border-slate-200">
+                      <tr className="font-bold text-slate-800">
+                        <td colSpan={3} className="py-4 px-6 uppercase text-[10px] tracking-widest text-slate-500">Total Bond Income</td>
+                        <td className="text-right py-4 px-6 font-mono text-sm text-purple-600">{formatCurrency(bondHoldings.reduce((acc: number, h: any) => acc + parseFloat(h.quantity||"0") * parseFloat(h.couponRate||"0") / 2, 0).toFixed(2))}</td>
+                        <td className="text-right py-4 px-6 font-mono text-sm font-bold text-green-600">{formatCurrency(bondHoldings.reduce((acc: number, h: any) => acc + parseFloat(h.quantity||"0") * parseFloat(h.couponRate||"0"), 0).toFixed(2))}</td>
+                        <td colSpan={2} className="py-4 px-6"></td>
+                      </tr>
+                    </tfoot>
+                  )}
                 </table>
               </div>
             </Card>

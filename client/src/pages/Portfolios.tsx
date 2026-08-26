@@ -155,8 +155,10 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
           quantity: 0,
           totalCost: 0,
           currentPrice: parseFloat(h.currentPrice),
-          annualDividendPerShare: h.annualDividendPerShare || 0
-        };
+          annualDividendPerShare: h.annualDividendPerShare || 0,
+          couponRate: (h as any).couponRate || "0",
+          assetType: (h as any).assetType || "etf"
+        } as any;
       }
 
       const qty = parseFloat(h.quantity);
@@ -165,16 +167,21 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
       assetMap[h.symbol].quantity += qty;
       assetMap[h.symbol].totalCost += qty * avgPurchasePrice;
       assetMap[h.symbol].currentPrice = parseFloat(h.currentPrice);
+      // Keep highest couponRate for bonds (should be same per CUSIP) and preserve assetType
+      if ((h as any).couponRate) (assetMap[h.symbol] as any).couponRate = (h as any).couponRate;
+      if ((h as any).assetType === "bond") (assetMap[h.symbol] as any).assetType = "bond";
       totalMktValue += truncateNumber(qty * parseFloat(h.currentPrice));
     });
 
-    return Object.values(assetMap).map(asset => {
+    return Object.values(assetMap).map((asset: any) => {
       const mktValue = truncateNumber(asset.quantity * asset.currentPrice);
       const gainLoss = mktValue - asset.totalCost;
       const gainLossPercent = asset.totalCost > 0 ? (gainLoss / asset.totalCost) * 100 : 0;
       const avgCost = asset.quantity > 0 ? asset.totalCost / asset.quantity : 0;
-      const projectedDividend = asset.quantity * asset.annualDividendPerShare;
-      const divYield = asset.currentPrice > 0 ? (asset.annualDividendPerShare / asset.currentPrice) * 100 : 0;
+      const isBond = asset.assetType === "bond" || parseFloat(asset.couponRate || "0") > 0;
+      const annualRate = isBond ? parseFloat(asset.couponRate || "0") : asset.annualDividendPerShare;
+      const projectedDividend = asset.quantity * annualRate;
+      const divYield = asset.currentPrice > 0 ? (annualRate / asset.currentPrice) * 100 : 0;
       const allocation = totalMktValue > 0 ? (mktValue / totalMktValue) * 100 : 0;
 
       return {
@@ -927,7 +934,7 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
                   <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Allocation %</th>
                   <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Gain/Loss</th>
                   <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Gain/Loss %</th>
-                  <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Annual Div/Share</th>
+                  <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Annual Div/Coupon</th>
                   <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Yield %</th>
                   <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Total Annual Div</th>
                 </tr>

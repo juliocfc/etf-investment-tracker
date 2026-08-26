@@ -48,6 +48,17 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
     key: "currentValue",
     direction: "desc"
   });
+  const [bondSortConfig, setBondSortConfig] = useState<{ key: string; direction: "asc" | "desc" }>({
+    key: "redemptionDate",
+    direction: "asc"
+  });
+  const requestBondSort = (key: string) => {
+    let direction: "asc" | "desc" = "asc";
+    if (bondSortConfig && bondSortConfig.key === key && bondSortConfig.direction === "asc") {
+      direction = "desc";
+    }
+    setBondSortConfig({ key, direction });
+  };
   const [selectedAccountId, setSelectedAccountId] = useState<number | undefined>(undefined);
   const [selectedAccountType, setSelectedAccountType] = useState<string>("all");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
@@ -330,20 +341,25 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
   // Bond holdings summary (sorted) - bonds are shown together via summary.holdings but we keep dedicated sorted list for Bonds card
   const sortedBondHoldings = useMemo(() => {
     if (!bondHoldings) return [];
-    // Bond holdings are already per-account when filtered, but we display as-is. Sort by symbol.
     const items = [...bondHoldings];
-    if (sortConfig !== null) {
-      items.sort((a: any, b: any) => {
-        let av = a[sortConfig.key]; let bv = b[sortConfig.key];
-        if (typeof av === 'string' && !isNaN(Number(av))) av = Number(av);
-        if (typeof bv === 'string' && !isNaN(Number(bv))) bv = Number(bv);
-        if (av < bv) return sortConfig.direction === "asc" ? -1 : 1;
-        if (av > bv) return sortConfig.direction === "asc" ? 1 : -1;
+    const cfg = bondSortConfig;
+    items.sort((a: any, b: any) => {
+      let av = a[cfg.key]; let bv = b[cfg.key];
+      if (cfg.key === "redemptionDate") {
+        const ad = av ? new Date(av).getTime() : Infinity;
+        const bd = bv ? new Date(bv).getTime() : Infinity;
+        if (ad < bd) return cfg.direction === "asc" ? -1 : 1;
+        if (ad > bd) return cfg.direction === "asc" ? 1 : -1;
         return 0;
-      });
-    }
+      }
+      if (typeof av === 'string' && !isNaN(Number(av))) av = Number(av);
+      if (typeof bv === 'string' && !isNaN(Number(bv))) bv = Number(bv);
+      if (av < bv) return cfg.direction === "asc" ? -1 : 1;
+      if (av > bv) return cfg.direction === "asc" ? 1 : -1;
+      return 0;
+    });
     return items;
-  }, [bondHoldings, sortConfig]);
+  }, [bondHoldings, bondSortConfig]);
 
   const [editingAccount, setEditingAccount] = useState<{ id: number, name: string, number?: string, accountType: string } | null>(null);
   const [movingAccount, setMovingAccount] = useState<{ id: number, name: string, portfolioId: number } | null>(null);
@@ -2210,7 +2226,16 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                       <th className="text-right py-3 px-3 text-slate-600 text-xs font-bold uppercase">Gain/Loss %</th>
                       <th className="text-right py-3 px-3 text-slate-600 text-xs font-bold uppercase">Coupon</th>
                       <th className="text-right py-3 px-3 text-slate-600 text-xs font-bold uppercase">Annual Interest</th>
-                      <th className="text-left py-3 px-3 text-slate-600 text-xs font-bold uppercase">Redemption</th>
+                      <th className="text-left py-3 px-3 text-slate-600 text-xs font-bold uppercase cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => requestBondSort("redemptionDate")}>
+                        <div className="flex items-center gap-1">
+                          Redemption
+                          {bondSortConfig.key === "redemptionDate" ? (
+                            bondSortConfig.direction === "asc" ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />
+                          ) : (
+                            <ArrowUpDown className="w-3 h-3 opacity-30" />
+                          )}
+                        </div>
+                      </th>
                       <th className="text-center py-3 px-3 text-slate-600 text-xs font-bold uppercase">Actions</th>
                     </tr>
                   </thead>
