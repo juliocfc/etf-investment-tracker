@@ -276,7 +276,7 @@ export async function getDb() {
 
   const url = process.env.TURSO_URL || process.env.DATABASE_URL;
   const authToken = process.env.TURSO_AUTH_TOKEN || process.env.DATABASE_AUTH_TOKEN;
-  const localPath = "etf-tracker.db";
+  const localPath = "db/etf-tracker.db";
 
   if (url && authToken && !url.startsWith('file:')) {
     console.log(`[Database] Initializing Turso Sync at: ${url}`);
