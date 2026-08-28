@@ -2739,7 +2739,12 @@ function calculateDateRange(range: string) {
   let endDate = new Date();
   endDate.setHours(23, 59, 59, 999);
 
-  if (range === "cm") {
+  if (range === "cw") {
+    // Current week starting Monday
+    const day = now.getDay();
+    const diff = day === 0 ? 6 : day - 1;
+    startDate.setDate(now.getDate() - diff);
+  } else if (range === "cm") {
     startDate = new Date(now.getFullYear(), now.getMonth(), 1);
   } else if (range === "3d") {
     startDate.setDate(now.getDate() - 3);

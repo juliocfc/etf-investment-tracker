@@ -34,6 +34,7 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
 
   const rangeOptions = useMemo(() => {
     const options = [
+      { label: "Current Week", value: "cw" },
       { label: "Current Month", value: "cm" },
       { label: "Past 10 Days", value: "10d" },
       { label: "Past 30 Days", value: "30d" },
