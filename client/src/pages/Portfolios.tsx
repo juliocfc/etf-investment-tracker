@@ -174,7 +174,7 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
       totalMktValue += truncateNumber(qty * parseFloat(h.currentPrice));
     });
 
-    return Object.values(assetMap).map((asset: any) => {
+    const allMapped = Object.values(assetMap).map((asset: any) => {
       const mktValue = truncateNumber(asset.quantity * asset.currentPrice);
       const gainLoss = mktValue - asset.totalCost;
       const gainLossPercent = asset.totalCost > 0 ? (gainLoss / asset.totalCost) * 100 : 0;
@@ -195,7 +195,40 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
         divYield,
         allocation
       };
-    }).sort((a, b) => b.mktValue - a.mktValue);
+    });
+    // Group all bonds into single "Bonds" asset for dashboard
+    const equities = allMapped.filter((a:any) => a.assetType !== "bond");
+    const bonds = allMapped.filter((a:any) => a.assetType === "bond");
+    if (bonds.length > 0) {
+      const bondQty = bonds.reduce((s:any,b:any)=> s + b.quantity, 0);
+      const bondCost = bonds.reduce((s:any,b:any)=> s + b.totalCost, 0);
+      const bondMkt = bonds.reduce((s:any,b:any)=> s + b.mktValue, 0);
+      const bondProj = bonds.reduce((s:any,b:any)=> s + b.projectedDividend, 0);
+      const bondAvgPrice = bondQty > 0 ? bondMkt / bondQty : 0;
+      const bondAvgCost = bondQty > 0 ? bondCost / bondQty : 0;
+      const bondGain = bondMkt - bondCost;
+      const bondGainPct = bondCost > 0 ? (bondGain / bondCost) * 100 : 0;
+      const bondYield = bondAvgPrice > 0 ? ((bondProj / bondQty) / bondAvgPrice * 100) : 0;
+      const bondAlloc = totalMktValue > 0 ? (bondMkt / totalMktValue) * 100 : 0;
+      equities.push({
+        symbol: "Bonds",
+        name: `${bonds.length} Treasuries/Bonds`,
+        quantity: bondQty,
+        totalCost: bondCost,
+        currentPrice: bondAvgPrice,
+        avgCost: bondAvgCost,
+        mktValue: bondMkt,
+        gainLoss: bondGain,
+        gainLossPercent: bondGainPct,
+        annualDividendPerShare: bondQty > 0 ? bondProj / bondQty : 0,
+        couponRate: bondQty > 0 ? (bondProj / bondQty).toFixed(3) : "0",
+        projectedDividend: bondProj,
+        divYield: bondYield,
+        allocation: bondAlloc,
+        assetType: "bond"
+      });
+    }
+    return [...equities].sort((a, b) => b.mktValue - a.mktValue);
   }, [allHoldings, portfolioFilter]);
 
   const tableTotals = useMemo(() => {
