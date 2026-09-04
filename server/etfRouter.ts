@@ -1038,6 +1038,10 @@ export const etfRouter = router({
       const monthlyProjections = [];
       let totalProjectedAnnual = 0;
       const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+      const currentMonthProjectedMap = new Map<string, number>();
+      for (const symbol of symbolDataMap.keys()) {
+        currentMonthProjectedMap.set(symbol, 0);
+      }
 
       for (let i = 0; i < 12; i++) {
         const projectionDate = new Date(currentYear, currentMonth + i, 1);
@@ -1053,6 +1057,9 @@ export const etfRouter = router({
             const scheduledDPS = data.monthlyDPS.get(targetMonth)!;
             const payout = state.quantity * scheduledDPS;
             
+            if (i === 0) {
+              currentMonthProjectedMap.set(symbol, payout);
+            }
             state.projectedTotal += payout;
             monthlyTotal += payout;
 
@@ -1082,7 +1089,8 @@ export const etfRouter = router({
           annualDPS: data.trueAnnualDPS.toFixed(4),
           currentPrice: data.currentPrice,
           yield: divYield.toFixed(2),
-          projectedAnnual: state.projectedTotal.toFixed(2)
+          projectedAnnual: state.projectedTotal.toFixed(2),
+          projectedCurrentMonth: (currentMonthProjectedMap.get(symbol) || 0).toFixed(2)
         };
       });
 

@@ -608,6 +608,7 @@ export default function Dividends({
                       <th className="text-right py-3 px-6 text-slate-600 font-bold">Annual DPS</th>
                       <th className="text-right py-3 px-6 text-slate-600 font-bold">Yield %</th>
                       <th className="text-right py-3 px-6 text-slate-600 font-bold">Projected Annual</th>
+                      <th className="text-right py-3 px-6 text-slate-600 font-bold">This Month ({projections.monthlyProjection[0]?.month || new Date().toLocaleDateString(undefined, { month: 'short', year: 'numeric' })})</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -619,9 +620,19 @@ export default function Dividends({
                         <td className="py-3 px-6 text-right font-mono text-slate-500">{formatCurrency(asset.annualDPS, 4)}</td>
                         <td className="py-3 px-6 text-right font-mono font-medium text-blue-600">{asset.yield}%</td>
                         <td className="py-3 px-6 text-right font-mono font-bold text-green-600">{formatCurrency(asset.projectedAnnual)}</td>
+                        <td className="py-3 px-6 text-right font-mono font-bold text-emerald-700">{formatCurrency((asset as any).projectedCurrentMonth || "0.00")}</td>
                       </tr>
                     ))}
                   </tbody>
+                  {projections.assets.length > 0 && (
+                    <tfoot className="bg-slate-50 border-t-2 border-slate-200">
+                      <tr className="font-bold text-slate-800">
+                        <td colSpan={5} className="py-4 px-6 uppercase text-[10px] tracking-widest text-slate-500">Total</td>
+                        <td className="text-right py-4 px-6 font-mono text-sm font-bold text-green-600">{formatCurrency(projections.assets.reduce((acc: number, a: any) => acc + parseFloat(a.projectedAnnual || "0"), 0).toFixed(2))}</td>
+                        <td className="text-right py-4 px-6 font-mono text-sm font-bold text-emerald-700">{formatCurrency(projections.assets.reduce((acc: number, a: any) => acc + parseFloat((a as any).projectedCurrentMonth || "0"), 0).toFixed(2))}</td>
+                      </tr>
+                    </tfoot>
+                  )}
                 </table>
               </div>
             </Card>
