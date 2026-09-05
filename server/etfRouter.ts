@@ -1886,23 +1886,56 @@ export const etfRouter = router({
         equityInvestmentValue: truncateNumber(equityInvestmentValue).toFixed(2),
         fixedIncomeInvestmentValue: truncateNumber(fixedIncomeInvestmentValue).toFixed(2),
         totalValue: totalValue.toFixed(2),
-        allocationBreakdown: processedHoldings.map((h: any) => ({
-          symbol: h.symbol,
-          name: h.name,
-          currentValue: h.currentValue,
-          percentage:
-            totalValue > 0
-              ? ((parseFloat(h.currentValue) / totalValue) * 100).toFixed(2)
-              : "0",
-        })),
-        investmentAllocationBreakdown: processedHoldings.map((h: any) => ({
-          symbol: h.symbol,
-          name: h.name,
-          percentage:
-            totalInvestmentValue > 0
-              ? ((parseFloat(h.currentValue) / totalInvestmentValue) * 100).toFixed(2)
-              : "0",
-        })),
+        allocationBreakdown: (() => {
+          const etfHoldings = processedHoldings.filter((h: any) => h.assetType !== "bond");
+          const bondHoldingsFiltered = processedHoldings.filter((h: any) => h.assetType === "bond");
+          const etfBreakdown = etfHoldings.map((h: any) => ({
+            symbol: h.symbol,
+            name: h.name,
+            currentValue: h.currentValue,
+            percentage:
+              totalValue > 0
+                ? ((parseFloat(h.currentValue) / totalValue) * 100).toFixed(2)
+                : "0",
+            assetType: h.assetType,
+          }));
+          if (bondHoldingsFiltered.length > 0) {
+            const bondTotalValue = bondHoldingsFiltered.reduce((sum: number, h: any) => sum + parseFloat(h.currentValue), 0);
+            etfBreakdown.push({
+              symbol: "BONDS",
+              name: "Bonds",
+              currentValue: truncateNumber(bondTotalValue).toFixed(2),
+              percentage: totalValue > 0 ? ((bondTotalValue / totalValue) * 100).toFixed(2) : "0",
+              assetType: "bond",
+            });
+          }
+          return etfBreakdown.sort((a: any, b: any) => parseFloat(b.currentValue) - parseFloat(a.currentValue));
+        })(),
+        investmentAllocationBreakdown: (() => {
+          const etfHoldings = processedHoldings.filter((h: any) => h.assetType !== "bond");
+          const bondHoldingsFiltered = processedHoldings.filter((h: any) => h.assetType === "bond");
+          const etfBreakdown = etfHoldings.map((h: any) => ({
+            symbol: h.symbol,
+            name: h.name,
+            currentValue: h.currentValue,
+            percentage:
+              totalInvestmentValue > 0
+                ? ((parseFloat(h.currentValue) / totalInvestmentValue) * 100).toFixed(2)
+                : "0",
+            assetType: h.assetType,
+          }));
+          if (bondHoldingsFiltered.length > 0) {
+            const bondTotalValue = bondHoldingsFiltered.reduce((sum: number, h: any) => sum + parseFloat(h.currentValue), 0);
+            etfBreakdown.push({
+              symbol: "BONDS",
+              name: "Bonds",
+              currentValue: truncateNumber(bondTotalValue).toFixed(2),
+              percentage: totalInvestmentValue > 0 ? ((bondTotalValue / totalInvestmentValue) * 100).toFixed(2) : "0",
+              assetType: "bond",
+            });
+          }
+          return etfBreakdown.sort((a: any, b: any) => parseFloat(b.currentValue ?? "0") - parseFloat(a.currentValue ?? "0"));
+        })(),
         cashAllocationPercent: totalValue > 0 ? ((cashAmount / totalValue) * 100).toFixed(2) : "0",
       };
     }),

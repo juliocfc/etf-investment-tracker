@@ -30,6 +30,42 @@ import Dividends from "./Dividends";
 
 export const CHART_COLORS = ["#004a99", "#3d8a3d", "#f2a900", "#cc0000", "#666666", "#94a3b8", "#38bdf8", "#10b981", "#fbbf24"];
 
+function groupBondsInAllocation(data: any[] | undefined): any[] {
+  if (!data || data.length === 0) return data || [];
+  const sortByValueDesc = (arr: any[]) => [...arr].sort((a: any, b: any) => parseFloat(b.currentValue ?? b.value ?? "0") - parseFloat(a.currentValue ?? a.value ?? "0"));
+  const hasGrouped = data.some((d: any) => d.symbol === "BONDS");
+  if (hasGrouped) return sortByValueDesc(data);
+  const bondItems = data.filter((d: any) => d.assetType === "bond");
+  if (bondItems.length <= 1) return sortByValueDesc(data);
+  const etfItems = data.filter((d: any) => d.assetType !== "bond");
+  const bondTotalValue = bondItems.reduce((sum: number, b: any) => sum + parseFloat(b.currentValue ?? b.value ?? "0"), 0);
+  const bondTotalPct = bondItems.reduce((sum: number, b: any) => sum + parseFloat(b.percentage ?? "0"), 0);
+  const groupedBond: any = {
+    symbol: "BONDS",
+    name: "Bonds",
+    currentValue: bondTotalValue.toFixed(2),
+    value: bondTotalValue.toFixed(2),
+    percentage: bondTotalPct.toFixed(2),
+    assetType: "bond",
+  };
+  return sortByValueDesc([...etfItems, groupedBond]);
+}
+
+function getSortedAllocationWithCash(data: any[] | undefined, cashBalance: string | undefined, cashPercent: string | undefined): any[] {
+  const grouped = groupBondsInAllocation(data);
+  const items: any[] = [...grouped.map((d: any) => ({ ...d, isCash: false }))];
+  if (cashPercent && parseFloat(cashPercent) > 0) {
+    items.push({
+      symbol: "CASH",
+      name: "Cash Reserve",
+      currentValue: cashBalance ? parseFloat(cashBalance).toFixed(2) : "0.00",
+      percentage: cashPercent,
+      isCash: true,
+    });
+  }
+  return [...items].sort((a: any, b: any) => parseFloat(b.currentValue ?? "0") - parseFloat(a.currentValue ?? "0"));
+}
+
 // Helper to get the last trading day (today if weekday, Friday if weekend)
 const getLastTradingDay = () => {
   const date = new Date();
@@ -2353,18 +2389,18 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                   </div>
                   <div className="flex flex-col md:flex-row items-center justify-center gap-16">
                     <div className="shrink-0 flex items-center justify-center">
-                      <PortfolioAllocationChart data={summary.allocationBreakdown} cashPercent={summary.cashAllocationPercent} />
+                      <PortfolioAllocationChart data={groupBondsInAllocation(summary.allocationBreakdown)} cashPercent={summary.cashAllocationPercent} />
                     </div>
                     <div className="flex-1 w-full max-w-2xl">
                       <div className="space-y-3">
-                        {summary.allocationBreakdown.map((item: any, index: number) => (
+                        {getSortedAllocationWithCash(summary.allocationBreakdown, summary.cashBalance, summary.cashAllocationPercent).map((item: any, index: number) => (
                           <div key={item.symbol} className="flex justify-between items-center text-sm p-3 hover:bg-slate-50 rounded transition-colors">
                             <div className="flex items-center gap-4">
                               <div
                                 className="w-4 h-4 rounded-full shrink-0"
-                                style={{ backgroundColor: CHART_COLORS[index % CHART_COLORS.length] }}
+                                style={{ backgroundColor: item.isCash ? "#e2e8f0" : CHART_COLORS[index % CHART_COLORS.length] }}
                               />
-                              <span className="font-bold text-primary w-16">{item.symbol}</span>
+                              <span className={item.isCash ? "font-bold text-slate-600 w-16" : "font-bold text-primary w-16"}>{item.symbol}</span>
                               <span className="text-slate-500 text-xs truncate max-w-[250px] md:max-w-[400px]">{item.name}</span>
                             </div>
                             <div className="flex items-center gap-6">
@@ -2373,17 +2409,6 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                             </div>
                           </div>
                         ))}
-                        <div className="border-t border-slate-100 pt-3 mt-3 flex justify-between items-center text-sm p-3 bg-slate-50 rounded">
-                          <div className="flex items-center gap-4">
-                            <div className="w-4 h-4 rounded-full shrink-0 bg-slate-200" />
-                            <span className="font-bold text-slate-600 w-16">CASH</span>
-                            <span className="text-slate-500 text-xs">Cash Reserve</span>
-                          </div>
-                          <div className="flex items-center gap-6">
-                            <span className="font-mono font-bold text-slate-600 text-sm">{formatCurrency(summary.cashBalance)}</span>
-                            <span className="font-mono font-bold text-slate-700 text-base w-16 text-right">{summary.cashAllocationPercent}%</span>
-                          </div>
-                        </div>
                       </div>
                     </div>
                   </div>
@@ -3285,18 +3310,18 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                   </div>
                   <div className="flex flex-col md:flex-row items-center justify-center gap-16">
                     <div className="shrink-0 flex items-center justify-center">
-                      <PortfolioAllocationChart data={summary.allocationBreakdown} cashPercent={summary.cashAllocationPercent} />
+                      <PortfolioAllocationChart data={groupBondsInAllocation(summary.allocationBreakdown)} cashPercent={summary.cashAllocationPercent} />
                     </div>
                     <div className="flex-1 w-full max-w-2xl">
                       <div className="space-y-3">
-                        {summary.allocationBreakdown.map((item: any, index: number) => (
+                        {getSortedAllocationWithCash(summary.allocationBreakdown, summary.cashBalance, summary.cashAllocationPercent).map((item: any, index: number) => (
                           <div key={item.symbol} className="flex justify-between items-center text-sm p-3 hover:bg-slate-50 rounded transition-colors">
                             <div className="flex items-center gap-4">
                               <div
                                 className="w-4 h-4 rounded-full shrink-0"
-                                style={{ backgroundColor: CHART_COLORS[index % CHART_COLORS.length] }}
+                                style={{ backgroundColor: item.isCash ? "#e2e8f0" : CHART_COLORS[index % CHART_COLORS.length] }}
                               />
-                              <span className="font-bold text-primary w-16">{item.symbol}</span>
+                              <span className={item.isCash ? "font-bold text-slate-600 w-16" : "font-bold text-primary w-16"}>{item.symbol}</span>
                               <span className="text-slate-500 text-xs truncate max-w-[250px] md:max-w-[400px]">{item.name}</span>
                             </div>
                             <div className="flex items-center gap-6">
@@ -3305,17 +3330,6 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                             </div>
                           </div>
                         ))}
-                        <div className="border-t border-slate-100 pt-3 mt-3 flex justify-between items-center text-sm p-3 bg-slate-50 rounded">
-                          <div className="flex items-center gap-4">
-                            <div className="w-4 h-4 rounded-full shrink-0 bg-slate-200" />
-                            <span className="font-bold text-slate-600 w-16">CASH</span>
-                            <span className="text-slate-500 text-xs">Cash Reserve</span>
-                          </div>
-                          <div className="flex items-center gap-6">
-                            <span className="font-mono font-bold text-slate-600 text-sm">{formatCurrency(summary.cashBalance)}</span>
-                            <span className="font-mono font-bold text-slate-700 text-base w-16 text-right">{summary.cashAllocationPercent}%</span>
-                          </div>
-                        </div>
                       </div>
                     </div>
                   </div>
@@ -3346,11 +3360,12 @@ function PortfolioAllocationChart({ data, cashPercent }: { data: any[], cashPerc
 
       ctx.clearRect(0, 0, size, size);
 
-      // Add cash to data for chart
+      // Add cash to data for chart and sort by percentage desc so largest slice first (matches sorted legend)
       const chartData = [...data];
       if (parseFloat(cashPercent) > 0) {
         chartData.push({ symbol: "Cash", percentage: cashPercent });
       }
+      chartData.sort((a: any, b: any) => parseFloat(b.percentage) - parseFloat(a.percentage));
 
       chartData.forEach((item, index) => {
         const sliceAngle = (parseFloat(item.percentage) / totalWithCash) * 2 * Math.PI;
