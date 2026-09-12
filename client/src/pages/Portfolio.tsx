@@ -2165,7 +2165,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                         Add Bond
                       </Button>
                     </DialogTrigger>
-                    <DialogContent className="sm:max-w-[425px]">
+                    <DialogContent className="sm:max-w-[425px] max-h-[90vh] overflow-y-auto">
                       <DialogHeader>
                         <DialogTitle>Add Bond / Treasury</DialogTitle>
                       </DialogHeader>
@@ -2693,7 +2693,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
 
           {isBondTradeDialogOpen && (
             <Dialog open={!!isBondTradeDialogOpen} onOpenChange={() => setIsBondTradeDialogOpen(null)}>
-              <DialogContent>
+              <DialogContent className="sm:max-w-[425px] max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle>Bond Trade for {isBondTradeDialogOpen.symbol}</DialogTitle>
                 </DialogHeader>

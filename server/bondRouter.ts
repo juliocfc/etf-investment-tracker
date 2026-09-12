@@ -253,8 +253,8 @@ export const bondRouter = router({
       } else {
         const totalOwned = parseFloat(existingHolding!.quantity);
         if (totalOwned < quantityNum) throw new Error(`Insufficient bonds to sell. Owned: ${totalOwned}, Requested: ${quantityNum}`);
-        const totalProceeds = truncateNumber(quantityNum * priceNum - feesNum);
-        const description = `You sold ${input.quantity} ${input.symbol.toUpperCase()} at $${priceNum.toFixed(2)}${feesNum > 0 ? ` (Fees: $${feesNum.toFixed(2)})` : ""}`;
+        const totalProceeds = truncateNumber(quantityNum * priceNum + interestNum - feesNum);
+        const description = `You sold ${input.quantity} ${input.symbol.toUpperCase()} at $${priceNum.toFixed(2)}${interestNum > 0 ? ` (Interest: $${interestNum.toFixed(2)})` : ""}${feesNum > 0 ? ` (Fees: $${feesNum.toFixed(2)})` : ""}`;
         await updateCashBalance(ctx.user.id, input.portfolioId, "0", input.accountId, input.purchaseDate, { type: "deposit", transactionAmount: totalProceeds.toString(), description });
         const db = await getDb();
         const allPurchases = await db.select().from(bondPurchases).where(eq(bondPurchases.holdingId, Number(holdingId))).orderBy(bondPurchases.purchaseDate, bondPurchases.id);
@@ -363,8 +363,8 @@ export const bondRouter = router({
       } else {
         const holdingQty = parseFloat(holding.quantity || "0");
         if (holdingQty < qtyNum) throw new Error(`Insufficient quantity. Owned: ${holdingQty}, Requested: ${qtyNum}`);
-        const totalProceeds = truncateNumber(qtyNum * priceNum - feesNum);
-        const description = `You sold/redeemed ${input.quantity} ${input.symbol.toUpperCase()} at $${priceNum.toFixed(2)}`;
+        const totalProceeds = truncateNumber(qtyNum * priceNum + interestNum - feesNum);
+        const description = `You sold/redeemed ${input.quantity} ${input.symbol.toUpperCase()} at $${priceNum.toFixed(2)}${interestNum > 0 ? ` (Interest: $${interestNum.toFixed(2)})` : ""}${feesNum > 0 ? ` (Fees: $${feesNum.toFixed(2)})` : ""}`;
         await updateCashBalance(ctx.user.id, input.portfolioId, "0", input.accountId, input.purchaseDate, { type: "deposit", transactionAmount: totalProceeds.toString(), description });
         const db = await getDb();
         const allPurchases = await db.select().from(bondPurchases).where(eq(bondPurchases.holdingId, holdingId)).orderBy(bondPurchases.purchaseDate, bondPurchases.id);

@@ -29,6 +29,9 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
   const { data: allHoldings } = trpc.portfolio.getAllHoldings.useQuery();
   const [expandedPortfolios, setExpandedPortfolios] = useState<Set<number>>(new Set());
   const [portfolioFilter, setPortfolioFilter] = useState<string>("all");
+  const { data: incomeTable } = trpc.etf.getIncomeTable.useQuery(
+    { portfolioId: portfolioFilter === "all" ? undefined : parseInt(portfolioFilter) } as any
+  );
   const [dashboardRange, setDashboardRange] = useState<string>("cm");
   const [isAddPortfolioOpen, setIsAddPortfolioOpen] = useState(false);
 
@@ -1035,6 +1038,88 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
                 </tfoot>
               )}
             </table>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="bg-white border-none shadow-sm shadow-slate-200/50 overflow-hidden">
+        <CardHeader className="pb-4 flex flex-row items-center justify-between space-y-0">
+          <div className="flex items-center gap-2">
+            <DollarSign className="w-4 h-4 text-primary" />
+            <CardTitle className="text-sm font-bold text-slate-800 uppercase tracking-widest">Holdings Income & Return</CardTitle>
+            <span className="text-[10px] font-bold text-slate-400 bg-slate-100 border px-2 py-0.5 rounded-full uppercase tracking-widest">{incomeTable?.assets?.length || 0} assets</span>
+          </div>
+        </CardHeader>
+        <CardContent className="pt-0">
+          <div className="overflow-x-auto rounded-lg border border-slate-100">
+            {!incomeTable ? (
+              <div className="py-10 text-center text-slate-400 text-sm">Loading income data...</div>
+            ) : incomeTable.assets.length === 0 ? (
+              <div className="py-10 text-center text-slate-400 text-sm">No holdings found.</div>
+            ) : (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-200">
+                    <th className="text-left py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest whitespace-nowrap">Asset</th>
+                    <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest whitespace-nowrap">Total Cost</th>
+                    <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest whitespace-nowrap">Current Value</th>
+                    <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest whitespace-nowrap">Gain / Loss</th>
+                    <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest whitespace-nowrap">% Gain</th>
+                    <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest whitespace-nowrap bg-blue-50/50">Div / Interest</th>
+                    <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest whitespace-nowrap bg-blue-50/50">% Div</th>
+                    <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest whitespace-nowrap">Value + Div</th>
+                    <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest whitespace-nowrap">Gain Inc Div</th>
+                    <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest whitespace-nowrap">% Gain Inc</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {incomeTable.assets.map((a: any) => {
+                    const gainNum = parseFloat(a.gain || "0");
+                    const gainIncNum = parseFloat(a.totalGainInc || "0");
+                    const isBond = a.assetType === "bond";
+                    return (
+                      <tr key={a.symbol} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/50 transition-colors">
+                        <td className="py-3 px-4 whitespace-nowrap">
+                          <div className="flex items-center gap-2">
+                            <div className="font-bold text-slate-800">{a.symbol}</div>
+                            {isBond ? <span className="text-[8px] font-bold bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded uppercase">Bond</span> : <span className="text-[8px] font-bold bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded uppercase">ETF</span>}
+                          </div>
+                          <div className="text-[10px] text-slate-400 truncate max-w-[150px]">{a.name}</div>
+                        </td>
+                        <td className="py-3 px-4 text-right font-mono text-slate-600 text-xs whitespace-nowrap">{formatCurrency(a.totalCost)}</td>
+                        <td className="py-3 px-4 text-right font-mono font-bold text-slate-800 text-xs whitespace-nowrap">{formatCurrency(a.currentValue)}</td>
+                        <td className={"py-3 px-4 text-right font-mono text-xs font-bold whitespace-nowrap " + (gainNum >= 0 ? "text-green-600" : "text-red-600")}>{gainNum >= 0 ? "+" : ""}{formatCurrency(a.gain)}</td>
+                        <td className={"py-3 px-4 text-right font-mono text-xs font-bold whitespace-nowrap " + (gainNum >= 0 ? "text-green-600" : "text-red-600")}>{gainNum >= 0 ? "+" : ""}{a.gainPercent}%</td>
+                        <td className="py-3 px-4 text-right font-mono font-bold text-blue-700 bg-blue-50/30 text-xs whitespace-nowrap">{formatCurrency(a.dividendsReceived)}</td>
+                        <td className="py-3 px-4 text-right font-mono text-blue-600 bg-blue-50/30 text-xs whitespace-nowrap">{a.dividendsPercent}%</td>
+                        <td className="py-3 px-4 text-right font-mono font-bold text-slate-800 text-xs whitespace-nowrap">{formatCurrency(a.currentValuePlusDividends)}</td>
+                        <td className={"py-3 px-4 text-right font-mono text-xs font-bold whitespace-nowrap " + (gainIncNum >= 0 ? "text-green-600" : "text-red-600")}>{gainIncNum >= 0 ? "+" : ""}{formatCurrency(a.totalGainInc)}</td>
+                        <td className={"py-3 px-4 text-right font-mono text-xs font-bold whitespace-nowrap " + (gainIncNum >= 0 ? "text-green-700 bg-green-50/30" : "text-red-600 bg-red-50/30")}>{gainIncNum >= 0 ? "+" : ""}{a.totalGainPercentInc}%</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                <tfoot className="bg-slate-100/50 font-bold border-t-2 border-slate-200">
+                  <tr>
+                    <td className="py-4 px-4 uppercase text-[10px] tracking-widest text-slate-500 whitespace-nowrap">Totals ({incomeTable.assets.length} assets)</td>
+                    <td className="py-4 px-4 text-right font-mono text-xs text-slate-700 whitespace-nowrap">{formatCurrency(incomeTable.totals.totalCost)}</td>
+                    <td className="py-4 px-4 text-right font-mono text-sm text-primary whitespace-nowrap">{formatCurrency(incomeTable.totals.currentValue)}</td>
+                    <td className={"py-4 px-4 text-right font-mono text-xs whitespace-nowrap " + (parseFloat(incomeTable.totals.gain) >= 0 ? "text-green-700" : "text-red-700")}>{parseFloat(incomeTable.totals.gain) >= 0 ? "+" : ""}{formatCurrency(incomeTable.totals.gain)}</td>
+                    <td className={"py-4 px-4 text-right font-mono text-xs whitespace-nowrap " + (parseFloat(incomeTable.totals.gain) >= 0 ? "text-green-700" : "text-red-700")}>{incomeTable.totals.gainPercent}%</td>
+                    <td className="py-4 px-4 text-right font-mono text-sm text-blue-700 bg-blue-50/50 whitespace-nowrap">{formatCurrency(incomeTable.totals.dividendsReceived)}</td>
+                    <td className="py-4 px-4 text-right font-mono text-sm text-blue-700 bg-blue-50/50 whitespace-nowrap">{incomeTable.totals.dividendsPercent}%</td>
+                    <td className="py-4 px-4 text-right font-mono text-sm whitespace-nowrap">{formatCurrency(incomeTable.totals.currentValuePlusDividends)}</td>
+                    <td className={"py-4 px-4 text-right font-mono text-xs whitespace-nowrap " + (parseFloat(incomeTable.totals.totalGainInc) >= 0 ? "text-green-700" : "text-red-700")}>{parseFloat(incomeTable.totals.totalGainInc) >= 0 ? "+" : ""}{formatCurrency(incomeTable.totals.totalGainInc)}</td>
+                    <td className={"py-4 px-4 text-right font-mono text-xs whitespace-nowrap " + (parseFloat(incomeTable.totals.totalGainInc) >= 0 ? "text-green-700" : "text-red-700")}>{incomeTable.totals.totalGainPercentInc}%</td>
+                  </tr>
+                </tfoot>
+              </table>
+            )}
+          </div>
+          <div className="mt-3 text-[10px] text-slate-400 flex flex-wrap gap-4 px-1">
+            <span><b className="text-slate-600">Total Cost</b> = avg cost × qty (incl. interest/fees)</span>
+            <span><b className="text-slate-600">Div/Interest</b> = dividends (ETF) or coupons to date (Bond)</span>
+            <span><b className="text-slate-600">Gain Inc</b> = (value + div) − cost</span>
           </div>
         </CardContent>
       </Card>

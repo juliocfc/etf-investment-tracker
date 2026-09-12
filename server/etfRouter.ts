@@ -24,6 +24,7 @@ import {
   calculateAverageCost,
   deletePurchase,
   getUserBondHoldings,
+  getBondPurchases,
   calculateBondAverageCost,
   getBondPriceFromBrokerage,
   updatePurchase,
@@ -1938,6 +1939,272 @@ export const etfRouter = router({
         })(),
         cashAllocationPercent: totalValue > 0 ? ((cashAmount / totalValue) * 100).toFixed(2) : "0",
       };
+    }),
+
+  getIncomeTable: protectedProcedure
+    .input(z.object({
+      portfolioId: z.number().optional(),
+      accountId: z.number().optional(),
+      accountType: z.string().optional()
+    }))
+    .query(async ({ ctx, input }) => {
+      const db = await getDb();
+      let portfolioAccounts: any[];
+      if (input.portfolioId) {
+        portfolioAccounts = await db.select().from(accounts).where(and(
+          eq(accounts.userId, ctx.user.id),
+          eq(accounts.portfolioId, input.portfolioId)
+        ));
+      } else {
+        portfolioAccounts = await db.select().from(accounts).where(eq(accounts.userId, ctx.user.id));
+      }
+      const filteredAccountIds = portfolioAccounts
+        .filter((a: any) => !input.accountType || a.accountType === input.accountType)
+        .map((a: any) => a.id);
+
+      let holdings = await getUserEtfHoldings(ctx.user.id, input.portfolioId, input.accountId);
+      if (input.accountType && input.accountId === undefined) {
+        holdings = holdings.filter((h: any) => filteredAccountIds.includes(h.accountId));
+      }
+      let bondHoldingsRaw = await getUserBondHoldings(ctx.user.id, input.portfolioId, input.accountId);
+      if (input.accountType && input.accountId === undefined) {
+        bondHoldingsRaw = bondHoldingsRaw.filter((h: any) => filteredAccountIds.includes(h.accountId));
+      }
+
+      // Build holdingsWithValues similar to getPortfolioSummary but keep for income table
+      let equityInvestmentValue = 0;
+      let fixedIncomeInvestmentValue = 0;
+      const holdingsWithValues = await Promise.all(
+        holdings.map(async (holding: any) => {
+          const currentPrice = holding.currentPrice ? parseFloat(holding.currentPrice.toString()) : 0;
+          const quantity = parseFloat(holding.quantity.toString());
+          const value = truncateNumber(currentPrice * quantity);
+          const avgCost = await calculateAverageCost(holding.id);
+          const avgCostValue = avgCost ? parseFloat(avgCost.toString()) : parseFloat(holding.purchasePrice.toString());
+          const purchaseValue = truncateNumber(avgCostValue * quantity);
+          const gain = value - purchaseValue;
+          equityInvestmentValue += value;
+          return { ...holding, averageCost: avgCost, totalCostNum: purchaseValue, currentValueNum: value, gainNum: gain, assetType: "etf" };
+        })
+      );
+      const bondHoldingsWithValues = await Promise.all(
+        bondHoldingsRaw.map(async (holding: any) => {
+          const brokeragePriceStr = await getBondPriceFromBrokerage(holding.symbol);
+          const effectivePrice = brokeragePriceStr ? parseFloat(brokeragePriceStr) : (holding.currentPrice ? parseFloat(holding.currentPrice.toString()) : 0);
+          const quantity = parseFloat(holding.quantity.toString());
+          const value = truncateNumber(effectivePrice * quantity);
+          const avgCost = await calculateBondAverageCost(holding.id);
+          const avgCostValue = avgCost ? parseFloat(avgCost.toString()) : parseFloat(holding.purchasePrice.toString());
+          const purchaseValue = truncateNumber(avgCostValue * quantity);
+          const gain = value - purchaseValue;
+          fixedIncomeInvestmentValue += value;
+          return { ...holding, currentPrice: brokeragePriceStr || holding.currentPrice, averageCost: avgCost, totalCostNum: purchaseValue, currentValueNum: value, gainNum: gain, assetType: "bond" };
+        })
+      );
+      const allHoldingsWithValues = [...holdingsWithValues, ...bondHoldingsWithValues];
+
+      let processedHoldings: any[];
+      if (input.accountId === undefined) {
+        const consolidatedMap = new Map<string, any>();
+        for (const h of allHoldingsWithValues) {
+          if (!consolidatedMap.has(h.symbol)) {
+            consolidatedMap.set(h.symbol, { ...h, id: -1, isConsolidated: true, quantity: 0, currentValueNum: 0, totalCostNum: 0, gainNum: 0, accountBreakdown: [], assetType: h.assetType, name: h.name, purchasePrice: h.purchasePrice, currentPrice: h.currentPrice, couponRate: (h as any).couponRate, redemptionDate: (h as any).redemptionDate });
+          }
+          const existing = consolidatedMap.get(h.symbol);
+          existing.quantity += parseFloat(h.quantity.toString());
+          existing.currentValueNum += h.currentValueNum;
+          existing.totalCostNum += h.totalCostNum;
+          existing.gainNum += h.gainNum;
+          const account = portfolioAccounts.find((a: any) => a.id === h.accountId);
+          existing.accountBreakdown.push({ id: h.id, accountId: h.accountId, accountName: account?.name || "Unknown", quantity: h.quantity.toString(), currentValue: truncateNumber(h.currentValueNum).toFixed(2) });
+          // Keep coupon/redemption from first
+          if (!existing.couponRate && (h as any).couponRate) existing.couponRate = (h as any).couponRate;
+          if (!existing.redemptionDate && (h as any).redemptionDate) existing.redemptionDate = (h as any).redemptionDate;
+        }
+        processedHoldings = Array.from(consolidatedMap.values()).map((h) => ({
+          ...h,
+          quantity: h.quantity.toString(),
+          averageCost: h.quantity > 0 ? (h.totalCostNum / h.quantity).toString() : "0",
+          totalCost: truncateNumber(h.totalCostNum).toFixed(2),
+          currentValue: truncateNumber(h.currentValueNum).toFixed(2),
+          gain: truncateNumber(h.gainNum).toFixed(2),
+          gainPercent: h.totalCostNum > 0 ? ((h.gainNum / h.totalCostNum) * 100).toFixed(2) : "0",
+        }));
+      } else {
+        processedHoldings = allHoldingsWithValues.map((h) => ({
+          ...h,
+          totalCost: truncateNumber(h.totalCostNum).toFixed(2),
+          currentValue: truncateNumber(h.currentValueNum).toFixed(2),
+          gain: truncateNumber(h.gainNum).toFixed(2),
+          gainPercent: h.totalCostNum > 0 ? ((h.gainNum / h.totalCostNum) * 100).toFixed(2) : "0",
+        }));
+      }
+      processedHoldings = processedHoldings.filter((h: any) => parseFloat(h.quantity) > 1e-6);
+
+      // Helper to compute dividends for ETFs and interest for bonds
+      const rows: any[] = [];
+      for (const h of processedHoldings) {
+        const symbol = h.symbol;
+        const totalCostNum = parseFloat(h.totalCost || "0");
+        const currentValueNum = parseFloat(h.currentValue || "0");
+        const gainNum = parseFloat(h.gain || "0");
+        const gainPercent = h.gainPercent || "0";
+        let dividendsReceived = 0;
+
+        if (h.assetType === "bond") {
+          // Compute bond interest received: sum of past coupons where quantity owned >0
+          try {
+            const redemption = (h as any).redemptionDate ? new Date((h as any).redemptionDate) : null;
+            const couponRate = parseFloat((h as any).couponRate || "0");
+            if (redemption && couponRate > 0) {
+              // Collect all purchases for this symbol (for consolidated, gather across holdings)
+              let allPurchases: any[] = [];
+              if (h.isConsolidated) {
+                for (const ab of (h.accountBreakdown || [])) {
+                  const ps = await getBondPurchases(ab.id);
+                  allPurchases = allPurchases.concat(ps);
+                }
+              } else {
+                allPurchases = await getBondPurchases(h.id);
+              }
+              // Find earliest purchase date
+              let earliest: Date | null = null;
+              for (const p of allPurchases) {
+                const d = new Date(p.purchaseDate);
+                if (!earliest || d < earliest) earliest = d;
+              }
+              if (earliest) {
+                // Generate coupon dates from redemption backwards to earliest
+                const couponDates: Date[] = [];
+                let cur = new Date(redemption);
+                const from = new Date(earliest);
+                from.setHours(0,0,0,0);
+                const now = new Date();
+                while (cur >= from) {
+                  if (cur <= now) couponDates.push(new Date(cur));
+                  cur.setMonth(cur.getMonth() - 6);
+                }
+                // For each coupon date, compute quantity owned at that date
+                for (const cDate of couponDates) {
+                  cDate.setHours(0,0,0,0);
+                  let qtyOwned = 0;
+                  for (const p of allPurchases) {
+                    const pDate = new Date(p.purchaseDate);
+                    pDate.setHours(0,0,0,0);
+                    if (pDate >= cDate) continue;
+                    const isSold = (p as any).isSold;
+                    const soldDate = (p as any).soldDate ? new Date((p as any).soldDate) : null;
+                    if (isSold && soldDate && soldDate < cDate) continue;
+                    if (isSold && !soldDate) continue; // sold but no date, assume not owned
+                    // qty for this purchase
+                    qtyOwned += parseFloat((p as any).quantity);
+                  }
+                  // Fallback if no purchases tracked but holding has quantity (e.g., initial holding without purchase record)
+                  if (allPurchases.length === 0 && qtyOwned === 0) {
+                    const holdingQty = parseFloat(h.quantity);
+                    // If cDate after earliest (which is purchase date), use holdingQty
+                    qtyOwned = holdingQty;
+                  }
+                  if (qtyOwned > 0) {
+                    dividendsReceived += qtyOwned * couponRate / 2;
+                  }
+                }
+              }
+            }
+          } catch (e) {
+            // ignore bond interest calc errors
+            dividendsReceived = 0;
+          }
+        } else {
+          // ETF dividends: sum quantityOwned * dividendPerShare for all exDates where quantityOwned>0
+          try {
+            const dividendData = await fetchDividendData(symbol);
+            // Gather purchases across holdings for this symbol
+            let allPurchases: any[] = [];
+            if (h.isConsolidated) {
+              for (const ab of (h.accountBreakdown || [])) {
+                const ps = await getPurchases(ab.id);
+                allPurchases = allPurchases.concat(ps);
+              }
+            } else {
+              allPurchases = await getPurchases(h.id);
+            }
+            for (const div of dividendData) {
+              const exDate = new Date(div.exDate);
+              exDate.setHours(0,0,0,0);
+              let qtyOwned = 0;
+              for (const p of allPurchases) {
+                const pDate = new Date(p.purchaseDate);
+                if (pDate < exDate) qtyOwned += parseFloat((p as any).quantity);
+                // Note: purchases for ETFs are not marked isSold in same way? sell is handled via isSold flag similar to bonds, but we approximate by purchaseDate < exDate
+                // For more accuracy, check isSold/soldDate if present
+                const isSold = (p as any).isSold;
+                const soldDate = (p as any).soldDate ? new Date((p as any).soldDate) : null;
+                if (isSold && soldDate && soldDate < exDate) {
+                  // if sold before exDate, should not count – we already counted but need to subtract
+                  // Since we summed all purchases with purchaseDate < exDate, we need to exclude sold ones
+                  // Our earlier sum already included them, so subtract if sold before exDate
+                  // To keep simple, recompute qtyOwned as above but excluding sold before exDate
+                  // For now, handle: if isSold and soldDate < exDate, subtract
+                  qtyOwned -= parseFloat((p as any).quantity);
+                }
+              }
+              if (qtyOwned > 0) dividendsReceived += qtyOwned * div.dividendPerShare;
+            }
+          } catch (e) {
+            dividendsReceived = 0;
+          }
+        }
+
+        const dividendsPercent = totalCostNum > 0 ? (dividendsReceived / totalCostNum * 100) : 0;
+        const currentValuePlusDiv = currentValueNum + dividendsReceived;
+        const totalGainInc = currentValuePlusDiv - totalCostNum;
+        const totalGainPercentInc = totalCostNum > 0 ? (totalGainInc / totalCostNum * 100) : 0;
+
+        rows.push({
+          symbol: h.symbol,
+          name: h.name,
+          assetType: h.assetType,
+          quantity: h.quantity,
+          totalCost: truncateNumber(totalCostNum).toFixed(2),
+          currentValue: truncateNumber(currentValueNum).toFixed(2),
+          gain: truncateNumber(gainNum).toFixed(2),
+          gainPercent: h.gainPercent,
+          dividendsReceived: truncateNumber(dividendsReceived).toFixed(2),
+          dividendsPercent: dividendsPercent.toFixed(2),
+          currentValuePlusDividends: truncateNumber(currentValuePlusDiv).toFixed(2),
+          totalGainInc: truncateNumber(totalGainInc).toFixed(2),
+          totalGainPercentInc: totalGainPercentInc.toFixed(2),
+        });
+      }
+
+      // Sort by current value desc
+      rows.sort((a: any, b: any) => parseFloat(b.currentValue) - parseFloat(a.currentValue));
+
+      // Totals
+      const totals = rows.reduce((acc: any, r: any) => {
+        acc.totalCost += parseFloat(r.totalCost);
+        acc.currentValue += parseFloat(r.currentValue);
+        acc.gain += parseFloat(r.gain);
+        acc.dividendsReceived += parseFloat(r.dividendsReceived);
+        acc.currentValuePlusDividends += parseFloat(r.currentValuePlusDividends);
+        acc.totalGainInc += parseFloat(r.totalGainInc);
+        return acc;
+      }, { totalCost: 0, currentValue: 0, gain: 0, dividendsReceived: 0, currentValuePlusDividends: 0, totalGainInc: 0 });
+
+      const totalsRow = {
+        totalCost: truncateNumber(totals.totalCost).toFixed(2),
+        currentValue: truncateNumber(totals.currentValue).toFixed(2),
+        gain: truncateNumber(totals.gain).toFixed(2),
+        gainPercent: totals.totalCost > 0 ? ((totals.gain / totals.totalCost)*100).toFixed(2) : "0",
+        dividendsReceived: truncateNumber(totals.dividendsReceived).toFixed(2),
+        dividendsPercent: totals.totalCost > 0 ? ((totals.dividendsReceived / totals.totalCost)*100).toFixed(2) : "0",
+        currentValuePlusDividends: truncateNumber(totals.currentValuePlusDividends).toFixed(2),
+        totalGainInc: truncateNumber(totals.totalGainInc).toFixed(2),
+        totalGainPercentInc: totals.totalCost > 0 ? ((totals.totalGainInc / totals.totalCost)*100).toFixed(2) : "0",
+      };
+
+      return { assets: rows, totals: totalsRow };
     }),
 
   importPurchasesFromCSV: protectedProcedure
