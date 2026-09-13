@@ -179,8 +179,8 @@ const FinanceIndependence: React.FC = () => {
   // Memos
   const totalPortfolioValue = useMemo(() => {
     if (!portfolios) return 0;
-    const cash = portfolios.reduce((acc, p) => acc + parseFloat(p.cashValue), 0);
-    const investment = portfolios.reduce((acc, p) => acc + parseFloat(p.investmentValue), 0);
+    const cash = portfolios.reduce((acc, p) => acc + parseFloat((p as any).cashValueUSD ?? p.cashValue), 0);
+    const investment = portfolios.reduce((acc, p) => acc + parseFloat((p as any).investmentValueUSD ?? p.investmentValue), 0);
     return cash + investment;
   }, [portfolios]);
 
@@ -189,10 +189,10 @@ const FinanceIndependence: React.FC = () => {
     const totalAnnual = holdings.reduce((sum, h) => {
       const qty = parseFloat(h.quantity.toString());
       if ((h as any).assetType === "bond") {
-        const couponRate = parseFloat((h as any).couponRate || "0");
-        return sum + qty * couponRate;
+        const coupon = parseFloat(((h as any).couponRateUSD ?? (h as any).couponRate) || "0");
+        return sum + qty * coupon;
       }
-      const dps = (h as any).annualDividendPerShare || 0;
+      const dps = parseFloat(((h as any).annualDividendPerShareUSD ?? (h as any).annualDividendPerShare) || 0);
       return sum + qty * dps;
     }, 0);
     return totalAnnual / 12;

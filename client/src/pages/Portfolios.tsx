@@ -30,6 +30,8 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
   const { data: allHoldings } = trpc.portfolio.getAllHoldings.useQuery();
   const [expandedPortfolios, setExpandedPortfolios] = useState<Set<number>>(new Set());
   const [portfolioFilter, setPortfolioFilter] = useState<string>("all");
+  const [currencyFilter, setCurrencyFilter] = useState<string>("all");
+  const distinctCurrencies = Array.from(new Set((portfolios || []).map((p:any)=>(p as any).baseCurrency || "USD"))).sort();
   const { data: incomeTable } = trpc.etf.getIncomeTable.useQuery(
     { portfolioId: portfolioFilter === "all" ? undefined : parseInt(portfolioFilter) } as any
   );
@@ -141,6 +143,7 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
     if (!allHoldings) return [];
 
     const filterId = portfolioFilter === "all" ? null : parseInt(portfolioFilter);
+    const currencyFilteredHoldings = currencyFilter === "all" ? allHoldings : (allHoldings as any[]).filter((h:any)=> ((h as any).baseCurrency || "USD") === currencyFilter);
     const assetMap: Record<string, { 
       symbol: string, 
       name: string, 
@@ -152,7 +155,7 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
 
     let totalMktValue = 0;
 
-    allHoldings.forEach((h: any) => {
+    currencyFilteredHoldings.forEach((h: any) => {
       if (filterId !== null && h.portfolioId !== filterId) return;
 
       if (!assetMap[h.symbol]) {
@@ -168,16 +171,20 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
         } as any;
       }
 
+      const isConsolidated = filterId === null;
       const qty = parseFloat(h.quantity);
-      const avgPurchasePrice = parseFloat(h.purchasePrice);
+      const priceUSD = (h as any).currentPriceUSD ? parseFloat((h as any).currentPriceUSD) : parseFloat(h.currentPrice);
+      const purchaseUSD = (h as any).purchasePriceUSD ? parseFloat((h as any).purchasePriceUSD) : parseFloat(h.purchasePrice);
+      const usePrice = isConsolidated ? priceUSD : parseFloat(h.currentPrice);
+      const usePurchase = isConsolidated ? purchaseUSD : parseFloat(h.purchasePrice);
       
       assetMap[h.symbol].quantity += qty;
-      assetMap[h.symbol].totalCost += qty * avgPurchasePrice;
-      assetMap[h.symbol].currentPrice = parseFloat(h.currentPrice);
+      assetMap[h.symbol].totalCost += qty * usePurchase;
+      assetMap[h.symbol].currentPrice = usePrice;
       // Keep highest couponRate for bonds (should be same per CUSIP) and preserve assetType
       if ((h as any).couponRate) (assetMap[h.symbol] as any).couponRate = (h as any).couponRate;
       if ((h as any).assetType === "bond") (assetMap[h.symbol] as any).assetType = "bond";
-      totalMktValue += truncateNumber(qty * parseFloat(h.currentPrice));
+      totalMktValue += truncateNumber(qty * usePrice);
     });
 
     const allMapped = Object.values(assetMap).map((asset: any) => {
@@ -235,7 +242,7 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
       });
     }
     return [...equities].sort((a, b) => b.mktValue - a.mktValue);
-  }, [allHoldings, portfolioFilter]);
+  }, [allHoldings, portfolioFilter, currencyFilter]);
 
   const tableTotals = useMemo(() => {
     const totals = consolidatedHoldings.reduce((acc, curr) => ({
@@ -258,9 +265,12 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
 
     const filterId = portfolioFilter === "all" ? null : parseInt(portfolioFilter);
     
-    const totalCash = portfolios.reduce((acc, p) => {
+    const useUSD2 = filterId === null;
+    const cashPortfolios = currencyFilter === "all" ? portfolios : portfolios.filter((p:any)=> ((p as any).baseCurrency || "USD") === currencyFilter);
+    const totalCash = cashPortfolios.reduce((acc, p) => {
       if (filterId !== null && p.id !== filterId) return acc;
-      return acc + parseFloat(p.cashValue);
+      const v = useUSD2 && (p as any).cashValueUSD ? (p as any).cashValueUSD : p.cashValue;
+      return acc + parseFloat(v);
     }, 0);
 
     const totalInvestments = consolidatedHoldings.reduce((acc, h) => acc + h.mktValue, 0);
@@ -294,7 +304,7 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
     }
 
     return data.sort((a, b) => b.value - a.value);
-  }, [portfolios, consolidatedHoldings, portfolioFilter]);
+  }, [portfolios, consolidatedHoldings, portfolioFilter, currencyFilter]);
 
   // Yearly performance data is now fetched via trpc.portfolio.getYearlyPerformance
 
@@ -426,14 +436,16 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
 
   const totals = useMemo(() => {
     if (!portfolios) return { investment: 0, equity: 0, fixedIncome: 0, cash: 0, overall: 0, totalCost: 0, gain: 0, gainPercent: "0", investmentPercent: "0", equityPercent: "0", fixedIncomePercent: "0", cashPercent: "0" };
-    const investment = portfolios.reduce((acc, p) => acc + parseFloat(p.investmentValue), 0);
-    const equity = portfolios.reduce((acc, p) => acc + parseFloat((p as any).equityInvestmentValue ?? p.investmentValue ?? "0"), 0);
-    const fixedIncome = portfolios.reduce((acc, p) => acc + parseFloat((p as any).fixedIncomeInvestmentValue ?? "0"), 0);
+    const filteredPortfolios = currencyFilter === "all" ? portfolios : portfolios.filter((p:any)=> ((p as any).baseCurrency || "USD") === currencyFilter);
+    const useUSD = portfolioFilter === "all";
+    const investment = filteredPortfolios.reduce((acc, p) => acc + parseFloat(useUSD && (p as any).investmentValueUSD ? (p as any).investmentValueUSD : p.investmentValue), 0);
+    const equity = filteredPortfolios.reduce((acc, p) => acc + parseFloat(useUSD && (p as any).equityInvestmentValueUSD ? (p as any).equityInvestmentValueUSD : ((p as any).equityInvestmentValue ?? p.investmentValue ?? "0")), 0);
+    const fixedIncome = filteredPortfolios.reduce((acc, p) => acc + parseFloat(useUSD && (p as any).fixedIncomeInvestmentValueUSD ? (p as any).fixedIncomeInvestmentValueUSD : ((p as any).fixedIncomeInvestmentValue ?? "0")), 0);
     // fallback: if split not present, derive from investment
     const safeEquity = equity || investment - fixedIncome;
     const safeFixed = fixedIncome;
-    const cash = portfolios.reduce((acc, p) => acc + parseFloat(p.cashValue), 0);
-    const totalCost = portfolios.reduce((acc, p) => acc + parseFloat(p.totalCost || "0"), 0);
+    const cash = filteredPortfolios.reduce((acc, p) => acc + parseFloat(useUSD && (p as any).cashValueUSD ? (p as any).cashValueUSD : p.cashValue), 0);
+    const totalCost = filteredPortfolios.reduce((acc, p) => acc + parseFloat(p.totalCost || "0"), 0);
     const overall = investment + cash;
     const gain = investment - totalCost;
     const gainPercent = totalCost > 0 ? ((gain / totalCost) * 100).toFixed(2) : "0.00";
@@ -452,7 +464,7 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
       fixedIncomePercent: overall > 0 ? ((safeFixed / overall) * 100).toFixed(1) : "0",
       cashPercent: overall > 0 ? ((cash / overall) * 100).toFixed(1) : "0",
     };
-  }, [portfolios]);
+  }, [portfolios, currencyFilter, portfolioFilter]);
 
   const accountTypeBreakdown = useMemo(() => {
     if (!portfolios) return [];
@@ -587,8 +599,18 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
             </SelectContent>
           </Select>
         </div>
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Currency</span>
+          <Select value={currencyFilter} onValueChange={setCurrencyFilter}>
+            <SelectTrigger className="h-8 text-xs font-bold min-w-[120px] bg-white"><SelectValue placeholder="All" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all" className="text-xs font-bold uppercase">All Currencies</SelectItem>
+              {distinctCurrencies.map((c:string)=>(<SelectItem key={c} value={c} className="text-xs font-bold uppercase">{c}</SelectItem>))}
+            </SelectContent>
+          </Select>
+        </div>
         <div className="h-6 w-px bg-slate-200 hidden sm:block" />
-        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest hidden sm:block">Scope: {portfolioFilter === "all" ? `${portfolios?.length||0} portfolios` : portfolios?.find(p=>p.id.toString()===portfolioFilter)?.name || "—"}</div>
+        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest hidden sm:block">Scope: {portfolioFilter === "all" ? `${portfolios?.filter((p:any)=> currencyFilter==="all" || (p as any).baseCurrency===currencyFilter).length||0} portfolios` : portfolios?.find(p=>p.id.toString()===portfolioFilter)?.name || "—"}{currencyFilter!=="all" ? ` • ${currencyFilter}` : ""}</div>
         <div className="ml-auto flex items-center gap-2 text-[10px] font-bold text-slate-500">
           <span className="hidden sm:inline">{incomeTable?.assets?.length || 0} assets</span>
           <span className="hidden sm:inline">•</span>
@@ -684,7 +706,7 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
               </tr>
             </thead>
             <tbody>
-              {portfolios?.map((portfolio) => {
+              {portfolios?.filter((portfolio:any)=> currencyFilter==="all" || (portfolio as any).baseCurrency===currencyFilter).map((portfolio) => {
                 const pTotal = parseFloat(portfolio.totalValue);
                 const pInvPercent = pTotal > 0 ? ((parseFloat(portfolio.investmentValue) / pTotal) * 100).toFixed(1) : "0";
                 const pCashPercent = pTotal > 0 ? ((parseFloat(portfolio.cashValue) / pTotal) * 100).toFixed(1) : "0";
@@ -706,16 +728,16 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
                           onClick={() => onPortfolioSelect?.(portfolio.id)}
                           className="hover:text-primary hover:underline transition-colors text-left"
                         >
-                          {portfolio.name}
+                          {portfolio.name} {portfolio.baseCurrency && portfolio.baseCurrency !== "USD" && <span className="ml-1 text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-200">{portfolio.baseCurrency}</span>}
                         </button>
                       </td>
-                      <td className="py-4 px-4 text-right font-mono font-bold text-primary">{formatCurrency(portfolio.totalValue)}</td>
+                      <td className="py-4 px-4 text-right font-mono font-bold text-primary">{(portfolio as any).baseCurrency !== "USD" && (portfolio as any).totalValueUSD ? <><div>{formatCurrency((portfolio as any).totalValueUSD, 2, "USD")}</div><div className="text-[10px] font-normal text-slate-400">~{formatCurrency(portfolio.totalValue, 2, (portfolio as any).baseCurrency || "USD")}</div></> : <div>{formatCurrency(portfolio.totalValue, 2, "USD")}</div>}</td>
                       <td className="py-4 px-4 text-right">
-                        <div className="font-mono font-medium text-slate-600">{formatCurrency(portfolio.cashValue)}</div>
+                        <div className="font-mono font-medium text-slate-600">{(portfolio as any).baseCurrency !== "USD" && (portfolio as any).cashValueUSD ? <><span>{formatCurrency((portfolio as any).cashValueUSD, 2, "USD")}</span><span className="ml-1 text-[10px] font-normal text-slate-400">~{formatCurrency(portfolio.cashValue, 2, (portfolio as any).baseCurrency || "USD")}</span></> : formatCurrency(portfolio.cashValue, 2, "USD")}</div>
                         <div className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter">{pCashPercent}%</div>
                       </td>
                       <td className="py-4 px-4 text-right">
-                        <div className="font-mono font-medium text-slate-700">{formatCurrency(portfolio.investmentValue)}</div>
+                        <div className="font-mono font-medium text-slate-700">{(portfolio as any).baseCurrency !== "USD" && (portfolio as any).investmentValueUSD ? <><span>{formatCurrency((portfolio as any).investmentValueUSD, 2, "USD")}</span><span className="ml-1 text-[10px] font-normal text-slate-400">~{formatCurrency(portfolio.investmentValue, 2, (portfolio as any).baseCurrency || "USD")}</span></> : formatCurrency(portfolio.investmentValue, 2, "USD")}</div>
                         <div className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter">{pInvPercent}%</div>
                       </td>
                       <td className="py-4 px-4 text-right font-mono text-slate-500 text-xs">{formatCurrency(portfolio.totalCost || "0")}</td>
@@ -847,7 +869,7 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
             </tbody>
             <tfoot>
               <tr className="bg-slate-100/80 font-bold border-t-2 border-slate-200">
-                <td colSpan={2} className="py-5 px-4 uppercase text-xs tracking-widest text-slate-600">Consolidated Totals</td>
+                <td colSpan={2} className="py-5 px-4 uppercase text-xs tracking-widest text-slate-600">Consolidated Totals <span className="ml-2 text-[10px] font-normal normal-case text-slate-400">in USD — BRL portfolios converted at daily FX (Frankfurter ECB)</span></td>
                 <td className="py-5 px-4 text-right font-mono text-xl text-primary">{formatCurrency(totals.overall)}</td>
                 <td className="py-5 px-4 text-right">
                   <div className="font-mono text-lg text-slate-700">{formatCurrency(totals.cash)}</div>

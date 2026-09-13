@@ -33,6 +33,16 @@ const priceCache = new Map<string, { data: PriceData, timestamp: number }>();
 const dividendCache = new Map<string, { data: DividendData[], timestamp: number }>();
 const CACHE_TTL = 60 * 60 * 1000; // 1 hour
 
+// B3 tickers like VALE3/PETR4 trade as VALE3.SA on Yahoo; auto-resolve
+function isB3Like(sym: string): boolean {
+  return /^[A-Z]{4}\d{1,2}$/.test(sym) || /^[A-Z]{4}3F?$/.test(sym) || /^[A-Z]{4}4F?$/.test(sym);
+}
+function b3Candidate(sym: string): string | null {
+  if (sym.includes(".") || sym.includes("/")) return null;
+  if (isB3Like(sym)) return `${sym}.SA`;
+  return null;
+}
+
 /**
  * Fetch current price for an ETF symbol
  */
@@ -61,6 +71,23 @@ export async function fetchEtfPrice(symbol: string): Promise<PriceData | null> {
     }
   } catch (error: any) {
     console.warn(`[FinancialApi] Yahoo Finance failed for ${sym}:`, error.message);
+  }
+
+  // B3 fallback: try VALE3 -> VALE3.SA
+  const b3 = b3Candidate(sym);
+  if (b3) {
+    try {
+      console.log(`[FinancialApi] Trying B3 fallback ${b3} for ${sym}`);
+      const quote = await yahooFinance.quote(b3);
+      if (quote && quote.regularMarketPrice) {
+        const data = { symbol: sym, price: quote.regularMarketPrice, timestamp: quote.regularMarketTime || new Date() };
+        priceCache.set(sym, { data, timestamp: Date.now() });
+        priceCache.set(b3, { data: { symbol: b3, price: quote.regularMarketPrice, timestamp: quote.regularMarketTime || new Date() }, timestamp: Date.now() });
+        return data;
+      }
+    } catch (error: any) {
+      console.warn(`[FinancialApi] B3 fallback failed for ${b3}:`, error.message);
+    }
   }
 
   // Attempt API Ninjas Fallback
@@ -130,7 +157,9 @@ export async function fetchHistoricalPrices(
   days: number = 365,
   interval: '1d' | '1wk' | '1mo' = '1d'
 ): Promise<PriceData[]> {
-  const sym = symbol.toUpperCase();
+  const symBase = symbol.toUpperCase();
+  const candidates = [symBase, b3Candidate(symBase)].filter(Boolean) as string[];
+  for (const sym of candidates) {
   try {
     const endDate = new Date();
     const startDate = new Date();
@@ -146,27 +175,31 @@ export async function fetchHistoricalPrices(
 
     if (!results || results.length === 0) {
       console.warn(`[FinancialApi] No historical results returned for ${sym}`);
-      return [];
+      continue;
     }
 
     console.log(`[FinancialApi] Successfully fetched ${results.length} historical prices for ${sym}`);
 
     return results.map((day) => ({
-      symbol: sym,
+      symbol: symBase,
       price: day.close,
       timestamp: new Date(day.date),
     })).sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
   } catch (error: any) {
     console.error(`[FinancialApi] Historical fetch failed for ${sym}:`, error.message, error);
-    return [];
+    continue;
   }
+  }
+  return [];
 }
 
 /**
  * Fetch dividend information for an ETF
  */
 export async function fetchDividendData(symbol: string): Promise<DividendData[]> {
-  const sym = symbol.toUpperCase();
+  const symBase = symbol.toUpperCase();
+  const candidates = [symBase, b3Candidate(symBase)].filter(Boolean) as string[];
+  for (const sym of candidates) {
   
   // Check cache
   const cached = dividendCache.get(sym);
@@ -186,18 +219,20 @@ export async function fetchDividendData(symbol: string): Promise<DividendData[]>
 
     if (results && results.length > 0) {
       const data = results.map(d => ({
-        symbol: sym,
+        symbol: symBase,
         dividendPerShare: d.dividends,
         exDate: new Date(d.date),
       })).sort((a, b) => b.exDate.getTime() - a.exDate.getTime());
       
       dividendCache.set(sym, { data, timestamp: Date.now() });
+      dividendCache.set(symBase, { data, timestamp: Date.now() });
       return data;
     }
   } catch (error: any) {
     console.error(`[FinancialApi] Dividend fetch failed for ${sym}:`, error.message);
+    continue;
   }
-
+  }
   return [];
 }
 

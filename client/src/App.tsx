@@ -166,7 +166,7 @@ function DashboardRouter() {
       portfolios={portfolios || []}
       selectedPortfolioId={selectedPortfolioId}
       onPortfolioChange={setSelectedPortfolioId}
-      onCreatePortfolio={(name) => createPortfolioMutation.mutate({ name })}
+      onCreatePortfolio={(name, currency) => createPortfolioMutation.mutate({ name, baseCurrency: currency } as any)}
       onDeletePortfolio={handleDeletePortfolio}
     >
       {renderContent()}

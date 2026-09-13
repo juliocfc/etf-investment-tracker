@@ -270,6 +270,11 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
 
   // Queries
   const { data: portfolios } = trpc.portfolio.getAll.useQuery();
+  const { data: portfolioInfo } = trpc.portfolio.getById.useQuery({ portfolioId: selectedPortfolioId }, { enabled: !!selectedPortfolioId });
+  const portfolioCurrency = (portfolioInfo as any)?.baseCurrency || "USD";
+  const [showUSD, setShowUSD] = useState(false);
+  const displayCurrency = showUSD && portfolioCurrency !== "USD" ? "USD" : portfolioCurrency;
+
   const { data: accounts, refetch: refetchAccounts } = trpc.account.getAccounts.useQuery(
     { portfolioId: selectedPortfolioId },
     { enabled: !!selectedPortfolioId }
@@ -1127,7 +1132,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                 <TrendingUp className="w-5 h-5" />
               </div>
               <div>
-                <h2 className="text-lg font-bold text-slate-800">Portfolio Overview</h2>
+                <h2 className="text-lg font-bold text-slate-800">Portfolio Overview</h2>{portfolioCurrency !== "USD" && <span className="ml-2 text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-200">{portfolioCurrency}</span>}
                 <p className="text-xs text-slate-500 font-medium">Monitor performance and manage your assets across accounts</p>
               </div>
             </div>
@@ -1175,7 +1180,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
             <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
               <div className="data-card border-l-4 border-l-primary">
                 <div className="data-card-title">Total Portfolio</div>
-                <div className="data-card-value">{formatCurrency(summary?.totalValue)}</div>
+                <div className="data-card-value">{formatCurrency(summary?.totalValue, 2, displayCurrency)}</div>
                 <div className="data-card-subtitle flex items-center gap-1 text-slate-500">
                   <Info className="w-3 h-3" /> Includes Cash
                 </div>
@@ -1183,7 +1188,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
 
               <div className="data-card border-l-4 border-l-slate-400">
                 <div className="data-card-title">Cash</div>
-                <div className="data-card-value">{formatCurrency(summary?.cashBalance)}</div>
+                <div className="data-card-value">{formatCurrency(summary?.cashBalance, 2, displayCurrency)}</div>
                 <div className="data-card-subtitle flex items-center justify-between text-slate-500">
                   <span>Liquid Funds</span>
                   <span className="font-bold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded text-[10px]">
@@ -2113,8 +2118,10 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                   {summary?.holdings && summary.holdings.filter((h:any)=> !h.assetType || h.assetType==="etf").length > 0 && (
                     <tfoot className="bg-slate-50 border-t-2 border-slate-200">
                       <tr className="font-bold text-slate-800">
-                        <td colSpan={6} className="py-4 px-3 uppercase text-[10px] tracking-widest text-slate-500">Total Equities Performance</td>
-                        <td className="text-right py-4 px-3 font-mono text-sm">{formatCurrency((summary as any).equityInvestmentValue ?? summary.investmentValue)}</td>
+                        <td colSpan={4} className="py-4 px-3 uppercase text-[10px] tracking-widest text-slate-500">Total Equities Performance</td>
+                        <td className="text-right py-4 px-3 font-mono text-sm text-slate-600">{formatCurrency(summary.holdings.filter((h:any)=> !h.assetType || h.assetType==="etf").reduce((acc: number, h: any) => acc + parseFloat(h.totalCost || "0"), 0), 2, displayCurrency)}</td>
+                        <td className="text-right py-4 px-3 font-mono text-sm text-slate-400">—</td>
+                        <td className="text-right py-4 px-3 font-mono text-sm">{formatCurrency((summary as any).equityInvestmentValue ?? summary.investmentValue, 2, displayCurrency)}</td>
                         <td className={`text-right py-4 px-3 font-mono text-sm ${(summary?.holdings?.filter((h:any)=> !h.assetType || h.assetType==="etf").reduce((acc: number, h: any) => acc + parseFloat(h.gain), 0) || 0) >= 0
                           ? "text-green-600"
                           : "text-red-600"

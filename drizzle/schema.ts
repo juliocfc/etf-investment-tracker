@@ -30,9 +30,21 @@ export const portfolios = sqliteTable("portfolios", {
   userId: integer("userId").notNull(),
   name: text("name").notNull(),
   description: text("description"),
+  baseCurrency: text("baseCurrency").default("USD").notNull(),
   createdAt: integer("createdAt", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
   updatedAt: integer("updatedAt", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
+
+export const fxRates = sqliteTable("fxrates", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  base: text("base").notNull(),
+  quote: text("quote").notNull(),
+  rate: text("rate").notNull(),
+  date: integer("date", { mode: "timestamp" }).notNull(),
+  createdAt: integer("createdAt", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+}, (table) => [
+  uniqueIndex("fx_base_quote_date_idx").on(table.base, table.quote, table.date),
+]);
 
 export type Portfolio = typeof portfolios.$inferSelect;
 export type InsertPortfolio = typeof portfolios.$inferInsert;

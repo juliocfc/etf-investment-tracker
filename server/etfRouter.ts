@@ -42,6 +42,7 @@ import {
   calculateAnnualDPS,
 } from "./financialApi";
 import { getSmartHistoricalPrices } from "./priceService";
+import { getFxRate } from "./fxService";
 import { fetchETFName } from "./etfLookup";
 import { calculatePerformanceMetrics } from "./performanceMetrics";
 
@@ -53,10 +54,23 @@ export const etfRouter = router({
       accountType: z.string().optional()
     }))
     .query(async ({ ctx, input }) => {
+      const db = await getDb();
+      // FX: map portfolioId -> baseCurrency for conversion to USD when consolidated
+      const isConsolidatedUSD = !input.portfolioId;
+      let portfolioCurrencyMap = new Map<number,string>();
+      if (isConsolidatedUSD) {
+        const allPortfolios = await db.select().from((await import("../drizzle/schema")).portfolios).where(eq((await import("../drizzle/schema")).portfolios.userId, ctx.user.id));
+        for (const pf of allPortfolios) portfolioCurrencyMap.set((pf as any).id, (pf as any).baseCurrency || "USD");
+      } else {
+        const pf = await db.select().from((await import("../drizzle/schema")).portfolios).where(eq((await import("../drizzle/schema")).portfolios.id, input.portfolioId)).then((r:any)=>r[0]);
+        if (pf) portfolioCurrencyMap.set(input.portfolioId, (pf as any).baseCurrency || "USD");
+      }
+      const getFxSync = async (currency: string, date: Date = new Date()) => currency === "USD" ? 1 : await getFxRate(currency, "USD", date);
+
       let holdings = await getUserEtfHoldings(ctx.user.id, input.portfolioId, input.accountId);
       
       if (input.accountType && input.accountId === undefined) {
-        const db = await getDb();
+        // db already defined above
         const conditions: any[] = [eq(accounts.userId, ctx.user.id), eq(accounts.accountType, input.accountType)];
         if (input.portfolioId) conditions.push(eq(accounts.portfolioId, input.portfolioId));
         const matchingAccounts = await db.select({ id: accounts.id })
@@ -666,6 +680,18 @@ export const etfRouter = router({
         holdings = holdings.filter(h => matchingIds.includes(h.accountId));
       }
 
+      // FX for consolidated dividends (All Portfolios -> USD)
+      const isDetailedConsolidatedUSD = !input.portfolioId;
+      let detailedCurrencyMap = new Map<number,string>();
+      if (isDetailedConsolidatedUSD) {
+        const allPf = await db.select().from((await import("../drizzle/schema")).portfolios).where(eq((await import("../drizzle/schema")).portfolios.userId, ctx.user.id));
+        for (const pf of allPf) detailedCurrencyMap.set((pf as any).id, (pf as any).baseCurrency || "USD");
+      } else {
+        const pf = await db.select().from((await import("../drizzle/schema")).portfolios).where(eq((await import("../drizzle/schema")).portfolios.id, input.portfolioId)).then((r:any)=>r[0]);
+        if (pf) detailedCurrencyMap.set(input.portfolioId, (pf as any).baseCurrency || "USD");
+      }
+      const getDetailedFx = async (currency: string, date: Date) => currency === "USD" ? 1 : await getFxRate(currency, "USD", date);
+
       const now = new Date();
       const currentQuarter = Math.floor(now.getMonth() / 3) + 1;
       const currentYear = now.getFullYear();
@@ -723,12 +749,14 @@ export const etfRouter = router({
         const lastYearPayments = dividendData.filter((d: any) => new Date(d.exDate).getTime() >= twelveMonthsAgo).length;
         
         let estimatedQuarterlyAmount = 0;
+        const estCurrency = detailedCurrencyMap.get((holding as any).portfolioId) || "USD";
+        const estFx = isDetailedConsolidatedUSD ? await getDetailedFx(estCurrency, now) : 1;
         if (lastYearPayments >= 10) {
           // Monthly payer -> 3 payments per quarter
-          estimatedQuarterlyAmount = currentQty * lastDivPerShare * 3;
+          estimatedQuarterlyAmount = currentQty * lastDivPerShare * 3 * estFx;
         } else {
           // Quarterly or other -> 1 payment per quarter
-          estimatedQuarterlyAmount = currentQty * lastDivPerShare;
+          estimatedQuarterlyAmount = currentQty * lastDivPerShare * estFx;
         }
 
         let etfTotalWindow = 0;
@@ -753,7 +781,12 @@ export const etfRouter = router({
           }
 
           if (quantityOwned > 0) {
-            const totalAmount = quantityOwned * div.dividendPerShare;
+            let totalAmount = quantityOwned * div.dividendPerShare;
+            if (isDetailedConsolidatedUSD) {
+              const cur = detailedCurrencyMap.get((holding as any).portfolioId) || "USD";
+              const fx = await getDetailedFx(cur, exDate);
+              totalAmount = totalAmount * fx;
+            }
             const exYear = exDate.getFullYear();
             const exQuarter = Math.floor(exDate.getMonth() / 3) + 1;
             
@@ -974,10 +1007,23 @@ export const etfRouter = router({
       accountType: z.string().optional()
     }))
     .query(async ({ ctx, input }) => {
+      const db = await getDb();
+      // FX: map portfolioId -> baseCurrency for conversion to USD when consolidated
+      const isConsolidatedUSD = !input.portfolioId;
+      let portfolioCurrencyMap = new Map<number,string>();
+      if (isConsolidatedUSD) {
+        const allPortfolios = await db.select().from((await import("../drizzle/schema")).portfolios).where(eq((await import("../drizzle/schema")).portfolios.userId, ctx.user.id));
+        for (const pf of allPortfolios) portfolioCurrencyMap.set((pf as any).id, (pf as any).baseCurrency || "USD");
+      } else {
+        const pf = await db.select().from((await import("../drizzle/schema")).portfolios).where(eq((await import("../drizzle/schema")).portfolios.id, input.portfolioId)).then((r:any)=>r[0]);
+        if (pf) portfolioCurrencyMap.set(input.portfolioId, (pf as any).baseCurrency || "USD");
+      }
+      const getFxSync = async (currency: string, date: Date = new Date()) => currency === "USD" ? 1 : await getFxRate(currency, "USD", date);
+
       let holdings = await getUserEtfHoldings(ctx.user.id, input.portfolioId, input.accountId);
       
       if (input.accountType && input.accountId === undefined) {
-        const db = await getDb();
+        // db already defined above
         const conditions: any[] = [eq(accounts.userId, ctx.user.id), eq(accounts.accountType, input.accountType)];
         if (input.portfolioId) conditions.push(eq(accounts.portfolioId, input.portfolioId));
         const matchingAccounts = await db.select({ id: accounts.id })
@@ -1097,7 +1143,13 @@ export const etfRouter = router({
           
           if (data.monthlyDPS.has(targetMonth)) {
             const scheduledDPS = data.monthlyDPS.get(targetMonth)!;
-            const payout = state.quantity * scheduledDPS;
+            let payout = state.quantity * scheduledDPS;
+            if (isConsolidatedUSD) {
+              const hForSym = holdings.find((h:any)=> h.symbol.toUpperCase()===symbol);
+              const cur = hForSym ? (portfolioCurrencyMap.get((hForSym as any).portfolioId) || "USD") : "USD";
+              const fx = await getFxSync(cur, projectionDate);
+              payout = payout * fx;
+            }
             
             if (i === 0) {
               currentMonthProjectedMap.set(symbol, payout);
@@ -2003,6 +2055,18 @@ export const etfRouter = router({
         .filter((a: any) => !input.accountType || a.accountType === input.accountType)
         .map((a: any) => a.id);
 
+      // FX: map portfolioId -> baseCurrency for conversion to USD when consolidated
+      const isConsolidatedUSD = !input.portfolioId;
+      let portfolioCurrencyMap = new Map<number,string>();
+      if (isConsolidatedUSD) {
+        const allPortfolios = await db.select().from((await import("../drizzle/schema")).portfolios).where(eq((await import("../drizzle/schema")).portfolios.userId, ctx.user.id));
+        for (const pf of allPortfolios) portfolioCurrencyMap.set((pf as any).id, (pf as any).baseCurrency || "USD");
+      } else {
+        const pf = await db.select().from((await import("../drizzle/schema")).portfolios).where(eq((await import("../drizzle/schema")).portfolios.id, input.portfolioId)).then((r:any)=>r[0]);
+        if (pf) portfolioCurrencyMap.set(input.portfolioId, (pf as any).baseCurrency || "USD");
+      }
+      const getFxSync = async (currency: string, date: Date = new Date()) => currency === "USD" ? 1 : await getFxRate(currency, "USD", date);
+
       let holdings = await getUserEtfHoldings(ctx.user.id, input.portfolioId, input.accountId);
       if (input.accountType && input.accountId === undefined) {
         holdings = holdings.filter((h: any) => filteredAccountIds.includes(h.accountId));
@@ -2017,12 +2081,16 @@ export const etfRouter = router({
       let fixedIncomeInvestmentValue = 0;
       const holdingsWithValues = await Promise.all(
         holdings.map(async (holding: any) => {
+          const curHold = portfolioCurrencyMap.get((holding as any).portfolioId) || "USD";
+          const fxHold = isConsolidatedUSD ? await getFxSync(curHold) : 1;
           const currentPrice = holding.currentPrice ? parseFloat(holding.currentPrice.toString()) : 0;
           const quantity = parseFloat(holding.quantity.toString());
-          const value = truncateNumber(currentPrice * quantity);
+          const valueLocal = truncateNumber(currentPrice * quantity);
+          const value = isConsolidatedUSD ? truncateNumber(valueLocal * fxHold) : valueLocal;
           const avgCost = await calculateAverageCost(holding.id);
           const avgCostValue = avgCost ? parseFloat(avgCost.toString()) : parseFloat(holding.purchasePrice.toString());
-          const purchaseValue = truncateNumber(avgCostValue * quantity);
+          const purchaseValueLocal = truncateNumber(avgCostValue * quantity);
+          const purchaseValue = isConsolidatedUSD ? truncateNumber(purchaseValueLocal * fxHold) : purchaseValueLocal;
           const gain = value - purchaseValue;
           equityInvestmentValue += value;
           return { ...holding, averageCost: avgCost, totalCostNum: purchaseValue, currentValueNum: value, gainNum: gain, assetType: "etf" };
@@ -2030,16 +2098,20 @@ export const etfRouter = router({
       );
       const bondHoldingsWithValues = await Promise.all(
         bondHoldingsRaw.map(async (holding: any) => {
+          const curHoldB = portfolioCurrencyMap.get((holding as any).portfolioId) || "USD";
+          const fxHoldB = isConsolidatedUSD ? await getFxSync(curHoldB) : 1;
           const brokeragePriceStr = await getBondPriceFromBrokerage(holding.symbol);
           const effectivePrice = brokeragePriceStr ? parseFloat(brokeragePriceStr) : (holding.currentPrice ? parseFloat(holding.currentPrice.toString()) : 0);
           const quantity = parseFloat(holding.quantity.toString());
-          const value = truncateNumber(effectivePrice * quantity);
+          const valueLocalB = truncateNumber(effectivePrice * quantity);
+          const value = isConsolidatedUSD ? truncateNumber(valueLocalB * fxHoldB) : valueLocalB;
           const avgCost = await calculateBondAverageCost(holding.id);
           const avgCostValue = avgCost ? parseFloat(avgCost.toString()) : parseFloat(holding.purchasePrice.toString());
-          const purchaseValue = truncateNumber(avgCostValue * quantity);
-          const gain = value - purchaseValue;
+          const purchaseValueLocalB = truncateNumber(avgCostValue * quantity);
+          const purchaseValueB = isConsolidatedUSD ? truncateNumber(purchaseValueLocalB * fxHoldB) : purchaseValueLocalB;
+          const gain = value - purchaseValueB;
           fixedIncomeInvestmentValue += value;
-          return { ...holding, currentPrice: brokeragePriceStr || holding.currentPrice, averageCost: avgCost, totalCostNum: purchaseValue, currentValueNum: value, gainNum: gain, assetType: "bond" };
+          return { ...holding, currentPrice: brokeragePriceStr || holding.currentPrice, averageCost: avgCost, totalCostNum: purchaseValueB, currentValueNum: value, gainNum: gain, assetType: "bond" };
         })
       );
       const allHoldingsWithValues = [...holdingsWithValues, ...bondHoldingsWithValues];
@@ -2147,7 +2219,15 @@ export const etfRouter = router({
                     qtyOwned = holdingQty;
                   }
                   if (qtyOwned > 0) {
-                    dividendsReceived += qtyOwned * couponRate / 2;
+                    let divLocal = qtyOwned * couponRate / 2;
+                    if (isConsolidatedUSD) {
+                      // Find currency for this coupon date: use holding's portfolio currency (first portfolio for consolidated)
+                      // For consolidated, approximate with FX at coupon date averaged across portfolios; use current FX as proxy for now
+                      const cur = h.isConsolidated ? (portfolioCurrencyMap.get(allPurchases[0]?.portfolioId) || "USD") : (portfolioCurrencyMap.get((h as any).portfolioId) || "USD");
+                      const fx = await getFxSync(cur, cDate);
+                      divLocal = divLocal * fx;
+                    }
+                    dividendsReceived += divLocal;
                   }
                 }
               }
@@ -2190,7 +2270,15 @@ export const etfRouter = router({
                   qtyOwned -= parseFloat((p as any).quantity);
                 }
               }
-              if (qtyOwned > 0) dividendsReceived += qtyOwned * div.dividendPerShare;
+              if (qtyOwned > 0) {
+                let divLocal = qtyOwned * div.dividendPerShare;
+                if (isConsolidatedUSD) {
+                  const cur = h.isConsolidated ? (portfolioCurrencyMap.get(allPurchases[0]?.portfolioId) || "USD") : (portfolioCurrencyMap.get((h as any).portfolioId) || "USD");
+                  const fx = await getFxSync(cur, exDate);
+                  divLocal = divLocal * fx;
+                }
+                dividendsReceived += divLocal;
+              }
             }
           } catch (e) {
             dividendsReceived = 0;
@@ -2415,10 +2503,23 @@ export const etfRouter = router({
       })
     )
     .query(async ({ ctx, input }) => {
+      const db = await getDb();
+      // FX: map portfolioId -> baseCurrency for conversion to USD when consolidated
+      const isConsolidatedUSD = !input.portfolioId;
+      let portfolioCurrencyMap = new Map<number,string>();
+      if (isConsolidatedUSD) {
+        const allPortfolios = await db.select().from((await import("../drizzle/schema")).portfolios).where(eq((await import("../drizzle/schema")).portfolios.userId, ctx.user.id));
+        for (const pf of allPortfolios) portfolioCurrencyMap.set((pf as any).id, (pf as any).baseCurrency || "USD");
+      } else {
+        const pf = await db.select().from((await import("../drizzle/schema")).portfolios).where(eq((await import("../drizzle/schema")).portfolios.id, input.portfolioId)).then((r:any)=>r[0]);
+        if (pf) portfolioCurrencyMap.set(input.portfolioId, (pf as any).baseCurrency || "USD");
+      }
+      const getFxSync = async (currency: string, date: Date = new Date()) => currency === "USD" ? 1 : await getFxRate(currency, "USD", date);
+
       let holdings = await getUserEtfHoldings(ctx.user.id, input.portfolioId, input.accountId);
       
       if (input.accountType && input.accountId === undefined) {
-        const db = await getDb();
+        // db already defined above
         const conditions: any[] = [eq(accounts.userId, ctx.user.id), eq(accounts.accountType, input.accountType)];
         if (input.portfolioId) conditions.push(eq(accounts.portfolioId, input.portfolioId));
         const matchingAccounts = await db.select({ id: accounts.id })

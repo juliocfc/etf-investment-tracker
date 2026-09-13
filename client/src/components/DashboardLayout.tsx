@@ -30,7 +30,7 @@ interface DashboardLayoutProps {
   portfolios: any[];
   selectedPortfolioId: number | null;
   onPortfolioChange: (id: number) => void;
-  onCreatePortfolio: (name: string) => void;
+  onCreatePortfolio: (name: string, currency?: string) => void;
   onDeletePortfolio: (id: number) => void;
 }
 
@@ -45,6 +45,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
 }) => {
   const [isAddPortfolioOpen, setIsAddPortfolioOpen] = useState(false);
   const [newPortfolioName, setNewPortfolioName] = useState("");
+  const [newPortfolioCurrency, setNewPortfolioCurrency] = useState("USD");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { user, logout } = useAuth();
   const [cmdOpen, setCmdOpen] = useState(false);
@@ -135,11 +136,27 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
                         autoFocus
                       />
                     </div>
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Currency</label>
+                      <Select value={newPortfolioCurrency} onValueChange={setNewPortfolioCurrency}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="USD">USD — US Dollar</SelectItem>
+                          <SelectItem value="BRL">BRL — Brazilian Real</SelectItem>
+                          <SelectItem value="EUR">EUR — Euro</SelectItem>
+                          <SelectItem value="GBP">GBP — British Pound</SelectItem>
+                          <SelectItem value="JPY">JPY — Yen</SelectItem>
+                          <SelectItem value="CAD">CAD — Canadian Dollar</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <p className="text-[10px] text-slate-400">Trades in this portfolio use this currency. Consolidated view converts to USD.</p>
+                    </div>
                     <Button
                       onClick={() => {
-                        onCreatePortfolio(newPortfolioName);
+                        (onCreatePortfolio as any)(newPortfolioName, newPortfolioCurrency);
                         setIsAddPortfolioOpen(false);
                         setNewPortfolioName("");
+                        setNewPortfolioCurrency("USD");
                       }}
                       className="w-full bg-[#004a99] hover:bg-[#003d7a]"
                       disabled={!newPortfolioName}

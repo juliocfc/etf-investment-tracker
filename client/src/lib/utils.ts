@@ -19,19 +19,36 @@ export function truncateNumber(value: number, decimals: number = 2): number {
 
 /**
  * Formats a number as a currency string with comma separators
+ * @param currency ISO 4217 code, default USD
  */
-export function formatCurrency(value: number | string | undefined | null, decimals: number = 2): string {
-  if (value === undefined || value === null) return "$0.00";
+export function formatCurrency(value: number | string | undefined | null, decimals: number = 2, currency: string = "USD"): string {
+  if (value === undefined || value === null) return new Intl.NumberFormat("en-US", { style: "currency", currency, minimumFractionDigits: decimals, maximumFractionDigits: decimals }).format(0);
   
   const numValue = typeof value === "string" ? parseFloat(value) : value;
-  if (isNaN(numValue)) return "$0.00";
+  if (isNaN(numValue)) return new Intl.NumberFormat("en-US", { style: "currency", currency, minimumFractionDigits: decimals, maximumFractionDigits: decimals }).format(0);
 
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals,
-  }).format(numValue);
+  // Support overload formatCurrency(value, currencyCode) where second arg is string
+  if (typeof decimals === "string") {
+    currency = decimals as unknown as string;
+    decimals = 2;
+  }
+
+  try {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency,
+      minimumFractionDigits: decimals as number,
+      maximumFractionDigits: decimals as number,
+    }).format(numValue);
+  } catch {
+    return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: decimals as number, maximumFractionDigits: decimals as number }).format(numValue);
+  }
+}
+
+export function getCurrencySymbol(currency: string = "USD"): string {
+  try {
+    return (0).toLocaleString("en-US", { style: "currency", currency, minimumFractionDigits: 0, maximumFractionDigits: 0 }).replace(/0/g, "").trim() || "$";
+  } catch { return "$"; }
 }
 
 /**

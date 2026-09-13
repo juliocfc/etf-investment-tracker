@@ -1,6 +1,7 @@
 import { router, protectedProcedure } from "./_core/trpc";
 import { z } from "zod";
 import { getDb, eq, and, desc, truncateNumber } from "./db";
+import { getFxRate } from "./fxService";
 import { portfolios, cashBalance, InsertPortfolio } from "../drizzle/schema";
 import { TRPCError } from "@trpc/server";
 
@@ -147,10 +148,14 @@ export const portfolioRouter = router({
       const portfolioGain = portfolioInvestmentValue - portfolioTotalCost;
       const portfolioGainPercent = portfolioTotalCost > 0 ? (portfolioGain / portfolioTotalCost) * 100 : 0;
 
+      const baseCurrency = (portfolio as any).baseCurrency || "USD";
+      const fxRate = baseCurrency === "USD" ? 1 : await getFxRate(baseCurrency, "USD", new Date());
+      const toUSD = (v: number) => baseCurrency === "USD" ? v : truncateNumber(v * fxRate);
       result.push({
         id: portfolio.id,
         name: portfolio.name,
         description: portfolio.description,
+        baseCurrency,
         investmentValue: portfolioInvestmentValue.toFixed(2),
         equityInvestmentValue: portfolioEquityValue.toFixed(2),
         fixedIncomeInvestmentValue: portfolioFixedIncomeValue.toFixed(2),
@@ -159,6 +164,12 @@ export const portfolioRouter = router({
         gainPercent: portfolioGainPercent.toFixed(2),
         cashValue: portfolioCashValue.toFixed(2),
         totalValue: truncateNumber(portfolioInvestmentValue + portfolioCashValue).toFixed(2),
+        investmentValueUSD: toUSD(portfolioInvestmentValue).toFixed(2),
+        equityInvestmentValueUSD: toUSD(portfolioEquityValue).toFixed(2),
+        fixedIncomeInvestmentValueUSD: toUSD(portfolioFixedIncomeValue).toFixed(2),
+        cashValueUSD: toUSD(portfolioCashValue).toFixed(2),
+        totalValueUSD: toUSD(truncateNumber(portfolioInvestmentValue + portfolioCashValue)).toFixed(2),
+        fxRateToUSD: fxRate.toString(),
         accounts: accountDetails,
       });
     }
@@ -188,13 +199,18 @@ export const portfolioRouter = router({
     let fixedIncomeInvestmentValue = 0;
     let totalCashBalance = 0;
 
-    // Calculate total ETF + Bond value across all portfolios
+    // Calculate total ETF + Bond value across all portfolios — consolidated always in USD
+    const portfolioCurrencyMap = new Map<number,string>(userPortfolios.map((p:any)=>[p.id, (p as any).baseCurrency || "USD"]));
+    const today = new Date();
     for (const portfolio of userPortfolios) {
+      const cur = portfolioCurrencyMap.get(portfolio.id) || "USD";
+      const fx = cur === "USD" ? 1 : await getFxRate(cur, "USD", today);
       const holdings = await getUserEtfHoldings(ctx.user.id, portfolio.id);
       for (const holding of holdings) {
         const currentPrice = holding.currentPrice ? parseFloat(holding.currentPrice.toString()) : 0;
         const quantity = parseFloat(holding.quantity.toString());
-        const val = truncateNumber(currentPrice * quantity);
+        const valLocal = truncateNumber(currentPrice * quantity);
+        const val = cur === "USD" ? valLocal : truncateNumber(valLocal * fx);
         totalInvestmentValue += val;
         equityInvestmentValue += val;
       }
@@ -203,15 +219,19 @@ export const portfolioRouter = router({
         const brokeragePrice = await getBondPriceFromBrokerage(holding.symbol);
         const currentPrice = brokeragePrice ? parseFloat(brokeragePrice) : (holding.currentPrice ? parseFloat(holding.currentPrice.toString()) : 0);
         const quantity = parseFloat(holding.quantity.toString());
-        const val = truncateNumber(currentPrice * quantity);
+        const valLocal = truncateNumber(currentPrice * quantity);
+        const val = cur === "USD" ? valLocal : truncateNumber(valLocal * fx);
         totalInvestmentValue += val;
         fixedIncomeInvestmentValue += val;
       }
     }
 
-    // Calculate total cash
+    // Calculate total cash — convert to USD
     for (const cash of cashBalances) {
-      totalCashBalance += parseFloat(cash.amount.toString());
+      const cur = portfolioCurrencyMap.get((cash as any).portfolioId) || "USD";
+      const fx = cur === "USD" ? 1 : await getFxRate(cur, "USD", today);
+      const amtLocal = parseFloat((cash as any).amount.toString());
+      totalCashBalance += cur === "USD" ? amtLocal : truncateNumber(amtLocal * fx);
     }
 
     const totalValue = truncateNumber(totalInvestmentValue + totalCashBalance);
@@ -258,6 +278,7 @@ export const portfolioRouter = router({
       z.object({
         name: z.string().min(1, "Portfolio name is required").max(255),
         description: z.string().max(1000).optional(),
+        baseCurrency: z.string().min(3).max(3).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -268,6 +289,7 @@ export const portfolioRouter = router({
         userId: ctx.user.id,
         name: input.name,
         description: input.description || null,
+        baseCurrency: (input.baseCurrency || "USD").toUpperCase(),
       };
 
       const result = await db.insert(portfolios).values(newPortfolio);
@@ -303,6 +325,7 @@ export const portfolioRouter = router({
         portfolioId: z.number(),
         name: z.string().min(1, "Portfolio name is required").max(255).optional(),
         description: z.string().max(1000).optional(),
+        baseCurrency: z.string().min(3).max(3).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -326,6 +349,7 @@ export const portfolioRouter = router({
       const updateData: Record<string, unknown> = {};
       if (input.name !== undefined) updateData.name = input.name;
       if (input.description !== undefined) updateData.description = input.description;
+      if (input.baseCurrency !== undefined) updateData.baseCurrency = input.baseCurrency.toUpperCase();
 
       await db
         .update(portfolios)
@@ -627,15 +651,31 @@ export const portfolioRouter = router({
     const enrichedBonds = await Promise.all(activeBonds.map(async (h: any) => {
       const brokeragePrice = await getBondPriceFromBrokerage(h.symbol);
       if (brokeragePrice) h.currentPrice = brokeragePrice;
-      return { ...h, assetType: "bond", annualDividendPerShare: 0 };
+      const cur = (await db.select().from(portfolios).where(eq(portfolios.id, (h as any).portfolioId)).then((r:any)=>r[0]) as any)?.baseCurrency || "USD";
+      const fx = cur === "USD" ? 1 : await getFxRate(cur, "USD", new Date());
+      const cp = parseFloat((h as any).currentPrice || "0");
+      const pp = parseFloat((h as any).purchasePrice || "0");
+      const couponUSD = (parseFloat((h as any).couponRate || "0") * fx).toString();
+      return { ...h, assetType: "bond", annualDividendPerShare: 0, couponRateUSD: couponUSD, baseCurrency: cur, currentPriceUSD: (cp * fx).toString(), purchasePriceUSD: (pp * fx).toString(), fxRateToUSD: fx.toString() };
     }));
 
     console.log(`[Portfolio] Found ${activeHoldings.length} active ETF holdings + ${enrichedBonds.length} bond holdings (${holdings.length} total) for user ${ctx.user.id}`);
     
-    const holdingsWithDividends = activeHoldings.map(h => ({
-      ...h,
-      assetType: "etf",
-      annualDividendPerShare: parseFloat(h.annualDividendPerShare || "0")
+    const holdingsWithDividends = await Promise.all(activeHoldings.map(async h => {
+      const cur = (await db.select().from(portfolios).where(eq(portfolios.id, (h as any).portfolioId)).then((r:any)=>r[0]) as any)?.baseCurrency || "USD";
+      const fx = cur === "USD" ? 1 : await getFxRate(cur, "USD", new Date());
+      const cp = parseFloat((h as any).currentPrice || "0");
+      const pp = parseFloat((h as any).purchasePrice || "0");
+      return {
+        ...h,
+        assetType: "etf",
+        annualDividendPerShare: parseFloat(h.annualDividendPerShare || "0"),
+        annualDividendPerShareUSD: (parseFloat(h.annualDividendPerShare || "0") * fx).toString(),
+        baseCurrency: cur,
+        currentPriceUSD: (cp * fx).toString(),
+        purchasePriceUSD: (pp * fx).toString(),
+        fxRateToUSD: fx.toString(),
+      };
     }));
 
     console.log(`[Portfolio] Finished processing all holdings for user ${ctx.user.id}`);
