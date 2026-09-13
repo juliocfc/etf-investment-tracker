@@ -2880,8 +2880,11 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                     <Wallet className="w-5 h-5 text-green-600" />
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-xs text-slate-500">Available across {summary.accountSummaries ? Object.keys(summary.accountSummaries).length : 0} accounts</span>
+                  {summary && parseFloat(summary.totalValue||"0")>0 && parseFloat(summary.cashBalance||"0")/parseFloat(summary.totalValue||"1")>0.05 && (
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-200">Cash Drag {(parseFloat(summary.cashBalance||"0")/parseFloat(summary.totalValue||"1")*100).toFixed(1)}% - consider deploying {formatCurrency((parseFloat(summary.cashBalance||"0") - parseFloat(summary.totalValue||"0")*0.02).toFixed(2))}</span>
+                  )}
                 </div>
               </Card>
 
@@ -2927,6 +2930,27 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                 <Card key={i} className="h-32 bg-slate-50 border-slate-100" />
               ))}
             </div>
+          )}
+
+          {/* Rebalance Plan — drift vs target */}
+          {summary && (summary as any).holdingsAllocation && (
+          <Card className="p-6 bg-white shadow-sm border border-border border-l-4 border-l-amber-500">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2"><TrendingUp className="w-4 h-4 text-amber-600" /><h3 className="text-sm font-bold text-slate-800 uppercase tracking-widest">Rebalance Plan — Drift vs Target</h3></div>
+              <button onClick={() => { const rows = ((summary as any).holdingsAllocation||[]).map((a:any)=>{ const actual=parseFloat(a.percentage||"0"); const target=parseFloat(a.desiredAllocation||"0"); const drift=target-actual; const deltaVal= parseFloat(summary.totalValue||"0")*drift/100; return [a.symbol, actual.toFixed(2), target.toFixed(2), drift.toFixed(2), deltaVal.toFixed(2)].join(","); }).join("\n"); const blob=new Blob(["symbol,actual%,target%,drift%,delta$\n"+rows],{type:"text/csv"}); const url=URL.createObjectURL(blob); const a=document.createElement("a"); a.href=url; a.download="rebalance-plan.csv"; a.click(); }} className="h-7 px-3 text-[10px] font-bold uppercase bg-white border border-slate-200 rounded hover:bg-slate-50">Export CSV</button>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead className="bg-slate-50"><tr className="border-b text-[10px] font-bold text-slate-500 uppercase tracking-widest"><th className="text-left py-2 px-3">Asset</th><th className="text-right py-2 px-3">Actual %</th><th className="text-right py-2 px-3">Target %</th><th className="text-right py-2 px-3">Drift</th><th className="text-right py-2 px-3">Delta $</th><th className="text-right py-2 px-3">Action</th></tr></thead>
+                <tbody>
+                  {((summary as any).holdingsAllocation||[]).map((a:any)=>{ const actual=parseFloat(a.percentage||"0"); const target=parseFloat(a.desiredAllocation||"0"); const drift=target-actual; const deltaVal= parseFloat(summary.totalValue||"0")*drift/100; const isBuy=drift>0.5; const isSell=drift<-0.5; return (
+                    <tr key={a.symbol} className="border-b hover:bg-slate-50"><td className="py-2 px-3 font-bold text-primary">{a.symbol}</td><td className="py-2 px-3 text-right font-mono">{actual.toFixed(2)}%</td><td className="py-2 px-3 text-right font-mono">{target.toFixed(2)}%</td><td className={"py-2 px-3 text-right font-mono font-bold "+ (Math.abs(drift)<0.5?"text-slate-400": drift>0?"text-green-600":"text-red-600")}>{drift>0?"+":""}{drift.toFixed(2)}%</td><td className={"py-2 px-3 text-right font-mono "+ (deltaVal>=0?"text-green-600":"text-red-600")}>{deltaVal>=0?"+":""}{formatCurrency(deltaVal.toFixed(2))}</td><td className="py-2 px-3 text-right"><span className={"text-[10px] font-bold px-2 py-0.5 rounded "+(isBuy?"bg-green-100 text-green-700": isSell?"bg-red-100 text-red-700":"bg-slate-100 text-slate-500")}>{isBuy?"Buy": isSell?"Sell":"Hold"}</span></td></tr>
+                  ); })}
+                </tbody>
+              </table>
+            </div>
+            <div className="text-[10px] text-slate-400 mt-2">Set Target % per holding via input in Holdings table. Drift &gt; +/-0.5% flagged.</div>
+          </Card>
           )}
 
           {/* Accounts & Holdings Content */}

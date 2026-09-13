@@ -1,5 +1,6 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useAuth } from "@/_core/hooks/useAuth";
+import { CommandDialog, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from "@/components/ui/command";
 import { trpc } from "@/lib/trpc";
 import { formatCurrency } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -46,6 +47,8 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
   const [newPortfolioName, setNewPortfolioName] = useState("");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { user, logout } = useAuth();
+  const [cmdOpen, setCmdOpen] = useState(false);
+  useEffect(()=>{ const h=(e:KeyboardEvent)=>{ if((e.metaKey||e.ctrlKey)&& e.key.toLowerCase()==="k"){ e.preventDefault(); setCmdOpen(o=>!o); } }; window.addEventListener("keydown",h); return ()=> window.removeEventListener("keydown",h); },[]);
 
   const selectedPortfolio = portfolios.find(p => p.id === selectedPortfolioId);
 
@@ -361,6 +364,18 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
             </div>
           </footer>
         </main>
+      <CommandDialog open={cmdOpen} onOpenChange={setCmdOpen}>
+        <CommandInput placeholder="Search portfolios, holdings... (⌘K)" />
+        <CommandList>
+          <CommandEmpty>No results.</CommandEmpty>
+          <CommandGroup heading="Portfolios">
+            {portfolios.map((p:any)=> <CommandItem key={p.id} onSelect={()=>{ onPortfolioChange(p.id); setCmdOpen(false); }}>{p.name}</CommandItem>)}
+          </CommandGroup>
+          <CommandGroup heading="Navigate">
+            {["Dashboard","Portfolio","Income","Performance","Activities"].map(t=> <CommandItem key={t} onSelect={()=>{ onTabChange?.(t.toLowerCase()); setCmdOpen(false); }}>Go to {t}</CommandItem>)}
+          </CommandGroup>
+        </CommandList>
+      </CommandDialog>
       </div>
     </div>
   );

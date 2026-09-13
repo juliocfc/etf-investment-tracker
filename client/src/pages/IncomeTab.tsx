@@ -82,6 +82,11 @@ export default function IncomeTab({
     return result;
   }, [bondHoldings]);
 
+  const { data: dividendCalendar } = trpc.etf.getDividendCalendar.useQuery(
+    { portfolioId: selectedPortfolioId, accountType: selectedAccountType === "all" ? undefined : selectedAccountType },
+    { enabled: true }
+  );
+
   const { data: projections, isLoading: isProjectionLoading } = trpc.etf.getProjectedDividends.useQuery(
     { 
       portfolioId: selectedPortfolioId, 
@@ -709,6 +714,93 @@ export default function IncomeTab({
           <div className="text-center py-10 text-slate-400">No projection data available. Add holdings to see forecasts.</div>
         )}
       </div>
+
+      {/* Dividend Calendar — next ex-div / pay dates */}
+      <Card className="bg-white shadow-sm border border-border overflow-hidden">
+        <div className="px-6 py-4 border-b border-border bg-slate-50/50 flex items-center gap-2">
+          <Calendar className="w-4 h-4 text-primary" />
+          <h3 className="text-sm font-bold text-slate-700">Dividend Calendar — Upcoming Ex-Div / Pay Dates</h3>
+          <span className="ml-auto text-[10px] font-bold text-slate-400 uppercase tracking-widest">Next 3 per holding • est. from frequency</span>
+        </div>
+        <div className="overflow-x-auto max-h-[320px] overflow-y-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 sticky top-0">
+              <tr className="border-b border-border text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                <th className="text-left py-2 px-6">Asset</th>
+                <th className="text-left py-2 px-6">Ex-Date</th>
+                <th className="text-left py-2 px-6">Pay Date</th>
+                <th className="text-right py-2 px-6">DPS</th>
+                <th className="text-right py-2 px-6">Est. Payout</th>
+                <th className="text-center py-2 px-6">Freq</th>
+                <th className="text-center py-2 px-6">Reliability</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(dividendCalendar || []).slice(0,18).map((row:any, i:number)=> (
+                <tr key={i} className="border-b border-slate-100 hover:bg-slate-50">
+                  <td className="py-2.5 px-6 font-bold text-primary">{row.symbol}</td>
+                  <td className="py-2.5 px-6 font-mono text-slate-700">{row.exDate}</td>
+                  <td className="py-2.5 px-6 font-mono text-slate-500">{row.paymentDate || "—"}</td>
+                  <td className="py-2.5 px-6 text-right font-mono">{row.dps}</td>
+                  <td className="py-2.5 px-6 text-right font-mono font-bold text-green-600">{formatCurrency(row.estimatedAmount)}</td>
+                  <td className="py-2.5 px-6 text-center"><span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-600">{row.frequency}</span></td>
+                  <td className="py-2.5 px-6 text-center"><span className={"text-[10px] font-bold px-2 py-0.5 rounded " + (row.reliability>=90?"bg-green-100 text-green-700": row.reliability>=70?"bg-amber-100 text-amber-700":"bg-red-100 text-red-700")}>{row.reliability}%</span></td>
+                </tr>
+              ))}
+              {(!dividendCalendar || dividendCalendar.length===0) && <tr><td colSpan={7} className="py-8 text-center text-slate-400 text-xs">No dividend calendar — add ETF holdings to see upcoming ex-dates</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      {/* Bond Ladder — maturities & coupons by year */}
+      {bondHoldings && bondHoldings.length>0 && (
+      <Card className="bg-white shadow-sm border border-border overflow-hidden">
+        <div className="px-6 py-4 border-b border-border bg-slate-50/50 flex items-center gap-2">
+          <Landmark className="w-4 h-4 text-purple-600" />
+          <h3 className="text-sm font-bold text-slate-700">Bond Ladder — Maturities & Coupons by Year</h3>
+        </div>
+        <div className="p-4">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50">
+                <tr className="border-b border-border text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                  <th className="text-left py-2 px-4">Year</th>
+                  <th className="text-right py-2 px-4">Maturing Principal</th>
+                  <th className="text-right py-2 px-4">Annual Coupon</th>
+                  <th className="text-left py-2 px-4">Bonds</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(() => {
+                  const byYear: Record<string,{principal:number, coupon:number, symbols:string[]}> = {};
+                  (bondHoldings as any[]).forEach((h:any)=>{ const y = h.redemptionDate ? new Date(h.redemptionDate).getFullYear().toString() : "Unknown"; if(!byYear[y]) byYear[y]={principal:0, coupon:0, symbols:[]}; byYear[y].principal += parseFloat(h.quantity||"0") * 100; byYear[y].coupon += parseFloat(h.quantity||"0")*parseFloat(h.couponRate||"0"); byYear[y].symbols.push(h.symbol); });
+                  return Object.entries(byYear).sort((a,b)=> a[0].localeCompare(b[0])).map(([year, v])=> (
+                    <tr key={year} className="border-b border-slate-100 hover:bg-slate-50">
+                      <td className="py-2 px-4 font-bold text-slate-800">{year}</td>
+                      <td className="py-2 px-4 text-right font-mono">{formatCurrency(v.principal.toFixed(2))}</td>
+                      <td className="py-2 px-4 text-right font-mono text-green-600 font-bold">{formatCurrency(v.coupon.toFixed(2))}</td>
+                      <td className="py-2 px-4 text-[11px] text-slate-600">{v.symbols.join(", ")}</td>
+                    </tr>
+                  ));
+                })()}
+              </tbody>
+            </table>
+          </div>
+          <div className="h-[140px] w-full mt-4">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={(() => { const byYear: Record<string, number> = {}; (bondHoldings as any[]).forEach((h:any)=>{ const y = h.redemptionDate ? new Date(h.redemptionDate).getFullYear().toString() : "Unknown"; byYear[y]=(byYear[y]||0)+ parseFloat(h.quantity||"0")*parseFloat(h.couponRate||"0"); }); return Object.entries(byYear).sort((a,b)=> a[0].localeCompare(b[0])).map(([year, coupon])=> ({year, coupon: parseFloat(coupon.toFixed(2))})); })()}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                <XAxis dataKey="year" stroke="#94a3b8" fontSize={9} tickLine={false} axisLine={false} />
+                <YAxis stroke="#94a3b8" fontSize={9} tickLine={false} axisLine={false} tickFormatter={(v)=> `$${v}`} />
+                <Tooltip formatter={(v:any)=> [formatCurrency(v),"Annual Coupon"]} />
+                <Bar dataKey="coupon" fill="#9333ea" radius={[4,4,0,0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </Card>
+      )}
 
       {/* Holdings Income Summary - per asset including individual bonds */}
       <Card id="income" className="bg-white shadow-sm border border-border overflow-hidden">

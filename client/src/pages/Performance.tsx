@@ -17,7 +17,7 @@ import {
   ResponsiveContainer,
   Legend,
 } from "recharts";
-import { TrendingUp, Activity, BarChart3, Database, RefreshCw, ArrowUpRight, ArrowDownRight } from "lucide-react";
+import { TrendingUp, Activity, BarChart3, Database, RefreshCw, ArrowUpRight, ArrowDownRight, Shield, Zap } from "lucide-react";
 
 type TimeRange = "1m" | "3m" | "6m" | "ytd" | "1y" | "3y" | "all";
 
@@ -55,6 +55,10 @@ export default function Performance({
     },
     { enabled: !!selectedPortfolioId }
   );
+
+  const { data: riskMetrics } = trpc.etf.getPerformanceRiskMetrics.useQuery({ portfolioId: selectedPortfolioId, accountType: selectedAccountType === "all" ? undefined : selectedAccountType }, { enabled: !!selectedPortfolioId });
+  const [benchSymbol, setBenchSymbol] = useState("SPY");
+  const { data: benchmarkSeries } = trpc.etf.getBenchmarkSeries.useQuery({ portfolioId: selectedPortfolioId, range: growthRange as any, symbol: benchSymbol, granularity: "1mo" }, { enabled: !!selectedPortfolioId });
 
   const { data: yearlyPerformance } = trpc.etf.getYearlyPerformance.useQuery(
     { 
@@ -212,6 +216,12 @@ export default function Performance({
           </div>
         </div>
 
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest hidden md:inline">Benchmark</span>
+          <select value={benchSymbol} onChange={e=>setBenchSymbol(e.target.value)} className="h-7 text-[10px] font-bold bg-white border border-slate-200 rounded px-2">
+            <option value="SPY">SPY</option><option value="VWCE.DE">VWCE</option><option value="AGG">AGG (Bonds)</option><option value="BTC-USD">BTC</option>
+          </select>
+        </div>
         <div className="flex items-center gap-3 w-full md:w-auto">
           <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-md border border-slate-100">
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Account:</span>
@@ -331,6 +341,37 @@ export default function Performance({
           )}
         </div>
       </Card>
+
+      {/* Risk Metrics */}
+      {riskMetrics && (
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <Card className="p-4 bg-white border border-border text-center"><div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Sharpe (12M)</div><div className="text-xl font-mono font-bold text-slate-800 mt-1">{riskMetrics.sharpe}</div><div className={"text-[10px] font-bold " + (parseFloat(riskMetrics.sharpe)>=1 ? "text-green-600":"text-slate-400")}>{parseFloat(riskMetrics.sharpe)>=1?"Good": parseFloat(riskMetrics.sharpe)>=0.5?"Fair":"Low"}</div></Card>
+        <Card className="p-4 bg-white border border-border text-center"><div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Max Drawdown</div><div className="text-xl font-mono font-bold text-red-600 mt-1">-{riskMetrics.maxDrawdown}%</div><div className="text-[10px] text-slate-400">Peak to trough</div></Card>
+        <Card className="p-4 bg-white border border-border text-center"><div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Volatility (mo)</div><div className="text-xl font-mono font-bold text-slate-800 mt-1">{riskMetrics.volatility}%</div><div className="text-[10px] text-slate-400">Std dev</div></Card>
+        <Card className="p-4 bg-white border border-border text-center"><div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Beta vs SPY</div><div className="text-xl font-mono font-bold text-slate-800 mt-1">{(riskMetrics as any).beta || "—"}</div><div className="text-[10px] text-slate-400">Sensitivity</div></Card>
+        <Card className="p-4 bg-white border border-border text-center"><div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Win Rate</div><div className="text-xl font-mono font-bold text-green-600 mt-1">{riskMetrics.winRate}%</div><div className="text-[10px] text-slate-400">Positive months</div></Card>
+      </div>
+      )}
+
+      {/* Benchmark Normalized Overlay */}
+      {benchmarkSeries && benchmarkSeries.length>0 && (
+      <Card className="bg-white border-none shadow-sm shadow-slate-200/50 p-6">
+        <div className="flex items-center gap-2 mb-4"><TrendingUp className="w-4 h-4 text-primary" /><h2 className="text-sm font-bold text-slate-800 uppercase tracking-widest">Benchmark — Normalized to 100</h2><span className="ml-auto text-[10px] text-slate-400">Portfolio vs {benchSymbol}</span></div>
+        <div className="h-[240px] w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={benchmarkSeries}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+              <XAxis dataKey="date" stroke="#94a3b8" fontSize={9} tickLine={false} axisLine={false} tickFormatter={(v)=> new Date(v+"T12:00:00").toLocaleDateString(undefined,{month:"short"})} />
+              <YAxis stroke="#94a3b8" fontSize={9} tickLine={false} axisLine={false} />
+              <Tooltip formatter={(v:any)=> (v as number).toFixed(2)} labelFormatter={(v)=> new Date(v+"T12:00:00").toLocaleDateString()} />
+              <Legend />
+              <Line type="monotone" dataKey="portfolio" name="Portfolio" stroke="#004a99" strokeWidth={2} dot={false} />
+              <Line type="monotone" dataKey="benchmark" name={benchSymbol} stroke="#10b981" strokeWidth={2} strokeDasharray="5 5" dot={false} />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      </Card>
+      )}
 
       {/* Yearly Performance Table */}
       <Card className="bg-white border-none shadow-sm shadow-slate-200/50">

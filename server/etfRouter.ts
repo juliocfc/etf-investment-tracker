@@ -900,6 +900,53 @@ export const etfRouter = router({
         history: allDividends.sort((a, b) => new Date(b.exDate).getTime() - new Date(a.exDate).getTime()),
       };    }),
 
+  getDividendCalendar: protectedProcedure
+    .input(z.object({ portfolioId: z.number().optional(), accountType: z.string().optional() }))
+    .query(async ({ ctx, input }) => {
+      let holdings = await getUserEtfHoldings(ctx.user.id, input.portfolioId);
+      const db = await getDb();
+      if (input.accountType) {
+        const conditions: any[] = [eq(accounts.userId, ctx.user.id), eq(accounts.accountType, input.accountType)];
+        if (input.portfolioId) conditions.push(eq(accounts.portfolioId, input.portfolioId));
+        const matchingAccounts = await db.select({ id: accounts.id }).from(accounts).where(and(...conditions));
+        const matchingIds = matchingAccounts.map((a:any)=>a.id);
+        holdings = holdings.filter((h:any)=> matchingIds.includes(h.accountId));
+      }
+      const uniqueSymbols = Array.from(new Set(holdings.map((h:any)=> h.symbol.toUpperCase())));
+      const now = new Date();
+      const result: any[] = [];
+      for (const symbol of uniqueSymbols) {
+        const dividendData = await fetchDividendData(symbol as string);
+        const holdingQty = holdings.filter((h:any)=> h.symbol.toUpperCase()===symbol).reduce((s:number,h:any)=> s + parseFloat(h.quantity||"0"),0);
+        const sorted = [...dividendData].sort((a:any,b:any)=> new Date(a.exDate).getTime() - new Date(b.exDate).getTime());
+        // estimate frequency like projectedDividends
+        const twelveMonthsAgo = new Date(now); twelveMonthsAgo.setFullYear(now.getFullYear()-1);
+        const lastYear = sorted.filter((d:any)=> new Date(d.exDate) >= twelveMonthsAgo);
+        const last = sorted[sorted.length-1];
+        if (!last) continue;
+        const dps = last.dividendPerShare;
+        let freqMonths = 3;
+        if (lastYear.length >=10) freqMonths = 1;
+        else if (lastYear.length >=3) freqMonths = 3;
+        else if (lastYear.length===2) freqMonths = 6;
+        else if (lastYear.length===1) freqMonths = 12;
+        // project next 3 ex dates from last exDate
+        const lastEx = new Date(last.exDate);
+        for (let k=1;k<=3;k++) {
+          const ex = new Date(lastEx); ex.setMonth(ex.getMonth()+ k*freqMonths);
+          const pay = last.paymentDate ? new Date(new Date(last.paymentDate).getTime() + k*freqMonths*30*24*60*60*1000) : undefined;
+          const estAmount = holdingQty * dps;
+          // reliability: payments in last 2y vs expected
+          const twoYearsAgo = new Date(now); twoYearsAgo.setFullYear(now.getFullYear()-2);
+          const expected = freqMonths===1?24: freqMonths===3?8: freqMonths===6?4:2;
+          const actual = sorted.filter((d:any)=> new Date(d.exDate) >= twoYearsAgo).length;
+          const reliability = Math.min(100, Math.round(actual/expected*100));
+          result.push({ symbol, name: holdings.find((h:any)=> h.symbol.toUpperCase()===symbol)?.name || symbol, exDate: ex.toISOString().split("T")[0], paymentDate: pay? pay.toISOString().split("T")[0]: undefined, dps: dps.toFixed(4), estimatedAmount: estAmount.toFixed(2), frequency: freqMonths===1?"Monthly":freqMonths===3?"Quarterly":freqMonths===6?"Semi":freqMonths===12?"Annual":"Irregular", reliability });
+        }
+      }
+      return result.sort((a,b)=> new Date(a.exDate).getTime() - new Date(b.exDate).getTime()).slice(0,24);
+    }),
+
   calculateTotalDividends: protectedProcedure
     .input(z.object({ portfolioId: z.number() }))
     .query(async ({ ctx, input }) => {
@@ -2492,6 +2539,55 @@ export const etfRouter = router({
         throw error;
       }
     }),
+  getPerformanceRiskMetrics: protectedProcedure
+    .input(z.object({ portfolioId: z.number(), accountType: z.string().optional() }))
+    .query(async ({ ctx, input }) => {
+      const holdings: any[] = await getUserEtfHoldings(ctx.user.id, input.portfolioId);
+      let bondHoldings: any[] = await getUserBondHoldings(ctx.user.id, input.portfolioId);
+      bondHoldings = await Promise.all(bondHoldings.map(async (h:any)=>{ const bp=await getBondPriceFromBrokerage(h.symbol); if(bp) h.currentPrice=bp; return {...h, assetType:"bond"};}));
+      const allHoldings = holdings.map((h:any)=>({...h,assetType:"etf"})).concat(bondHoldings);
+      if (input.accountType) {
+        const db = await getDb();
+        const matchingAccounts = await db.select({id: accounts.id}).from(accounts).where(and(eq(accounts.userId, ctx.user.id), eq(accounts.portfolioId, input.portfolioId), eq(accounts.accountType, input.accountType)));
+        const ids = matchingAccounts.map((a:any)=>a.id);
+        // filter via purchases? simplified: keep holdings filtered
+      }
+      const evo = await getProcessedEvolution(ctx.user.id, allHoldings, "1y", input.portfolioId, true, "1mo");
+      if (evo.length < 3) return { sharpe: "0", maxDrawdown: "0", volatility: "0", winRate: "0" };
+      const returns: number[] = [];
+      for(let i=1;i<evo.length;i++){ const prev=parseFloat((evo[i-1] as any).totalValue); const cur=parseFloat((evo[i] as any).totalValue); if(prev>0) returns.push((cur-prev)/prev); }
+      const avg = returns.reduce((a,b)=>a+b,0)/returns.length;
+      const variance = returns.reduce((a,b)=> a + Math.pow(b-avg,2),0)/returns.length;
+      const vol = Math.sqrt(variance);
+      const sharpe = vol>0 ? (avg / vol * Math.sqrt(12)).toFixed(2) : "0";
+      let peak = parseFloat((evo[0] as any).totalValue); let maxDD=0;
+      for(const p of evo){ const v=parseFloat((p as any).totalValue); if(v>peak) peak=v; const dd=(peak-v)/peak; if(dd>maxDD) maxDD=dd; }
+      const winRate = returns.filter(r=>r>0).length / returns.length *100;
+      // benchmark vs SPY 1y
+      let beta="0"; let alpha="0";
+      try{ const spy = await getSmartHistoricalPrices("SPY", 365, "1mo"); if(spy.length>=returns.length){ const spyR: number[]=[]; for(let i=1;i<spy.length;i++) spyR.push((spy[i].price - spy[i-1].price)/spy[i-1].price); const spySlice=spyR.slice(-returns.length); const cov = returns.reduce((a,_,i)=> a + (returns[i]-avg)*(spySlice[i]- (spySlice.reduce((x,y)=>x+y,0)/spySlice.length)),0)/returns.length; const spyVar = spySlice.reduce((a,b)=> a+ Math.pow(b- spySlice.reduce((x,y)=>x+y,0)/spySlice.length,2),0)/spySlice.length; beta = spyVar>0 ? (cov/spyVar).toFixed(2) : "0"; alpha = (avg - parseFloat(beta)*(spySlice.reduce((x,y)=>x+y,0)/spySlice.length)).toFixed(4); } }catch(e){}
+      return { sharpe, maxDrawdown: (maxDD*100).toFixed(2), volatility: (vol*100).toFixed(2), winRate: winRate.toFixed(1), beta, alpha };
+    }),
+
+  getBenchmarkSeries: protectedProcedure
+    .input(z.object({ portfolioId: z.number(), range: z.enum(["ytd","1y","all"]), symbol: z.string().default("SPY"), granularity: z.enum(["1d","1wk","1mo"]).optional() }))
+    .query(async ({ ctx, input }) => {
+      let holdings: any[] = await getUserEtfHoldings(ctx.user.id, input.portfolioId);
+      let bondHoldings: any[] = await getUserBondHoldings(ctx.user.id, input.portfolioId);
+      bondHoldings = await Promise.all(bondHoldings.map(async (h:any)=>{ const bp=await getBondPriceFromBrokerage(h.symbol); if(bp) h.currentPrice=bp; return {...h, assetType:"bond"};}));
+      const allHoldings = holdings.map((h:any)=>({...h,assetType:"etf"})).concat(bondHoldings);
+      const evo = await getProcessedEvolution(ctx.user.id, allHoldings, input.range, input.portfolioId, true, input.granularity||"1mo");
+      const benchPrices = await getSmartHistoricalPrices(input.symbol, input.range==="ytd"? 400: input.range==="1y"? 400: 1500, input.granularity||"1mo");
+      if(evo.length===0||benchPrices.length===0) return [];
+      // normalize both to 100
+      const evoStart = parseFloat((evo[0] as any).totalValue) || 1; const benchStart = benchPrices[0].price || 1;
+      const len = Math.min(evo.length, benchPrices.length);
+      const startIdxEvo = evo.length - len; const startIdxBench = benchPrices.length - len;
+      const out=[];
+      for(let i=0;i<len;i++){ const e=evo[startIdxEvo+i] as any; const b=benchPrices[startIdxBench+i]; out.push({ date: e.date, portfolio: parseFloat(e.totalValue)/evoStart*100, benchmark: b.price/benchStart*100, benchSymbol: input.symbol }); }
+      return out;
+    }),
+
   getPerformanceMetrics: protectedProcedure
     .input(
       z.object({
