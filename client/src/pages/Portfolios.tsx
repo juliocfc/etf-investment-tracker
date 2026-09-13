@@ -733,11 +733,11 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
                       </td>
                       <td className="py-4 px-4 text-right font-mono font-bold text-primary">{(portfolio as any).baseCurrency !== "USD" && (portfolio as any).totalValueUSD ? <><div>{formatCurrency((portfolio as any).totalValueUSD, 2, "USD")}</div><div className="text-[10px] font-normal text-slate-400">~{formatCurrency(portfolio.totalValue, 2, (portfolio as any).baseCurrency || "USD")}</div></> : <div>{formatCurrency(portfolio.totalValue, 2, "USD")}</div>}</td>
                       <td className="py-4 px-4 text-right">
-                        <div className="font-mono font-medium text-slate-600">{(portfolio as any).baseCurrency !== "USD" && (portfolio as any).cashValueUSD ? <><span>{formatCurrency((portfolio as any).cashValueUSD, 2, "USD")}</span><span className="ml-1 text-[10px] font-normal text-slate-400">~{formatCurrency(portfolio.cashValue, 2, (portfolio as any).baseCurrency || "USD")}</span></> : formatCurrency(portfolio.cashValue, 2, "USD")}</div>
+                        <div className="font-mono font-medium text-slate-600">{(portfolio as any).baseCurrency !== "USD" && (portfolio as any).cashValueUSD ? <><div>{formatCurrency((portfolio as any).cashValueUSD, 2, "USD")}</div><div className="text-[10px] font-normal text-slate-400">~{formatCurrency(portfolio.cashValue, 2, (portfolio as any).baseCurrency || "USD")}</div></> : formatCurrency(portfolio.cashValue, 2, "USD")}</div>
                         <div className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter">{pCashPercent}%</div>
                       </td>
                       <td className="py-4 px-4 text-right">
-                        <div className="font-mono font-medium text-slate-700">{(portfolio as any).baseCurrency !== "USD" && (portfolio as any).investmentValueUSD ? <><span>{formatCurrency((portfolio as any).investmentValueUSD, 2, "USD")}</span><span className="ml-1 text-[10px] font-normal text-slate-400">~{formatCurrency(portfolio.investmentValue, 2, (portfolio as any).baseCurrency || "USD")}</span></> : formatCurrency(portfolio.investmentValue, 2, "USD")}</div>
+                        <div className="font-mono font-medium text-slate-700">{(portfolio as any).baseCurrency !== "USD" && (portfolio as any).investmentValueUSD ? <><div>{formatCurrency((portfolio as any).investmentValueUSD, 2, "USD")}</div><div className="text-[10px] font-normal text-slate-400">~{formatCurrency(portfolio.investmentValue, 2, (portfolio as any).baseCurrency || "USD")}</div></> : formatCurrency(portfolio.investmentValue, 2, "USD")}</div>
                         <div className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter">{pInvPercent}%</div>
                       </td>
                       <td className="py-4 px-4 text-right font-mono text-slate-500 text-xs">{formatCurrency(portfolio.totalCost || "0")}</td>
@@ -1553,7 +1553,7 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
       </Dialog>
         </>
       ) : (
-        <IncomeTab selectedPortfolioId={portfolioFilter === "all" ? undefined : parseInt(portfolioFilter)} />
+        <IncomeTab selectedPortfolioId={portfolioFilter === "all" ? undefined : parseInt(portfolioFilter)} selectedCurrency={currencyFilter} />
       )}
     </div>
   );

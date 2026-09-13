@@ -19,17 +19,20 @@ import { DollarSign, Calendar, ListFilter, Trophy, RefreshCw, BarChart3, Trendin
 
 export default function IncomeTab({ 
   selectedPortfolioId,
-  selectedAccountType = "all"
+  selectedAccountType = "all",
+  selectedCurrency = "all"
 }: { 
   selectedPortfolioId?: number,
-  selectedAccountType?: string
+  selectedAccountType?: string,
+  selectedCurrency?: string
 }) {
   const [withDRIP, setWithDRIP] = useState(false);
 
   const { data: report, isLoading } = trpc.etf.getDetailedDividendReport.useQuery(
     { 
       portfolioId: selectedPortfolioId,
-      accountType: selectedAccountType === "all" ? undefined : selectedAccountType
+      accountType: selectedAccountType === "all" ? undefined : selectedAccountType,
+      currency: selectedCurrency === "all" ? undefined : selectedCurrency
     },
     { enabled: true }
   );
@@ -40,12 +43,12 @@ export default function IncomeTab({
   );
 
   const { data: bondHoldings } = trpc.bond.getHoldings.useQuery(
-    { portfolioId: selectedPortfolioId, accountType: selectedAccountType === "all" ? undefined : selectedAccountType },
+    { portfolioId: selectedPortfolioId, accountType: selectedAccountType === "all" ? undefined : selectedAccountType, currency: selectedCurrency === "all" ? undefined : selectedCurrency },
     { enabled: true }
   );
 
   const { data: incomeTable } = trpc.etf.getIncomeTable.useQuery(
-    { portfolioId: selectedPortfolioId, accountType: selectedAccountType === "all" ? undefined : selectedAccountType },
+    { portfolioId: selectedPortfolioId, accountType: selectedAccountType === "all" ? undefined : selectedAccountType, currency: selectedCurrency === "all" ? undefined : selectedCurrency },
     { enabled: true }
   );
 
@@ -83,7 +86,7 @@ export default function IncomeTab({
   }, [bondHoldings]);
 
   const { data: dividendCalendar } = trpc.etf.getDividendCalendar.useQuery(
-    { portfolioId: selectedPortfolioId, accountType: selectedAccountType === "all" ? undefined : selectedAccountType },
+    { portfolioId: selectedPortfolioId, accountType: selectedAccountType === "all" ? undefined : selectedAccountType, currency: selectedCurrency === "all" ? undefined : selectedCurrency },
     { enabled: true }
   );
 
@@ -91,7 +94,8 @@ export default function IncomeTab({
     { 
       portfolioId: selectedPortfolioId, 
       withDRIP: withDRIP,
-      accountType: selectedAccountType === "all" ? undefined : selectedAccountType
+      accountType: selectedAccountType === "all" ? undefined : selectedAccountType,
+      currency: selectedCurrency === "all" ? undefined : selectedCurrency
     },
     { enabled: true }
   );

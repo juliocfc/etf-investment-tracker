@@ -55,18 +55,6 @@ export const etfRouter = router({
     }))
     .query(async ({ ctx, input }) => {
       const db = await getDb();
-      // FX: map portfolioId -> baseCurrency for conversion to USD when consolidated
-      const isConsolidatedUSD = !input.portfolioId;
-      let portfolioCurrencyMap = new Map<number,string>();
-      if (isConsolidatedUSD) {
-        const allPortfolios = await db.select().from((await import("../drizzle/schema")).portfolios).where(eq((await import("../drizzle/schema")).portfolios.userId, ctx.user.id));
-        for (const pf of allPortfolios) portfolioCurrencyMap.set((pf as any).id, (pf as any).baseCurrency || "USD");
-      } else {
-        const pf = await db.select().from((await import("../drizzle/schema")).portfolios).where(eq((await import("../drizzle/schema")).portfolios.id, input.portfolioId)).then((r:any)=>r[0]);
-        if (pf) portfolioCurrencyMap.set(input.portfolioId, (pf as any).baseCurrency || "USD");
-      }
-      const getFxSync = async (currency: string, date: Date = new Date()) => currency === "USD" ? 1 : await getFxRate(currency, "USD", date);
-
       let holdings = await getUserEtfHoldings(ctx.user.id, input.portfolioId, input.accountId);
       
       if (input.accountType && input.accountId === undefined) {
@@ -664,7 +652,8 @@ export const etfRouter = router({
   getDetailedDividendReport: protectedProcedure
     .input(z.object({ 
       portfolioId: z.number().optional(),
-      accountType: z.string().optional()
+      accountType: z.string().optional(),
+      currency: z.string().optional()
     }))
     .query(async ({ ctx, input }) => {
       let holdings = await getUserEtfHoldings(ctx.user.id, input.portfolioId);
@@ -691,6 +680,10 @@ export const etfRouter = router({
         if (pf) detailedCurrencyMap.set(input.portfolioId, (pf as any).baseCurrency || "USD");
       }
       const getDetailedFx = async (currency: string, date: Date) => currency === "USD" ? 1 : await getFxRate(currency, "USD", date);
+      const currencyFilterDetailed = (input as any).currency;
+      if (currencyFilterDetailed && currencyFilterDetailed !== "all") {
+        holdings = holdings.filter((h:any)=> (detailedCurrencyMap.get((h as any).portfolioId) || "USD") === currencyFilterDetailed);
+      }
 
       const now = new Date();
       const currentQuarter = Math.floor(now.getMonth() / 3) + 1;
@@ -934,7 +927,7 @@ export const etfRouter = router({
       };    }),
 
   getDividendCalendar: protectedProcedure
-    .input(z.object({ portfolioId: z.number().optional(), accountType: z.string().optional() }))
+    .input(z.object({ portfolioId: z.number().optional(), accountType: z.string().optional(), currency: z.string().optional() }))
     .query(async ({ ctx, input }) => {
       let holdings = await getUserEtfHoldings(ctx.user.id, input.portfolioId);
       const db = await getDb();
@@ -944,6 +937,12 @@ export const etfRouter = router({
         const matchingAccounts = await db.select({ id: accounts.id }).from(accounts).where(and(...conditions));
         const matchingIds = matchingAccounts.map((a:any)=>a.id);
         holdings = holdings.filter((h:any)=> matchingIds.includes(h.accountId));
+      }
+      if ((input as any).currency && (input as any).currency !== "all") {
+        const calMap = new Map<number,string>();
+        const allPfCal = await db.select().from((await import("../drizzle/schema")).portfolios).where(eq((await import("../drizzle/schema")).portfolios.userId, ctx.user.id));
+        for (const pf of allPfCal) calMap.set((pf as any).id, (pf as any).baseCurrency || "USD");
+        holdings = holdings.filter((h:any)=> (calMap.get((h as any).portfolioId) || "USD") === (input as any).currency);
       }
       const uniqueSymbols = Array.from(new Set(holdings.map((h:any)=> h.symbol.toUpperCase())));
       const now = new Date();
@@ -1004,7 +1003,8 @@ export const etfRouter = router({
       withDRIP: z.boolean().default(false),
       symbol: z.string().optional(),
       accountId: z.number().optional(),
-      accountType: z.string().optional()
+      accountType: z.string().optional(),
+      currency: z.string().optional()
     }))
     .query(async ({ ctx, input }) => {
       const db = await getDb();
@@ -1036,6 +1036,10 @@ export const etfRouter = router({
       if (input.symbol && input.symbol !== "ALL") {
         const symbolUpper = input.symbol.toUpperCase();
         holdings = holdings.filter((h: any) => h.symbol.toUpperCase() === symbolUpper);
+      }
+      const currencyFilterProj = (input as any).currency;
+      if (currencyFilterProj && currencyFilterProj !== "all") {
+        holdings = holdings.filter((h:any)=> (portfolioCurrencyMap.get((h as any).portfolioId) || "USD") === currencyFilterProj);
       }
       
       const now = new Date();
@@ -2038,7 +2042,8 @@ export const etfRouter = router({
     .input(z.object({
       portfolioId: z.number().optional(),
       accountId: z.number().optional(),
-      accountType: z.string().optional()
+      accountType: z.string().optional(),
+      currency: z.string().optional()
     }))
     .query(async ({ ctx, input }) => {
       const db = await getDb();

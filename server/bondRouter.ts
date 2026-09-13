@@ -63,6 +63,7 @@ export const bondRouter = router({
       portfolioId: z.number().optional(),
       accountId: z.number().optional(),
       accountType: z.string().optional(),
+      currency: z.string().optional(),
     }))
     .query(async ({ ctx, input }) => {
       let holdings = await getUserBondHoldings(ctx.user.id, input.portfolioId, input.accountId);
@@ -73,6 +74,12 @@ export const bondRouter = router({
         const matchingAccounts = await db.select({ id: accounts.id }).from(accounts).where(and(...conditions));
         const matchingIds = matchingAccounts.map((a: any) => a.id);
         holdings = holdings.filter((h: any) => matchingIds.includes(h.accountId));
+      }
+      if ((input as any).currency && (input as any).currency !== "all") {
+        const db2 = await getDb();
+        const allPf = await db2.select().from((await import("../drizzle/schema")).portfolios).where(eq((await import("../drizzle/schema")).portfolios.userId, ctx.user.id));
+        const pfMap = new Map<number,string>(allPf.map((pf:any)=>[(pf as any).id, (pf as any).baseCurrency || "USD"] as any));
+        holdings = holdings.filter((h:any)=> (pfMap.get((h as any).portfolioId) || "USD") === (input as any).currency);
       }
       if (!holdings || holdings.length === 0) return [];
       const holdingsWithAvgCost = await Promise.all(
