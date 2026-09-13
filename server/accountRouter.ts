@@ -4,8 +4,15 @@ import { getAccounts, createAccount, deleteAccount } from "./db";
 
 export const accountRouter = router({
   getAccounts: protectedProcedure
-    .input(z.object({ portfolioId: z.number() }))
+    .input(z.object({ portfolioId: z.number().optional() }))
     .query(async ({ ctx, input }) => {
+      if (!input.portfolioId) {
+        const db = await import("./db").then(m=>m.getDb());
+        const { accounts } = await import("../drizzle/schema");
+        const { eq } = await import("drizzle-orm");
+        const dbInst = await (await import("./db")).getDb();
+        return await dbInst.select().from(accounts).where(eq(accounts.userId, ctx.user.id));
+      }
       return await getAccounts(ctx.user.id, input.portfolioId);
     }),
 

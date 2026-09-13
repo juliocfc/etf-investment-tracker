@@ -1,0 +1,976 @@
+import { formatCurrency, formatNumber } from "@/lib/utils";
+import React, { useState, useEffect, useMemo } from "react";
+import { trpc } from "@/lib/trpc";
+import { Card } from "@/components/ui/card";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Cell
+} from "recharts";
+import { DollarSign, Calendar, ListFilter, Trophy, RefreshCw, BarChart3, TrendingUp, Landmark } from "lucide-react";
+
+export default function IncomeTab({ 
+  selectedPortfolioId,
+  selectedAccountType = "all"
+}: { 
+  selectedPortfolioId?: number,
+  selectedAccountType?: string
+}) {
+  const [withDRIP, setWithDRIP] = useState(false);
+
+  const { data: report, isLoading } = trpc.etf.getDetailedDividendReport.useQuery(
+    { 
+      portfolioId: selectedPortfolioId,
+      accountType: selectedAccountType === "all" ? undefined : selectedAccountType
+    },
+    { enabled: true }
+  );
+
+  const { data: accounts } = trpc.account.getAccounts.useQuery(
+    { portfolioId: selectedPortfolioId },
+    { enabled: true }
+  );
+
+  const { data: bondHoldings } = trpc.bond.getHoldings.useQuery(
+    { portfolioId: selectedPortfolioId, accountType: selectedAccountType === "all" ? undefined : selectedAccountType },
+    { enabled: true }
+  );
+
+  const { data: incomeTable } = trpc.etf.getIncomeTable.useQuery(
+    { portfolioId: selectedPortfolioId, accountType: selectedAccountType === "all" ? undefined : selectedAccountType },
+    { enabled: true }
+  );
+
+  const bondAnnualInterest = useMemo(() => {
+    if (!bondHoldings) return 0;
+    return bondHoldings.reduce((sum: number, h: any) => sum + parseFloat(h.quantity || "0") * parseFloat(h.couponRate || "0"), 0);
+  }, [bondHoldings]);
+
+  const bondMonthlyProjection = useMemo(() => {
+    if (!bondHoldings || bondHoldings.length === 0) return [];
+    const monthNames = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    const now = new Date();
+    const result: any[] = [];
+    for (let i = 0; i < 12; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+      const targetMonth = d.getMonth();
+      const targetYear = d.getFullYear();
+      let total = 0;
+      for (const h of bondHoldings as any[]) {
+        if (!h.redemptionDate || !h.couponRate) continue;
+        const redemption = new Date(h.redemptionDate);
+        const couponMonth1 = redemption.getMonth();
+        const couponMonth2 = (couponMonth1 + 6) % 12;
+        if (targetMonth !== couponMonth1 && targetMonth !== couponMonth2) continue;
+        const redemptionYear = redemption.getFullYear();
+        const redemptionMonth = redemption.getMonth();
+        if (targetYear > redemptionYear || (targetYear === redemptionYear && targetMonth > redemptionMonth)) continue;
+        const qty = parseFloat(h.quantity || "0");
+        const rate = parseFloat(h.couponRate || "0");
+        if (qty && rate) total += qty * rate / 2;
+      }
+      result.push({ month: `${monthNames[targetMonth]} ${targetYear}`, amount: total.toFixed(2) });
+    }
+    return result;
+  }, [bondHoldings]);
+
+  const { data: projections, isLoading: isProjectionLoading } = trpc.etf.getProjectedDividends.useQuery(
+    { 
+      portfolioId: selectedPortfolioId, 
+      withDRIP: withDRIP,
+      accountType: selectedAccountType === "all" ? undefined : selectedAccountType
+    },
+    { enabled: true }
+  );
+
+  const dividendProjectedAnnual = useMemo(() => parseFloat(projections?.totalProjectedAnnual || "0"), [projections]);
+  const consolidatedAnnualIncome = useMemo(() => dividendProjectedAnnual + bondAnnualInterest, [dividendProjectedAnnual, bondAnnualInterest]);
+
+  const [globalFilterSymbol, setGlobalFilterSymbol] = useState<string>("ALL");
+  const [filterAccountId, setFilterAccountId] = useState<string>("ALL");
+  const [incomeSearch, setIncomeSearch] = useState("");
+  const [incomeSortKey, setIncomeSortKey] = useState<string>("currentValue");
+  const [incomeSortDir, setIncomeSortDir] = useState<"asc"|"desc">("desc");
+
+  // Reset filters when portfolio changes
+  useEffect(() => {
+    setGlobalFilterSymbol("ALL");
+    setFilterAccountId("ALL");
+  }, [selectedPortfolioId]);
+
+  // Group history by quarter for bar chart (last 5 years only)
+  const barChartData = useMemo(() => {
+    if (!report?.history) return [];
+    
+    const fiveYearsAgo = new Date();
+    fiveYearsAgo.setFullYear(fiveYearsAgo.getFullYear() - 5);
+
+    const filtered = (globalFilterSymbol === "ALL" 
+      ? report.history 
+      : report.history.filter((h: any) => h.symbol === globalFilterSymbol))
+      .filter((h: any) => new Date(h.exDate) >= fiveYearsAgo);
+      
+    const grouped: Record<string, number> = {};
+    
+    filtered.forEach((div: any) => {
+      const date = new Date(div.exDate);
+      const quarter = Math.floor(date.getMonth() / 3) + 1;
+      const key = `${date.getFullYear()} Q${quarter}`;
+      grouped[key] = (grouped[key] || 0) + div.totalAmount;
+    });
+    
+    const sortedEntries = Object.entries(grouped)
+      .map(([quarterKey, amount]) => ({ 
+        date: quarterKey, 
+        amount: parseFloat(amount.toFixed(2)),
+        displayDate: quarterKey,
+        changePercent: null as number | null
+      }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    for (let i = 1; i < sortedEntries.length; i++) {
+      const prevAmount = sortedEntries[i - 1].amount;
+      const currAmount = sortedEntries[i].amount;
+      if (prevAmount > 0) {
+        sortedEntries[i].changePercent = ((currAmount - prevAmount) / prevAmount) * 100;
+      }
+    }
+
+    return sortedEntries;
+  }, [report?.history, globalFilterSymbol]);
+
+  const filteredHistory = useMemo(() => {
+    if (!report?.history) return [];
+    return report.history.filter((h: any) => {
+      const symbolMatch = globalFilterSymbol === "ALL" || h.symbol === globalFilterSymbol;
+      const accountMatch = filterAccountId === "ALL" || h.accountId?.toString() === filterAccountId;
+      return symbolMatch && accountMatch;
+    });
+  }, [report?.history, globalFilterSymbol, filterAccountId]);
+
+  const filteredIncomeAssets = useMemo(() => {
+    if (!incomeTable?.assets) return [];
+    let rows = [...incomeTable.assets];
+    // Focus filter
+    if (globalFilterSymbol !== "ALL") {
+      rows = rows.filter((a:any) => a.symbol === globalFilterSymbol);
+    }
+    // Search
+    if (incomeSearch) {
+      const q = incomeSearch.toLowerCase();
+      rows = rows.filter((a:any) => a.symbol.toLowerCase().includes(q) || a.name.toLowerCase().includes(q));
+    }
+    // Sort
+    const dir = incomeSortDir === "asc" ? 1 : -1;
+    rows.sort((a:any,b:any) => {
+      const getVal = (r:any, key:string) => {
+        if (key==="symbol") return r.symbol;
+        if (key==="gainPercent") return parseFloat(r.gainPercent||"0");
+        if (key==="dividendsPercent") return parseFloat(r.dividendsPercent||"0");
+        if (key==="totalGainPercentInc") return parseFloat(r.totalGainPercentInc||"0");
+        return parseFloat(r[key]||"0");
+      };
+      const av = getVal(a, incomeSortKey);
+      const bv = getVal(b, incomeSortKey);
+      if (typeof av === "string" && typeof bv === "string") return av.localeCompare(bv) * dir;
+      return (av - bv) * dir;
+    });
+    return rows;
+  }, [incomeTable, globalFilterSymbol, incomeSearch, incomeSortKey, incomeSortDir]);
+
+  const handleIncomeSort = (key: string) => {
+    if (incomeSortKey === key) setIncomeSortDir(d => d === "asc" ? "desc" : "asc");
+    else { setIncomeSortKey(key); setIncomeSortDir(key==="symbol" ? "asc" : "desc"); }
+  };
+  const exportIncomeCsv = () => {
+    const rows = filteredIncomeAssets;
+    const headers = ["Symbol","Name","Type","Total Cost","Current Value","Gain","Gain%","Div/Interest","Div%","Value+Div","Gain Inc Div","Gain Inc%"];
+    const csv = [headers.join(",")].concat(rows.map((r:any)=>[
+      r.symbol, `"${r.name.replace(/"/g,'""')}"`, r.assetType, r.totalCost, r.currentValue, r.gain, r.gainPercent, r.dividendsReceived, r.dividendsPercent, r.currentValuePlusDividends, r.totalGainInc, r.totalGainPercentInc
+    ].join(","))).join("\n");
+    const blob = new Blob([csv], {type:"text/csv"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "holdings-income.csv"; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center h-96 gap-4">
+        <RefreshCw className="w-10 h-10 animate-spin text-primary" />
+        <p className="text-sm font-bold text-slate-500 uppercase tracking-widest">Compiling Dividend History...</p>
+      </div>
+    );
+  }
+
+  const displayAllTimeTotal = globalFilterSymbol === "ALL"
+    ? report?.totalAllTime
+    : report?.etfBreakdown.find((e: any) => e.symbol === globalFilterSymbol)?.totalAllTime || "0.00";
+
+  const displayMonthlyAverage = globalFilterSymbol === "ALL"
+    ? (parseFloat(report?.totalLastYear || "0") / 12).toFixed(2)
+    : (parseFloat(report?.etfBreakdown.find((e: any) => e.symbol === globalFilterSymbol)?.totalLastYear || "0") / 12).toFixed(2);
+
+  const displayLastYearTotal = globalFilterSymbol === "ALL"
+    ? report?.totalLastYear
+    : report?.etfBreakdown.find((e: any) => e.symbol === globalFilterSymbol)?.totalLastYear || "0.00";
+
+  const displayQuarterlyBreakdown = globalFilterSymbol === "ALL"
+    ? report?.quarterlyBreakdown
+    : report?.etfBreakdown.find((e: any) => e.symbol === globalFilterSymbol)?.quarterlyBreakdown || [];
+
+  return (
+    <div className="space-y-8">
+      {/* Action Bar */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-lg shadow-sm border border-border">
+        <div className="flex items-center gap-4">
+          <div className="p-2 bg-slate-100 rounded-lg text-primary">
+            <DollarSign className="w-5 h-5" />
+          </div>
+          <div>
+            <h2 className="text-lg font-bold text-slate-800">Income Analytics</h2>
+            <p className="text-xs text-slate-500 font-medium">Dividends & bond coupons audit and payout timelines</p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3 w-full md:w-auto">
+          <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-md border border-slate-100">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Focus:</span>
+            <select 
+              className="bg-transparent border-none p-0 text-xs font-bold text-slate-600 focus:outline-none h-6 min-w-[140px]"
+              value={globalFilterSymbol}
+              onChange={(e) => setGlobalFilterSymbol(e.target.value)}
+            >
+              <option value="ALL">Total Portfolio</option>
+              {report?.etfBreakdown.map((etf: any) => (
+                <option key={etf.symbol} value={etf.symbol}>{etf.symbol}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* Anchor Nav */}
+      <div className="sticky top-0 z-20 bg-white/80 backdrop-blur border border-border rounded-lg px-2 py-2 flex flex-wrap gap-1 shadow-sm">
+        {[
+          {id:"overview", label:"Overview"},
+          {id:"forecast", label:"Forecast"},
+          {id:"income", label:"Holdings Return"},
+          {id:"comparative", label:"Comparative"},
+          {id:"history", label:"History"},
+        ].map(s=>(
+          <a key={s.id} href={"#"+s.id} className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-md hover:bg-slate-100 text-slate-600">{s.label}</a>
+        ))}
+      </div>
+
+      {/* Bond & Consolidated Income */}
+      <div id="overview" className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <Card className="p-6 bg-white shadow-sm border border-border border-t-4 border-t-purple-600">
+          <div className="flex justify-between items-start mb-4">
+            <div>
+              <div className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Bond Interest (Projected Annual)</div>
+              <div className="text-3xl font-bold text-slate-800 font-mono">{formatCurrency(bondAnnualInterest)}</div>
+              <div className="text-[10px] text-slate-500 mt-1">{bondHoldings?.length || 0} issues • {formatCurrency(bondAnnualInterest/12)}/mo avg</div>
+            </div>
+            <div className="p-2 bg-purple-50 rounded-lg">
+              <Landmark className="w-5 h-5 text-purple-600" />
+            </div>
+          </div>
+          <div className="text-[10px] text-slate-400">Coupons twice a year per redemption schedule</div>
+        </Card>
+
+        <Card className="p-6 bg-white shadow-sm border border-border border-t-4 border-t-blue-600">
+          <div className="flex justify-between items-start mb-4">
+            <div>
+              <div className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Dividend Income (Projected Annual)</div>
+              <div className="text-3xl font-bold text-slate-800 font-mono">{formatCurrency(projections?.totalProjectedAnnual || "0")}</div>
+              <div className="text-[10px] text-slate-500 mt-1">{report?.etfBreakdown?.length || 0} payers • {formatCurrency(parseFloat(projections?.totalProjectedAnnual || "0")/12)}/mo avg</div>
+            </div>
+            <div className="p-2 bg-blue-50 rounded-lg">
+              <TrendingUp className="w-5 h-5 text-blue-600" />
+            </div>
+          </div>
+          <div className="text-[10px] text-slate-400">Based on last 12M DPS × holdings</div>
+        </Card>
+
+        <Card className="p-6 bg-white shadow-sm border border-border border-t-4 border-t-emerald-600 bg-gradient-to-br from-white to-emerald-50/30">
+          <div className="flex justify-between items-start mb-4">
+            <div>
+              <div className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Total Income (Next 12M)</div>
+              <div className="text-3xl font-bold text-slate-800 font-mono">{formatCurrency(consolidatedAnnualIncome)}</div>
+              <div className="text-[10px] text-slate-500 mt-1">{formatCurrency(consolidatedAnnualIncome/12)}/mo • Dividends + Bonds</div>
+            </div>
+            <div className="p-2 bg-emerald-100 rounded-lg">
+              <DollarSign className="w-5 h-5 text-emerald-700" />
+            </div>
+          </div>
+          <div className="flex items-center gap-2 text-[10px] font-bold">
+            <span className="px-2 py-0.5 rounded bg-blue-100 text-blue-700">{formatCurrency(dividendProjectedAnnual)} div</span>
+            <span className="text-slate-300">+</span>
+            <span className="px-2 py-0.5 rounded bg-purple-100 text-purple-700">{formatCurrency(bondAnnualInterest)} bonds</span>
+          </div>
+        </Card>
+      </div>
+
+      {/* Monthly Bond & Consolidated Forecast */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <Card className="p-6 bg-white shadow-sm border border-border border-l-4 border-l-purple-600">
+          <div className="flex items-center gap-2 mb-4">
+            <Landmark className="w-4 h-4 text-purple-600" />
+            <div className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">Monthly Bond Coupon Forecast</div>
+          </div>
+          <div className="h-[120px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={bondMonthlyProjection}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                <XAxis dataKey="month" stroke="#94a3b8" fontSize={8} tickLine={false} axisLine={false} />
+                <YAxis hide />
+                <Tooltip
+                  contentStyle={{ backgroundColor: "#fff", border: "1px solid #e2e8f0", borderRadius: "8px", fontSize: "10px" }}
+                  formatter={(value) => [formatCurrency(value as number), "Coupon"]}
+                />
+                <Bar dataKey="amount" fill="#9333ea" radius={[2, 2, 0, 0]}>
+                  {bondMonthlyProjection.map((entry: any, index: number) => (
+                    <Cell key={`c-${index}`} fill="#9333ea" fillOpacity={0.6 + (index/12)*0.4} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="text-[10px] text-slate-500 mt-2">Half-coupon on redemption anniversary months</div>
+        </Card>
+        <Card className="p-6 bg-white shadow-sm border border-border md:col-span-2">
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">Consolidated Monthly Income Forecast</div>
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-700">Dividends + Bonds</span>
+          </div>
+          <div className="h-[120px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={(() => {
+                const map = new Map<string, number>();
+                (projections?.monthlyProjection || []).forEach((m:any)=> map.set(m.month, parseFloat(m.amount||"0")));
+                bondMonthlyProjection.forEach((m:any)=> map.set(m.month, (map.get(m.month)||0) + parseFloat(m.amount||"0")));
+                return Array.from(map.entries()).map(([month, amount])=>({month, amount: amount.toFixed(2)}));
+              })()}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                <XAxis dataKey="month" stroke="#94a3b8" fontSize={8} tickLine={false} axisLine={false} />
+                <YAxis hide />
+                <Tooltip formatter={(value) => [formatCurrency(value as number), "Total"]} />
+                <Bar dataKey="amount" fill="#059669" radius={[2, 2, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </Card>
+      </div>
+
+            {/* Main Dividend Metrics */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        {/* All Time Panel */}
+        <Card className="p-6 bg-white shadow-sm border border-border border-t-4 border-t-yellow-500">
+          <div className="flex justify-between items-start mb-4">
+            <div>
+              <div className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Received (All Time)</div>
+              <div className="text-3xl font-bold text-slate-800 font-mono">
+                {formatCurrency(displayAllTimeTotal)}
+              </div>
+            </div>
+            <div className="p-2 bg-yellow-50 rounded-lg">
+              <Trophy className="w-5 h-5 text-yellow-600" />
+            </div>
+          </div>
+        </Card>
+
+        {/* Monthly Average Panel */}
+        <Card className="p-6 bg-white shadow-sm border border-border border-t-4 border-t-green-600">
+          <div className="flex justify-between items-start mb-4">
+            <div>
+              <div className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Monthly Avg (L12M)</div>
+              <div className="text-3xl font-bold text-slate-800 font-mono">
+                {formatCurrency(displayMonthlyAverage)}
+              </div>
+            </div>
+            <div className="p-2 bg-green-50 rounded-lg">
+              <DollarSign className="w-5 h-5 text-green-600" />
+            </div>
+          </div>
+        </Card>
+
+        {/* Last Year Panel */}
+        <Card className="p-6 bg-white shadow-sm border border-border border-t-4 border-t-primary">
+          <div className="flex justify-between items-start mb-4">
+            <div>
+              <div className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">Total (Last 12M)</div>
+              <div className="text-3xl font-bold text-slate-800 font-mono">{formatCurrency(displayLastYearTotal)}</div>
+            </div>
+            <div className="p-2 bg-slate-50 rounded-lg">
+              <Calendar className="w-5 h-5 text-slate-600" />
+            </div>
+          </div>
+          <div className="grid grid-cols-4 gap-1">
+            {displayQuarterlyBreakdown?.map((q: any) => (
+              <div key={q.quarter} className="text-center p-1 bg-slate-50 rounded border border-slate-100">
+                <div className="text-[8px] font-bold text-slate-400 uppercase truncate">{q.quarter.split(' ')[1]}</div>
+                <div className="text-[10px] font-bold text-slate-700">{formatCurrency(q.amount, 0)}</div>
+              </div>
+            ))}
+          </div>
+        </Card>
+
+        {/* Asset Distribution */}
+        <Card className="p-6 bg-white shadow-sm border border-border border-t-4 border-t-pink-600">
+          <div className="flex justify-between items-start mb-4">
+            <div className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">Distribution (L12M)</div>
+            <div className="p-2 bg-pink-50 rounded-lg">
+              <TrendingUp className="w-5 h-5 text-pink-600" />
+            </div>
+          </div>
+          <div className="space-y-2 max-h-[80px] overflow-y-auto pr-2 custom-scrollbar">
+            {report?.etfBreakdown.map((etf: any) => (
+              <div key={etf.symbol} className="flex justify-between items-center pb-1 border-b border-slate-100 last:border-0">
+                <div className="font-bold text-slate-700 text-[10px]">{etf.symbol}</div>
+                <div className="font-mono text-green-600 text-[10px] font-bold">{formatCurrency(etf.totalLastYear)}</div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      </div>
+
+      {/* Dividend Payout Chart */}
+      <Card className="p-8 bg-white shadow-sm border border-border">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-6">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <BarChart3 className="w-5 h-5 text-primary" />
+              <h2 className="text-xl font-bold text-slate-800">Dividend Payout Timeline</h2>
+            </div>
+          </div>
+          
+          <div className="text-right">
+            <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Total Period Value</div>
+            <div className="text-3xl font-bold text-slate-800 font-mono">
+              {formatCurrency(barChartData.reduce((acc, curr) => acc + curr.amount, 0))}
+            </div>
+          </div>
+        </div>
+
+        <div className="h-[350px] w-full">
+          {barChartData.length > 0 ? (
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={barChartData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                <XAxis 
+                  dataKey="displayDate" 
+                  stroke="#94a3b8" 
+                  fontSize={10} 
+                  tickLine={false} 
+                  axisLine={false}
+                  minTickGap={20}
+                />
+                <YAxis 
+                  stroke="#94a3b8" 
+                  fontSize={10} 
+                  tickLine={false} 
+                  axisLine={false}
+                  tickFormatter={(value) => `$${value}`}
+                />
+                <Tooltip
+                  cursor={{ fill: '#f8fafc' }}
+                  content={({ active, payload, label }) => {
+                    if (active && payload && payload.length) {
+                      const data = payload[0].payload;
+                      const amount = data.amount;
+                      const changePercent = data.changePercent;
+
+                      return (
+                        <div className="bg-white p-3 border border-slate-200 rounded-lg shadow-lg space-y-1">
+                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 border-b pb-1">
+                            {label}
+                          </p>
+                          <div className="flex justify-between gap-8 items-center">
+                            <span className="text-[10px] font-bold text-slate-500 uppercase">Received</span>
+                            <span className="font-mono font-bold text-primary">{formatCurrency(amount)}</span>
+                          </div>
+                          {changePercent !== null && changePercent !== undefined && (
+                            <div className="flex justify-between gap-8 items-center pt-1 border-t border-slate-50 mt-1">
+                              <span className="text-[10px] font-bold text-slate-500 uppercase">QoQ Change</span>
+                              <span className={`font-mono font-bold text-xs ${changePercent >= 0 ? "text-green-600" : "text-red-600"}`}>
+                                {changePercent >= 0 ? "+" : ""}{changePercent.toFixed(1)}%
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    }
+                    return null;
+                  }}
+                />
+                <Bar dataKey="amount" fill="#004a99" radius={[4, 4, 0, 0]}>
+                  {barChartData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill="#004a99" fillOpacity={0.8 + (index / barChartData.length) * 0.2} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-full flex items-center justify-center text-slate-400 italic">
+              No historical payouts recorded for this selection.
+            </div>
+          )}
+        </div>
+      </Card>
+
+      {/* Forward-Looking Income Projection */}
+      <div id="forecast" className="space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-2">
+            <TrendingUp className="w-5 h-5 text-primary" />
+            <h2 className="text-xl font-bold text-slate-800">Dividend Forward-Looking Projection</h2>
+          </div>
+          <div className="flex items-center gap-3 bg-white px-3 py-1.5 rounded-md border border-border shadow-sm">
+            <Switch 
+              id="drip-toggle" 
+              checked={withDRIP} 
+              onCheckedChange={setWithDRIP}
+              className="scale-75 origin-right"
+            />
+            <Label htmlFor="drip-toggle" className="text-[10px] font-bold text-slate-500 uppercase cursor-pointer select-none">
+              Simulate Dividend Re-investment (DRIP)
+            </Label>
+          </div>
+        </div>
+
+        {isProjectionLoading ? (
+          <Card className="p-8 flex items-center justify-center">
+            <RefreshCw className="w-6 h-6 animate-spin text-primary mr-2" />
+            <span className="text-slate-500 font-medium">Calculating projections...</span>
+          </Card>
+        ) : projections ? (
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <Card className="p-6 bg-white shadow-sm border border-border border-l-4 border-l-green-600 relative overflow-hidden">
+                <div className="flex justify-between items-start mb-1">
+                  <div className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">Projected Annual Income (Next 12M)</div>
+                  {withDRIP && (
+                    <Badge variant="secondary" className="bg-green-100 text-green-700 hover:bg-green-100 border-none text-[8px] font-bold py-0 h-4">
+                      Includes Compounding
+                    </Badge>
+                  )}
+                </div>
+                <div className="text-4xl font-bold text-slate-800 font-mono mb-2">
+                  {formatCurrency(projections.totalProjectedAnnual)}
+                </div>
+                <div className="text-sm text-slate-500">
+                  Monthly average: <span className="font-bold text-slate-700">{formatCurrency(parseFloat(projections.totalProjectedAnnual) / 12)}</span>
+                </div>
+                <div className="mt-4 pt-3 border-t border-slate-100">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Blended Yield</span>
+                      <span className="text-[10px] text-slate-300 cursor-help" title="Weighted by current market allocation (shares × price). Σ(yield_i × allocation_i). Yield_i = annualDPS / price.">ⓘ</span>
+                    </div>
+                    <span className="text-lg font-mono font-bold text-green-600">{(projections as any).blendedYield ?? "0.00"}%</span>
+                  </div>
+                  <div className="text-[10px] text-slate-400 mt-1">
+                    Weighted by current allocation
+                  </div>
+                </div>
+              </Card>
+
+              <Card className="p-6 bg-white shadow-sm border border-border md:col-span-2">
+                <div className="flex items-center gap-2 mb-4">
+                  <BarChart3 className="w-4 h-4 text-slate-400" />
+                  <div className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">Monthly Payout Forecast</div>
+                </div>
+                <div className="h-[120px] w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={projections.monthlyProjection}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                      <XAxis dataKey="month" stroke="#94a3b8" fontSize={8} tickLine={false} axisLine={false} />
+                      <YAxis hide />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: "#fff",
+                          border: "1px solid #e2e8f0",
+                          borderRadius: "8px",
+                          fontSize: "10px",
+                        }}
+                        formatter={(value) => [formatCurrency(value as number), "Projected"]}
+                      />
+                      <Bar dataKey="amount" fill="#10b981" radius={[2, 2, 0, 0]}>
+                        {projections.monthlyProjection.map((entry: any, index: number) => (
+                          <Cell key={`cell-${index}`} fill="#10b981" fillOpacity={0.6 + (index / 12) * 0.4} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </Card>
+            </div>
+
+            <Card className="bg-white shadow-sm border border-border overflow-hidden">
+              <div className="px-6 py-4 border-b border-border bg-slate-50/50 flex items-center gap-2">
+                <Landmark className="w-4 h-4 text-purple-600" />
+                <h3 className="text-sm font-bold text-slate-700">Bond Coupon Projection by Asset</h3>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-slate-50">
+                    <tr className="border-b border-border">
+                      <th className="text-left py-3 px-6 text-slate-600 font-bold">CUSIP</th>
+                      <th className="text-right py-3 px-6 text-slate-600 font-bold">Qty</th>
+                      <th className="text-right py-3 px-6 text-slate-600 font-bold">Coupon Rate</th>
+                      <th className="text-right py-3 px-6 text-slate-600 font-bold">Per Half</th>
+                      <th className="text-right py-3 px-6 text-slate-600 font-bold">Annual</th>
+                      <th className="text-left py-3 px-6 text-slate-600 font-bold">Redemption</th>
+                      <th className="text-left py-3 px-6 text-slate-600 font-bold">Schedule</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(bondHoldings || []).map((h: any) => (
+                      <tr key={h.symbol} className="border-b border-border hover:bg-slate-50">
+                        <td className="py-3 px-6 font-bold text-primary">{h.symbol}</td>
+                        <td className="py-3 px-6 text-right font-mono">{formatNumber(h.quantity, 3)}</td>
+                        <td className="py-3 px-6 text-right font-mono">{parseFloat(h.couponRate||"0").toFixed(3)}%</td>
+                        <td className="py-3 px-6 text-right font-mono text-purple-600">{formatCurrency(parseFloat(h.quantity||"0") * parseFloat(h.couponRate||"0") / 2)}</td>
+                        <td className="py-3 px-6 text-right font-mono font-bold text-green-600">{formatCurrency(parseFloat(h.quantity||"0") * parseFloat(h.couponRate||"0"))}</td>
+                        <td className="py-3 px-6 text-right font-mono text-slate-500">{h.redemptionDate ? new Date(h.redemptionDate).toLocaleDateString() : "-"}</td>
+                        <td className="py-3 px-6 text-[10px] text-slate-500">{(() => { if(!h.redemptionDate) return "-"; const m=new Date(h.redemptionDate).toLocaleDateString(undefined,{month:"2-digit",day:"2-digit"}); const d2=new Date(h.redemptionDate); d2.setMonth(d2.getMonth()+6); const m2=d2.toLocaleDateString(undefined,{month:"2-digit",day:"2-digit"}); return `${m} & ${m2}`; })()}</td>
+                      </tr>
+                    ))}
+                    {(!bondHoldings || bondHoldings.length===0) && <tr><td colSpan={7} className="py-6 text-center text-slate-400">No bonds</td></tr>}
+                  </tbody>
+                  {bondHoldings && bondHoldings.length > 0 && (
+                    <tfoot className="bg-slate-50 border-t-2 border-slate-200">
+                      <tr className="font-bold text-slate-800">
+                        <td colSpan={3} className="py-4 px-6 uppercase text-[10px] tracking-widest text-slate-500">Total Bond Income</td>
+                        <td className="text-right py-4 px-6 font-mono text-sm text-purple-600">{formatCurrency(bondHoldings.reduce((acc: number, h: any) => acc + parseFloat(h.quantity||"0") * parseFloat(h.couponRate||"0") / 2, 0).toFixed(2))}</td>
+                        <td className="text-right py-4 px-6 font-mono text-sm font-bold text-green-600">{formatCurrency(bondHoldings.reduce((acc: number, h: any) => acc + parseFloat(h.quantity||"0") * parseFloat(h.couponRate||"0"), 0).toFixed(2))}</td>
+                        <td colSpan={2} className="py-4 px-6"></td>
+                      </tr>
+                    </tfoot>
+                  )}
+                </table>
+              </div>
+            </Card>
+
+            <Card className="bg-white shadow-sm border border-border overflow-hidden">
+              <div className="px-6 py-4 border-b border-border bg-slate-50/50">
+                <h3 className="text-sm font-bold text-slate-700">Projection by Asset</h3>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-slate-50">
+                    <tr className="border-b border-border">
+                      <th className="text-left py-3 px-6 text-slate-600 font-bold">Symbol</th>
+                      <th className="text-right py-3 px-6 text-slate-600 font-bold">Shares Owned</th>
+                      <th className="text-right py-3 px-6 text-slate-600 font-bold">Shares after 12M</th>
+                      <th className="text-right py-3 px-6 text-slate-600 font-bold">Annual DPS</th>
+                      <th className="text-right py-3 px-6 text-slate-600 font-bold">Yield %</th>
+                      <th className="text-right py-3 px-6 text-slate-600 font-bold">Projected Annual</th>
+                      <th className="text-right py-3 px-6 text-slate-600 font-bold">This Month ({projections.monthlyProjection[0]?.month || new Date().toLocaleDateString(undefined, { month: 'short', year: 'numeric' })})</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {projections.assets.map((asset: any) => (
+                      <tr key={asset.symbol} className="border-b border-border hover:bg-slate-50 transition-colors">
+                        <td className="py-3 px-6 font-bold text-primary">{asset.symbol}</td>
+                        <td className="py-3 px-6 text-right font-mono text-slate-500">{formatNumber(asset.currentQuantity, 3)}</td>
+                        <td className="py-3 px-6 text-right font-mono font-bold text-slate-800">{formatNumber(asset.finalQuantity, 3)}</td>
+                        <td className="py-3 px-6 text-right font-mono text-slate-500">{formatCurrency(asset.annualDPS, 4)}</td>
+                        <td className="py-3 px-6 text-right font-mono font-medium text-blue-600">{asset.yield}%</td>
+                        <td className="py-3 px-6 text-right font-mono font-bold text-green-600">{formatCurrency(asset.projectedAnnual)}</td>
+                        <td className="py-3 px-6 text-right font-mono font-bold text-emerald-700">{formatCurrency((asset as any).projectedCurrentMonth || "0.00")}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  {projections.assets.length > 0 && (
+                    <tfoot className="bg-slate-50 border-t-2 border-slate-200">
+                      <tr className="font-bold text-slate-800">
+                        <td colSpan={5} className="py-4 px-6 uppercase text-[10px] tracking-widest text-slate-500">Total</td>
+                        <td className="text-right py-4 px-6 font-mono text-sm font-bold text-green-600">{formatCurrency(projections.assets.reduce((acc: number, a: any) => acc + parseFloat(a.projectedAnnual || "0"), 0).toFixed(2))}</td>
+                        <td className="text-right py-4 px-6 font-mono text-sm font-bold text-emerald-700">{formatCurrency(projections.assets.reduce((acc: number, a: any) => acc + parseFloat((a as any).projectedCurrentMonth || "0"), 0).toFixed(2))}</td>
+                      </tr>
+                    </tfoot>
+                  )}
+                </table>
+              </div>
+            </Card>
+          </>
+        ) : (
+          <div className="text-center py-10 text-slate-400">No projection data available. Add holdings to see forecasts.</div>
+        )}
+      </div>
+
+      {/* Holdings Income Summary - per asset including individual bonds */}
+      <Card id="income" className="bg-white shadow-sm border border-border overflow-hidden">
+        <div className="px-6 py-4 border-b border-border bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <DollarSign className="w-5 h-5 text-primary" />
+            <h2 className="text-lg font-bold text-slate-800 uppercase tracking-widest">Holdings Income & Return</h2>
+            <span className="text-[10px] font-bold text-slate-400 bg-white border px-2 py-0.5 rounded-full uppercase tracking-widest">{filteredIncomeAssets.length}/{incomeTable?.assets?.length || 0} assets</span>
+            {globalFilterSymbol !== "ALL" && <span className="text-[10px] font-bold bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">Filtered: {globalFilterSymbol}</span>}
+          </div>
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <div className="relative flex-1 sm:w-48">
+              <input placeholder="Search symbol/name" value={incomeSearch} onChange={e=>setIncomeSearch(e.target.value)} className="w-full h-8 pl-8 pr-3 text-xs border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-primary bg-white" />
+              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+              </span>
+            </div>
+            <button onClick={exportIncomeCsv} className="h-8 px-3 text-[10px] font-bold uppercase tracking-wider bg-white border border-slate-200 rounded-md hover:bg-slate-50 flex items-center gap-1.5 whitespace-nowrap">
+              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              CSV
+            </button>
+          </div>
+        </div>
+        <div className="overflow-x-auto">
+          {!incomeTable ? (
+            <div className="py-10 text-center text-slate-400 text-sm">Loading income data...</div>
+          ) : incomeTable.assets.length === 0 ? (
+            <div className="py-10 text-center text-slate-400 text-sm">No holdings found.</div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 sticky top-0 z-10">
+                <tr className="border-b border-border text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                  <th className="text-left py-3 px-4 whitespace-nowrap cursor-pointer hover:text-primary" onClick={()=>handleIncomeSort("symbol")}>Asset {incomeSortKey==="symbol"&&(incomeSortDir==="asc"?"↑":"↓")}</th>
+                  <th className="text-right py-3 px-4 whitespace-nowrap cursor-pointer hover:text-primary" onClick={()=>handleIncomeSort("totalCost")}>Total Cost {incomeSortKey==="totalCost"&&(incomeSortDir==="asc"?"↑":"↓")}</th>
+                  <th className="text-right py-3 px-4 whitespace-nowrap cursor-pointer hover:text-primary" onClick={()=>handleIncomeSort("currentValue")}>Current Value {incomeSortKey==="currentValue"&&(incomeSortDir==="asc"?"↑":"↓")}</th>
+                  <th className="text-right py-3 px-4 whitespace-nowrap cursor-pointer hover:text-primary" onClick={()=>handleIncomeSort("gain")}>Gain / Loss {incomeSortKey==="gain"&&(incomeSortDir==="asc"?"↑":"↓")}</th>
+                  <th className="text-right py-3 px-4 whitespace-nowrap cursor-pointer hover:text-primary" onClick={()=>handleIncomeSort("gainPercent")}>% Gain {incomeSortKey==="gainPercent"&&(incomeSortDir==="asc"?"↑":"↓")}</th>
+                  <th className="text-right py-3 px-4 whitespace-nowrap bg-blue-50/50 cursor-pointer hover:text-primary" onClick={()=>handleIncomeSort("dividendsReceived")}>Div / Interest {incomeSortKey==="dividendsReceived"&&(incomeSortDir==="asc"?"↑":"↓")}</th>
+                  <th className="text-right py-3 px-4 whitespace-nowrap bg-blue-50/50 cursor-pointer hover:text-primary" onClick={()=>handleIncomeSort("dividendsPercent")}>% Div {incomeSortKey==="dividendsPercent"&&(incomeSortDir==="asc"?"↑":"↓")}</th>
+                  <th className="text-right py-3 px-4 whitespace-nowrap cursor-pointer hover:text-primary" onClick={()=>handleIncomeSort("currentValuePlusDividends")}>Value + Div {incomeSortKey==="currentValuePlusDividends"&&(incomeSortDir==="asc"?"↑":"↓")}</th>
+                  <th className="text-right py-3 px-4 whitespace-nowrap cursor-pointer hover:text-primary" onClick={()=>handleIncomeSort("totalGainInc")}>Gain Inc Div {incomeSortKey==="totalGainInc"&&(incomeSortDir==="asc"?"↑":"↓")}</th>
+                  <th className="text-right py-3 px-4 whitespace-nowrap cursor-pointer hover:text-primary" onClick={()=>handleIncomeSort("totalGainPercentInc")}>% Gain Inc {incomeSortKey==="totalGainPercentInc"&&(incomeSortDir==="asc"?"↑":"↓")}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {filteredIncomeAssets.map((a: any) => {
+                  const gainNum = parseFloat(a.gain || "0");
+                  const gainIncNum = parseFloat(a.totalGainInc || "0");
+                  const isBond = a.assetType === "bond";
+                  return (
+                    <tr key={a.symbol} className="hover:bg-slate-50/50 transition-colors">
+                      <td className="py-3 px-4 whitespace-nowrap">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-primary text-xs">{a.symbol}</span>
+                          {isBond && <span className="text-[8px] font-bold bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded uppercase">Bond</span>}
+                          {!isBond && <span className="text-[8px] font-bold bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded uppercase">ETF</span>}
+                        </div>
+                        <div className="text-[10px] text-slate-400 truncate max-w-[160px]">{a.name}</div>
+                      </td>
+                      <td className="py-3 px-4 text-right font-mono text-slate-600 whitespace-nowrap">{formatCurrency(a.totalCost)}</td>
+                      <td className="py-3 px-4 text-right font-mono font-bold text-slate-800 whitespace-nowrap">{formatCurrency(a.currentValue)}</td>
+                      <td className={"py-3 px-4 text-right font-mono font-bold whitespace-nowrap " + (gainNum >= 0 ? "text-green-600" : "text-red-600")}>{gainNum >= 0 ? "+" : ""}{formatCurrency(a.gain)}</td>
+                      <td className={"py-3 px-4 text-right font-mono whitespace-nowrap " + (gainNum >= 0 ? "text-green-600" : "text-red-600")}>{gainNum >= 0 ? "+" : ""}{a.gainPercent}%</td>
+                      <td className="py-3 px-4 text-right font-mono font-bold text-blue-700 bg-blue-50/30 whitespace-nowrap">{formatCurrency(a.dividendsReceived)}</td>
+                      <td className="py-3 px-4 text-right font-mono text-blue-600 bg-blue-50/30 whitespace-nowrap">{a.dividendsPercent}%</td>
+                      <td className="py-3 px-4 text-right font-mono font-bold text-slate-800 whitespace-nowrap">{formatCurrency(a.currentValuePlusDividends)}</td>
+                      <td className={"py-3 px-4 text-right font-mono font-bold whitespace-nowrap " + (gainIncNum >= 0 ? "text-green-600" : "text-red-600")}>{gainIncNum >= 0 ? "+" : ""}{formatCurrency(a.totalGainInc)}</td>
+                      <td className={"py-3 px-4 text-right font-mono font-bold whitespace-nowrap " + (gainIncNum >= 0 ? "text-green-700 bg-green-50/30" : "text-red-600 bg-red-50/30")}>{gainIncNum >= 0 ? "+" : ""}{a.totalGainPercentInc}%</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot className="bg-slate-50 border-t-2 border-slate-200 font-bold text-slate-800">
+                <tr>
+                  <td className="py-4 px-4 uppercase text-[10px] tracking-widest text-slate-500 whitespace-nowrap">Totals ({incomeTable.assets.length} assets)</td>
+                  <td className="text-right py-4 px-4 font-mono text-sm whitespace-nowrap">{formatCurrency(incomeTable.totals.totalCost)}</td>
+                  <td className="text-right py-4 px-4 font-mono text-sm whitespace-nowrap">{formatCurrency(incomeTable.totals.currentValue)}</td>
+                  <td className={"text-right py-4 px-4 font-mono text-sm whitespace-nowrap " + (parseFloat(incomeTable.totals.gain) >= 0 ? "text-green-600" : "text-red-600")}>{parseFloat(incomeTable.totals.gain) >= 0 ? "+" : ""}{formatCurrency(incomeTable.totals.gain)}</td>
+                  <td className={"text-right py-4 px-4 font-mono text-sm whitespace-nowrap " + (parseFloat(incomeTable.totals.gain) >= 0 ? "text-green-600" : "text-red-600")}>{incomeTable.totals.gainPercent}%</td>
+                  <td className="text-right py-4 px-4 font-mono text-sm text-blue-700 bg-blue-50/50 whitespace-nowrap">{formatCurrency(incomeTable.totals.dividendsReceived)}</td>
+                  <td className="text-right py-4 px-4 font-mono text-sm text-blue-700 bg-blue-50/50 whitespace-nowrap">{incomeTable.totals.dividendsPercent}%</td>
+                  <td className="text-right py-4 px-4 font-mono text-sm whitespace-nowrap">{formatCurrency(incomeTable.totals.currentValuePlusDividends)}</td>
+                  <td className={"text-right py-4 px-4 font-mono text-sm whitespace-nowrap " + (parseFloat(incomeTable.totals.totalGainInc) >= 0 ? "text-green-600" : "text-red-600")}>{parseFloat(incomeTable.totals.totalGainInc) >= 0 ? "+" : ""}{formatCurrency(incomeTable.totals.totalGainInc)}</td>
+                  <td className={"text-right py-4 px-4 font-mono text-sm whitespace-nowrap " + (parseFloat(incomeTable.totals.totalGainInc) >= 0 ? "text-green-700 bg-green-50/30" : "text-red-600")}>{incomeTable.totals.totalGainPercentInc}%</td>
+                </tr>
+              </tfoot>
+            </table>
+          )}
+        </div>
+        <div className="px-6 py-3 bg-slate-50/30 border-t text-[10px] text-slate-400 flex flex-wrap gap-4">
+          <span><b className="text-slate-600">Total Cost</b> = avg cost × qty (incl. interest/fees)</span>
+          <span><b className="text-slate-600">Div/Interest</b> = dividends received (ETF) or coupons paid to date (Bond: qty × coupon/2 per past coupon date)</span>
+          <span><b className="text-slate-600">% Div</b> = div / cost</span>
+          <span><b className="text-slate-600">Gain Inc</b> = (value + div) − cost</span>
+        </div>
+      </Card>
+
+      {/* Comparative Dividend Analysis */}
+      <Card id="comparative" className="bg-white shadow-sm border border-border overflow-hidden">
+        <div className="px-6 py-4 border-b border-border bg-slate-50/50 flex items-center gap-2">
+          <TrendingUp className="w-5 h-5 text-primary" />
+          <h2 className="text-lg font-bold text-slate-800 uppercase tracking-widest">Year-over-Year Comparative Analysis</h2>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50">
+              <tr className="border-b border-border text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                <th className="text-left py-3 px-6">Asset</th>
+                <th className="text-right py-3 px-6 text-blue-600">{report?.currentQuarterKey || "Current Qtr"} (Est)</th>
+                <th className="text-right py-3 px-6">{report?.targetQuarterKey || "Last Quarter"}</th>
+                <th className="text-right py-3 px-6">{report?.priorYearQuarterKey || "Prior Year"}</th>
+                <th className="text-center py-3 px-6">QoQ Growth %</th>
+                <th className="text-right py-3 px-6">L12M Total</th>
+                <th className="text-right py-3 px-6">P12M Total</th>
+                <th className="text-center py-3 px-6">YoY Growth %</th>
+              </tr>              </thead>
+              <tbody className="divide-y divide-slate-50">
+              {report?.etfBreakdown.map((asset: any) => {
+                const growthNum = parseFloat(asset.growthPercent);
+                const isGrowthPositive = growthNum >= 0;
+                const yearlyGrowthNum = parseFloat(asset.yearlyGrowthPercent);
+                const isYearlyGrowthPositive = yearlyGrowthNum >= 0;
+
+                return (
+                  <tr key={asset.symbol} className="hover:bg-slate-50/50 transition-colors">
+                    <td className="py-4 px-6 font-bold text-slate-700">{asset.symbol}</td>
+                    <td className="py-4 px-6 text-right">
+                      <div className="font-mono font-bold text-blue-600">{formatCurrency(asset.currentEstimatedQuarterly)}</div>
+                    </td>
+                    <td className="py-4 px-6 text-right">
+                      <div className="font-mono font-bold text-slate-800">{formatCurrency(asset.latestAmount)}</div>
+                    </td>
+                    <td className="py-4 px-6 text-right">
+                      <div className="font-mono text-slate-600">{formatCurrency(asset.priorAmount)}</div>
+                    </td>                    <td className={`py-4 px-6 text-center`}>
+                      <span className={`px-2 py-1 rounded text-[10px] font-bold font-mono ${isGrowthPositive ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
+                        {isGrowthPositive ? "+" : ""}{asset.growthPercent}%
+                      </span>
+                    </td>
+                    <td className="py-4 px-6 text-right font-mono text-slate-700 font-bold">
+                      {formatCurrency(asset.totalLastYear)}
+                    </td>
+                    <td className="py-4 px-6 text-right font-mono text-slate-500">
+                      {formatCurrency(asset.totalPriorYear)}
+                    </td>
+                    <td className={`py-4 px-6 text-center`}>
+                      <span className={`px-2 py-1 rounded text-[10px] font-bold font-mono ${isYearlyGrowthPositive ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
+                        {isYearlyGrowthPositive ? "+" : ""}{asset.yearlyGrowthPercent}%
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            {report?.consolidatedComparative && (
+              <tfoot className="bg-slate-50 border-t-2 border-slate-200">
+                <tr className="font-bold text-slate-800">
+                  <td className="py-4 px-6 uppercase text-[10px] tracking-widest text-slate-500">Portfolio Totals</td>
+                  <td className="text-right py-4 px-6 font-mono text-sm text-blue-600">
+                    {formatCurrency(report.consolidatedComparative.currentEstimatedQuarterly)}
+                  </td>
+                  <td className="text-right py-4 px-6 font-mono text-sm text-primary">
+                    {formatCurrency(report.consolidatedComparative.latestAmount)}
+                  </td>
+                  <td className="text-right py-4 px-6 font-mono text-sm text-slate-600">
+                    {formatCurrency(report.consolidatedComparative.priorAmount)}
+                  </td>
+                  <td className="text-center py-4 px-6">
+                    <span className={`px-3 py-1 rounded text-xs font-bold font-mono ${parseFloat(report.consolidatedComparative.growthPercent) >= 0 ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}`}>
+                      {parseFloat(report.consolidatedComparative.growthPercent) >= 0 ? "+" : ""}
+                      {report.consolidatedComparative.growthPercent}%
+                    </span>
+                  </td>
+                  <td className="text-right py-4 px-6 font-mono text-sm text-slate-800">
+                    {formatCurrency(report.consolidatedComparative.totalLastYear)}
+                  </td>
+                  <td className="text-right py-4 px-6 font-mono text-sm text-slate-500">
+                    {formatCurrency(report.consolidatedComparative.totalPriorYear)}
+                  </td>
+                  <td className="text-center py-4 px-6">
+                    <span className={`px-3 py-1 rounded text-xs font-bold font-mono ${parseFloat(report.consolidatedComparative.yearlyGrowthPercent) >= 0 ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}`}>
+                      {parseFloat(report.consolidatedComparative.yearlyGrowthPercent) >= 0 ? "+" : ""}
+                      {report.consolidatedComparative.yearlyGrowthPercent}%
+                    </span>
+                  </td>
+                </tr>
+              </tfoot>
+            )}
+          </table>
+        </div>
+      </Card>
+
+      {/* Dividend History Table */}
+      <Card id="history" className="bg-white shadow-sm border border-border overflow-hidden">
+        <div className="px-6 py-4 border-b border-border bg-slate-50/50 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <div className="flex items-center gap-2">
+            <Calendar className="w-5 h-5 text-primary" />
+            <h2 className="text-lg font-bold text-slate-800">Detailed Payout History</h2>
+          </div>
+          
+          <div className="flex flex-wrap items-center gap-3">
+            <ListFilter className="w-4 h-4 text-slate-400" />
+            <select
+              value={filterAccountId}
+              onChange={(e) => setFilterAccountId(e.target.value)}
+              className="bg-white border border-slate-200 rounded px-3 py-1.5 text-xs font-bold text-slate-600 focus:outline-none focus:border-primary"
+            >
+              <option value="ALL">All Accounts</option>
+              {accounts
+                ?.filter((acc: any) => selectedAccountType === "all" || acc.accountType === selectedAccountType)
+                ?.map((acc: any) => (
+                  <option key={acc.id} value={acc.id.toString()}>{acc.name}</option>
+                ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
+          {filteredHistory && filteredHistory.length > 0 ? (
+            <table className="w-full">
+              <thead className="sticky top-0 bg-slate-50 z-10 shadow-sm">
+                <tr className="border-b border-border">
+                  <th className="text-left py-3 px-6 text-slate-600">Ex-Dividend Date</th>
+                  <th className="text-left py-3 px-6 text-slate-600">Symbol</th>
+                  <th className="text-left py-3 px-6 text-slate-600">Account</th>
+                  <th className="text-right py-3 px-6 text-slate-600">Per Share</th>
+                  <th className="text-right py-3 px-6 text-slate-600">Qty at Ex-Date</th>
+                  <th className="text-right py-3 px-6 text-slate-600">Total Received</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredHistory.map((dividend: any, idx: number) => {
+                  const account = accounts?.find((a: any) => a.id === dividend.accountId);
+                  return (
+                    <tr key={idx} className="border-b border-border hover:bg-slate-50 transition-colors">
+                      <td className="py-4 px-6 text-slate-600">
+                        {new Date(dividend.exDate).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: '2-digit' })}
+                      </td>
+                      <td className="py-4 px-6 font-bold text-primary">{dividend.symbol}</td>
+                      <td className="py-4 px-6 text-slate-500 text-xs font-medium">{account?.name || "Unknown"}</td>
+                      <td className="py-4 px-6 text-right font-mono text-slate-500">
+                        {formatCurrency(dividend.dividendPerShare, 4)}
+                      </td>
+                      <td className="py-4 px-6 text-right font-mono text-slate-500">
+                        {formatNumber(dividend.quantityOwned, 3)}
+                      </td>
+                      <td className="py-4 px-6 text-right font-mono font-bold text-green-600 bg-green-50/30">
+                        {formatCurrency(dividend.totalAmount)}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          ) : (
+            <div className="py-20 text-center text-slate-400">
+              <DollarSign className="w-12 h-12 mx-auto mb-4 opacity-20" />
+              <p className="text-sm font-medium">No historical dividend distributions found for current selection.</p>
+            </div>
+          )}
+        </div>
+      </Card>
+    </div>
+  );
+}

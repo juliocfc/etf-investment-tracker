@@ -60,7 +60,7 @@ function calculateCouponAmount(quantity: string | number, couponRate: string | n
 export const bondRouter = router({
   getHoldings: protectedProcedure
     .input(z.object({
-      portfolioId: z.number(),
+      portfolioId: z.number().optional(),
       accountId: z.number().optional(),
       accountType: z.string().optional(),
     }))
@@ -68,7 +68,9 @@ export const bondRouter = router({
       let holdings = await getUserBondHoldings(ctx.user.id, input.portfolioId, input.accountId);
       if (input.accountType && input.accountId === undefined) {
         const db = await getDb();
-        const matchingAccounts = await db.select({ id: accounts.id }).from(accounts).where(and(eq(accounts.userId, ctx.user.id), eq(accounts.portfolioId, input.portfolioId), eq(accounts.accountType, input.accountType)));
+        const conditions: any[] = [eq(accounts.userId, ctx.user.id), eq(accounts.accountType, input.accountType)];
+        if (input.portfolioId) conditions.push(eq(accounts.portfolioId, input.portfolioId));
+        const matchingAccounts = await db.select({ id: accounts.id }).from(accounts).where(and(...conditions));
         const matchingIds = matchingAccounts.map((a: any) => a.id);
         holdings = holdings.filter((h: any) => matchingIds.includes(h.accountId));
       }

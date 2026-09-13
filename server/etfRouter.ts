@@ -57,13 +57,11 @@ export const etfRouter = router({
       
       if (input.accountType && input.accountId === undefined) {
         const db = await getDb();
+        const conditions: any[] = [eq(accounts.userId, ctx.user.id), eq(accounts.accountType, input.accountType)];
+        if (input.portfolioId) conditions.push(eq(accounts.portfolioId, input.portfolioId));
         const matchingAccounts = await db.select({ id: accounts.id })
           .from(accounts)
-          .where(and(
-            eq(accounts.userId, ctx.user.id),
-            eq(accounts.portfolioId, input.portfolioId),
-            eq(accounts.accountType, input.accountType)
-          ));
+          .where(and(...conditions));
         const matchingIds = matchingAccounts.map((a: any) => a.id);
         holdings = holdings.filter((h: any) => matchingIds.includes(h.accountId));
       }
@@ -659,13 +657,11 @@ export const etfRouter = router({
       const db = await getDb();
 
       if (input.accountType) {
+        const conditions: any[] = [eq(accounts.userId, ctx.user.id), eq(accounts.accountType, input.accountType)];
+        if (input.portfolioId) conditions.push(eq(accounts.portfolioId, input.portfolioId));
         const matchingAccounts = await db.select({ id: accounts.id })
           .from(accounts)
-          .where(and(
-            eq(accounts.userId, ctx.user.id),
-            eq(accounts.portfolioId, input.portfolioId!),
-            eq(accounts.accountType, input.accountType)
-          ));
+          .where(and(...conditions));
         const matchingIds = matchingAccounts.map((a: any) => a.id);
         holdings = holdings.filter(h => matchingIds.includes(h.accountId));
       }
@@ -924,7 +920,7 @@ export const etfRouter = router({
 
   getProjectedDividends: protectedProcedure
     .input(z.object({ 
-      portfolioId: z.number(),
+      portfolioId: z.number().optional(),
       withDRIP: z.boolean().default(false),
       symbol: z.string().optional(),
       accountId: z.number().optional(),
@@ -935,13 +931,11 @@ export const etfRouter = router({
       
       if (input.accountType && input.accountId === undefined) {
         const db = await getDb();
+        const conditions: any[] = [eq(accounts.userId, ctx.user.id), eq(accounts.accountType, input.accountType)];
+        if (input.portfolioId) conditions.push(eq(accounts.portfolioId, input.portfolioId));
         const matchingAccounts = await db.select({ id: accounts.id })
           .from(accounts)
-          .where(and(
-            eq(accounts.userId, ctx.user.id),
-            eq(accounts.portfolioId, input.portfolioId),
-            eq(accounts.accountType, input.accountType)
-          ));
+          .where(and(...conditions));
         const matchingIds = matchingAccounts.map((a: any) => a.id);
         holdings = holdings.filter((h: any) => matchingIds.includes(h.accountId));
       }
@@ -2378,13 +2372,11 @@ export const etfRouter = router({
       
       if (input.accountType && input.accountId === undefined) {
         const db = await getDb();
+        const conditions: any[] = [eq(accounts.userId, ctx.user.id), eq(accounts.accountType, input.accountType)];
+        if (input.portfolioId) conditions.push(eq(accounts.portfolioId, input.portfolioId));
         const matchingAccounts = await db.select({ id: accounts.id })
           .from(accounts)
-          .where(and(
-            eq(accounts.userId, ctx.user.id),
-            eq(accounts.portfolioId, input.portfolioId),
-            eq(accounts.accountType, input.accountType)
-          ));
+          .where(and(...conditions));
         const matchingIds = matchingAccounts.map((a: any) => a.id);
         holdings = holdings.filter((h: any) => matchingIds.includes(h.accountId));
       }
