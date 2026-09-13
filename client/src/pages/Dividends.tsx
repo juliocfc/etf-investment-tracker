@@ -96,6 +96,9 @@ export default function Dividends({
 
   const [globalFilterSymbol, setGlobalFilterSymbol] = useState<string>("ALL");
   const [filterAccountId, setFilterAccountId] = useState<string>("ALL");
+  const [incomeSearch, setIncomeSearch] = useState("");
+  const [incomeSortKey, setIncomeSortKey] = useState<string>("currentValue");
+  const [incomeSortDir, setIncomeSortDir] = useState<"asc"|"desc">("desc");
 
   // Reset filters when portfolio changes
   useEffect(() => {
@@ -153,6 +156,53 @@ export default function Dividends({
     });
   }, [report?.history, globalFilterSymbol, filterAccountId]);
 
+  const filteredIncomeAssets = useMemo(() => {
+    if (!incomeTable?.assets) return [];
+    let rows = [...incomeTable.assets];
+    // Focus filter
+    if (globalFilterSymbol !== "ALL") {
+      rows = rows.filter((a:any) => a.symbol === globalFilterSymbol);
+    }
+    // Search
+    if (incomeSearch) {
+      const q = incomeSearch.toLowerCase();
+      rows = rows.filter((a:any) => a.symbol.toLowerCase().includes(q) || a.name.toLowerCase().includes(q));
+    }
+    // Sort
+    const dir = incomeSortDir === "asc" ? 1 : -1;
+    rows.sort((a:any,b:any) => {
+      const getVal = (r:any, key:string) => {
+        if (key==="symbol") return r.symbol;
+        if (key==="gainPercent") return parseFloat(r.gainPercent||"0");
+        if (key==="dividendsPercent") return parseFloat(r.dividendsPercent||"0");
+        if (key==="totalGainPercentInc") return parseFloat(r.totalGainPercentInc||"0");
+        return parseFloat(r[key]||"0");
+      };
+      const av = getVal(a, incomeSortKey);
+      const bv = getVal(b, incomeSortKey);
+      if (typeof av === "string" && typeof bv === "string") return av.localeCompare(bv) * dir;
+      return (av - bv) * dir;
+    });
+    return rows;
+  }, [incomeTable, globalFilterSymbol, incomeSearch, incomeSortKey, incomeSortDir]);
+
+  const handleIncomeSort = (key: string) => {
+    if (incomeSortKey === key) setIncomeSortDir(d => d === "asc" ? "desc" : "asc");
+    else { setIncomeSortKey(key); setIncomeSortDir(key==="symbol" ? "asc" : "desc"); }
+  };
+  const exportIncomeCsv = () => {
+    const rows = filteredIncomeAssets;
+    const headers = ["Symbol","Name","Type","Total Cost","Current Value","Gain","Gain%","Div/Interest","Div%","Value+Div","Gain Inc Div","Gain Inc%"];
+    const csv = [headers.join(",")].concat(rows.map((r:any)=>[
+      r.symbol, `"${r.name.replace(/"/g,'""')}"`, r.assetType, r.totalCost, r.currentValue, r.gain, r.gainPercent, r.dividendsReceived, r.dividendsPercent, r.currentValuePlusDividends, r.totalGainInc, r.totalGainPercentInc
+    ].join(","))).join("\n");
+    const blob = new Blob([csv], {type:"text/csv"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "holdings-income.csv"; a.click();
+    URL.revokeObjectURL(url);
+  };
+
   if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center h-96 gap-4">
@@ -209,8 +259,21 @@ export default function Dividends({
         </div>
       </div>
 
+      {/* Anchor Nav */}
+      <div className="sticky top-0 z-20 bg-white/80 backdrop-blur border border-border rounded-lg px-2 py-2 flex flex-wrap gap-1 shadow-sm">
+        {[
+          {id:"overview", label:"Overview"},
+          {id:"forecast", label:"Forecast"},
+          {id:"income", label:"Holdings Return"},
+          {id:"comparative", label:"Comparative"},
+          {id:"history", label:"History"},
+        ].map(s=>(
+          <a key={s.id} href={"#"+s.id} className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-md hover:bg-slate-100 text-slate-600">{s.label}</a>
+        ))}
+      </div>
+
       {/* Bond & Consolidated Income */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div id="overview" className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Card className="p-6 bg-white shadow-sm border border-border border-t-4 border-t-purple-600">
           <div className="flex justify-between items-start mb-4">
             <div>
@@ -466,7 +529,7 @@ export default function Dividends({
       </Card>
 
       {/* Forward-Looking Income Projection */}
-      <div className="space-y-6">
+      <div id="forecast" className="space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             <TrendingUp className="w-5 h-5 text-primary" />
@@ -648,11 +711,26 @@ export default function Dividends({
       </div>
 
       {/* Holdings Income Summary - per asset including individual bonds */}
-      <Card className="bg-white shadow-sm border border-border overflow-hidden">
-        <div className="px-6 py-4 border-b border-border bg-slate-50/50 flex items-center gap-2">
-          <DollarSign className="w-5 h-5 text-primary" />
-          <h2 className="text-lg font-bold text-slate-800 uppercase tracking-widest">Holdings Income & Return</h2>
-          <span className="text-[10px] font-bold text-slate-400 bg-white border px-2 py-0.5 rounded-full uppercase tracking-widest">{incomeTable?.assets?.length || 0} assets</span>
+      <Card id="income" className="bg-white shadow-sm border border-border overflow-hidden">
+        <div className="px-6 py-4 border-b border-border bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <DollarSign className="w-5 h-5 text-primary" />
+            <h2 className="text-lg font-bold text-slate-800 uppercase tracking-widest">Holdings Income & Return</h2>
+            <span className="text-[10px] font-bold text-slate-400 bg-white border px-2 py-0.5 rounded-full uppercase tracking-widest">{filteredIncomeAssets.length}/{incomeTable?.assets?.length || 0} assets</span>
+            {globalFilterSymbol !== "ALL" && <span className="text-[10px] font-bold bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">Filtered: {globalFilterSymbol}</span>}
+          </div>
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <div className="relative flex-1 sm:w-48">
+              <input placeholder="Search symbol/name" value={incomeSearch} onChange={e=>setIncomeSearch(e.target.value)} className="w-full h-8 pl-8 pr-3 text-xs border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-primary bg-white" />
+              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+              </span>
+            </div>
+            <button onClick={exportIncomeCsv} className="h-8 px-3 text-[10px] font-bold uppercase tracking-wider bg-white border border-slate-200 rounded-md hover:bg-slate-50 flex items-center gap-1.5 whitespace-nowrap">
+              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              CSV
+            </button>
+          </div>
         </div>
         <div className="overflow-x-auto">
           {!incomeTable ? (
@@ -661,22 +739,22 @@ export default function Dividends({
             <div className="py-10 text-center text-slate-400 text-sm">No holdings found.</div>
           ) : (
             <table className="w-full text-sm">
-              <thead className="bg-slate-50">
+              <thead className="bg-slate-50 sticky top-0 z-10">
                 <tr className="border-b border-border text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                  <th className="text-left py-3 px-4 whitespace-nowrap">Asset</th>
-                  <th className="text-right py-3 px-4 whitespace-nowrap">Total Cost</th>
-                  <th className="text-right py-3 px-4 whitespace-nowrap">Current Value</th>
-                  <th className="text-right py-3 px-4 whitespace-nowrap">Gain / Loss</th>
-                  <th className="text-right py-3 px-4 whitespace-nowrap">% Gain</th>
-                  <th className="text-right py-3 px-4 whitespace-nowrap bg-blue-50/50">Div / Interest</th>
-                  <th className="text-right py-3 px-4 whitespace-nowrap bg-blue-50/50">% Div</th>
-                  <th className="text-right py-3 px-4 whitespace-nowrap">Value + Div</th>
-                  <th className="text-right py-3 px-4 whitespace-nowrap">Gain Inc Div</th>
-                  <th className="text-right py-3 px-4 whitespace-nowrap">% Gain Inc</th>
+                  <th className="text-left py-3 px-4 whitespace-nowrap cursor-pointer hover:text-primary" onClick={()=>handleIncomeSort("symbol")}>Asset {incomeSortKey==="symbol"&&(incomeSortDir==="asc"?"↑":"↓")}</th>
+                  <th className="text-right py-3 px-4 whitespace-nowrap cursor-pointer hover:text-primary" onClick={()=>handleIncomeSort("totalCost")}>Total Cost {incomeSortKey==="totalCost"&&(incomeSortDir==="asc"?"↑":"↓")}</th>
+                  <th className="text-right py-3 px-4 whitespace-nowrap cursor-pointer hover:text-primary" onClick={()=>handleIncomeSort("currentValue")}>Current Value {incomeSortKey==="currentValue"&&(incomeSortDir==="asc"?"↑":"↓")}</th>
+                  <th className="text-right py-3 px-4 whitespace-nowrap cursor-pointer hover:text-primary" onClick={()=>handleIncomeSort("gain")}>Gain / Loss {incomeSortKey==="gain"&&(incomeSortDir==="asc"?"↑":"↓")}</th>
+                  <th className="text-right py-3 px-4 whitespace-nowrap cursor-pointer hover:text-primary" onClick={()=>handleIncomeSort("gainPercent")}>% Gain {incomeSortKey==="gainPercent"&&(incomeSortDir==="asc"?"↑":"↓")}</th>
+                  <th className="text-right py-3 px-4 whitespace-nowrap bg-blue-50/50 cursor-pointer hover:text-primary" onClick={()=>handleIncomeSort("dividendsReceived")}>Div / Interest {incomeSortKey==="dividendsReceived"&&(incomeSortDir==="asc"?"↑":"↓")}</th>
+                  <th className="text-right py-3 px-4 whitespace-nowrap bg-blue-50/50 cursor-pointer hover:text-primary" onClick={()=>handleIncomeSort("dividendsPercent")}>% Div {incomeSortKey==="dividendsPercent"&&(incomeSortDir==="asc"?"↑":"↓")}</th>
+                  <th className="text-right py-3 px-4 whitespace-nowrap cursor-pointer hover:text-primary" onClick={()=>handleIncomeSort("currentValuePlusDividends")}>Value + Div {incomeSortKey==="currentValuePlusDividends"&&(incomeSortDir==="asc"?"↑":"↓")}</th>
+                  <th className="text-right py-3 px-4 whitespace-nowrap cursor-pointer hover:text-primary" onClick={()=>handleIncomeSort("totalGainInc")}>Gain Inc Div {incomeSortKey==="totalGainInc"&&(incomeSortDir==="asc"?"↑":"↓")}</th>
+                  <th className="text-right py-3 px-4 whitespace-nowrap cursor-pointer hover:text-primary" onClick={()=>handleIncomeSort("totalGainPercentInc")}>% Gain Inc {incomeSortKey==="totalGainPercentInc"&&(incomeSortDir==="asc"?"↑":"↓")}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
-                {incomeTable.assets.map((a: any) => {
+                {filteredIncomeAssets.map((a: any) => {
                   const gainNum = parseFloat(a.gain || "0");
                   const gainIncNum = parseFloat(a.totalGainInc || "0");
                   const isBond = a.assetType === "bond";
@@ -729,7 +807,7 @@ export default function Dividends({
       </Card>
 
       {/* Comparative Dividend Analysis */}
-      <Card className="bg-white shadow-sm border border-border overflow-hidden">
+      <Card id="comparative" className="bg-white shadow-sm border border-border overflow-hidden">
         <div className="px-6 py-4 border-b border-border bg-slate-50/50 flex items-center gap-2">
           <TrendingUp className="w-5 h-5 text-primary" />
           <h2 className="text-lg font-bold text-slate-800 uppercase tracking-widest">Year-over-Year Comparative Analysis</h2>
@@ -824,7 +902,7 @@ export default function Dividends({
       </Card>
 
       {/* Dividend History Table */}
-      <Card className="bg-white shadow-sm border border-border overflow-hidden">
+      <Card id="history" className="bg-white shadow-sm border border-border overflow-hidden">
         <div className="px-6 py-4 border-b border-border bg-slate-50/50 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div className="flex items-center gap-2">
             <Calendar className="w-5 h-5 text-primary" />

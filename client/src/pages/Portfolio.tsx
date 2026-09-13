@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/select";
 import { Plus, Trash2, RefreshCw, ShoppingCart, History, FolderPlus, FileUp, Wallet, TrendingUp, Info, ArrowUpCircle, ArrowDownCircle, CheckCircle2, MoreVertical, CalendarPlus, Download, List, Activity, DollarSign, LayoutDashboard, Edit2, ArrowUpDown, ChevronUp, ChevronDown, ChevronRight, ArrowLeftRight, CheckSquare, Square, Briefcase, PieChart, Landmark } from "lucide-react";
 import { toast } from "sonner";
+import ErrorBoundary from "@/components/ErrorBoundary";
 import { formatCurrency, formatNumber, formatDate, formatUTCDate, truncateNumber } from "@/lib/utils";
 import React, { useEffect, useRef, useState, useMemo } from "react";
 import Activities from "./Activities";
@@ -80,6 +81,8 @@ const getLastTradingDay = () => {
 
 export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId: number }) {
   const [activeSubTab, setActiveSubTab] = useState("overview");
+  const [holdingsSearch, setHoldingsSearch] = useState("");
+  const [holdingsFilter, setHoldingsFilter] = useState<"all"|"etf"|"bond">("all");
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: "asc" | "desc" } | null>({
     key: "currentValue",
     direction: "desc"
@@ -333,7 +336,12 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
 
   const sortedHoldings = useMemo(() => {
     if (!summary?.holdings) return [];
-    const equityOnly = summary.holdings.filter((h: any) => !h.assetType || h.assetType === "etf" || h.assetType === "equity");
+    let equityOnly: any[] = summary.holdings.filter((h: any) => !h.assetType || h.assetType === "etf" || h.assetType === "equity");
+    if (holdingsSearch) {
+      const q = holdingsSearch.toLowerCase();
+      equityOnly = equityOnly.filter((h:any) => h.symbol.toLowerCase().includes(q) || (h.name||"").toLowerCase().includes(q));
+    }
+    if (holdingsFilter === "bond") return [];
     const sortableItems = [...equityOnly];
     if (sortConfig !== null) {
       sortableItems.sort((a, b) => {
@@ -354,7 +362,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
       });
     }
     return sortableItems;
-  }, [summary?.holdings, sortConfig]);
+  }, [summary?.holdings, sortConfig, holdingsSearch, holdingsFilter]);
 
   const { data: holdings, refetch: refetchHoldings } = trpc.etf.getHoldings.useQuery(
     { 
@@ -377,7 +385,12 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
   // Bond holdings summary (sorted) - bonds are shown together via summary.holdings but we keep dedicated sorted list for Bonds card
   const sortedBondHoldings = useMemo(() => {
     if (!bondHoldings) return [];
-    const items = [...bondHoldings];
+    let items: any[] = [...bondHoldings];
+    if (holdingsSearch) {
+      const q = holdingsSearch.toLowerCase();
+      items = items.filter((h:any) => h.symbol.toLowerCase().includes(q) || (h.name||"").toLowerCase().includes(q));
+    }
+    if (holdingsFilter === "etf") return [];
     const cfg = bondSortConfig;
     items.sort((a: any, b: any) => {
       let av = a[cfg.key]; let bv = b[cfg.key];
@@ -395,7 +408,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
       return 0;
     });
     return items;
-  }, [bondHoldings, bondSortConfig]);
+  }, [bondHoldings, bondSortConfig, holdingsSearch, holdingsFilter]);
 
   const [editingAccount, setEditingAccount] = useState<{ id: number, name: string, number?: string, accountType: string } | null>(null);
   const [movingAccount, setMovingAccount] = useState<{ id: number, name: string, portfolioId: number } | null>(null);
@@ -2128,6 +2141,26 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
               </div>
             </Card>
 
+            {/* Holdings Search/Filter - filters both Equities and Bonds */}
+            <div className="bg-white border border-border rounded-lg p-3 flex flex-col sm:flex-row gap-3 items-center sticky top-2 z-10 shadow-sm">
+              <div className="relative flex-1 w-full">
+                <input placeholder="Search holdings by symbol/name (filters both tables)" value={holdingsSearch} onChange={e=>setHoldingsSearch(e.target.value)} className="w-full h-9 pl-9 pr-3 text-sm border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-primary" />
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">🔍</span>
+              </div>
+              <div className="flex gap-1 bg-slate-100 p-1 rounded-md">
+                {[
+                  {id:"all", label:"All"},
+                  {id:"etf", label:"ETF"},
+                  {id:"bond", label:"Bond"},
+                ].map(t=>(
+                  <button key={t.id} onClick={()=>setHoldingsFilter(t.id as any)} className={`px-3 py-1.5 text-xs font-bold rounded ${holdingsFilter===t.id?"bg-white shadow-sm text-primary":"text-slate-500 hover:text-slate-700"}`}>{t.label}</button>
+                ))}
+              </div>
+              {(holdingsSearch || holdingsFilter !== "all") && (
+                <button onClick={()=>{setHoldingsSearch(""); setHoldingsFilter("all");}} className="text-xs font-bold text-slate-500 hover:text-primary whitespace-nowrap">Clear</button>
+              )}
+            </div>
+
             {/* Bonds / Treasuries Section */}
             <Card className="bg-white shadow-sm border border-border overflow-hidden">
               <div className="px-6 py-4 border-b border-border bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -2793,11 +2826,17 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
             </Dialog>
           )}        </div>
       ) : activeSubTab === "activities" ? (
-        <Activities selectedPortfolioId={selectedPortfolioId} selectedAccountType={selectedAccountType} />
+        <ErrorBoundary fallback={<div className="p-6 text-center text-slate-400">Failed to load Activities</div>}>
+          <Activities selectedPortfolioId={selectedPortfolioId} selectedAccountType={selectedAccountType} />
+        </ErrorBoundary>
       ) : activeSubTab === "performance" ? (
-        <Performance selectedPortfolioId={selectedPortfolioId} selectedAccountType={selectedAccountType} />
+        <ErrorBoundary fallback={<div className="p-6 text-center text-slate-400">Failed to load Performance</div>}>
+          <Performance selectedPortfolioId={selectedPortfolioId} selectedAccountType={selectedAccountType} />
+        </ErrorBoundary>
       ) : activeSubTab === "dividends" ? (
-        <Dividends selectedPortfolioId={selectedPortfolioId} selectedAccountType={selectedAccountType} />
+        <ErrorBoundary fallback={<div className="p-6 text-center text-slate-400">Failed to load Income</div>}>
+          <Dividends selectedPortfolioId={selectedPortfolioId} selectedAccountType={selectedAccountType} />
+        </ErrorBoundary>
       ) : (
         <div className="space-y-8">
           {/* Main Portfolio Summary Stats */}

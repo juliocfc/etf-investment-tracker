@@ -14,6 +14,26 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
+function RangePicker({ value, onChange, className }: { value: string; onChange: (v: string) => void; className?: string }) {
+  const opts = [
+    { label: "Current Month", value: "cm" },
+    { label: "Past 10 Days", value: "10d" },
+    { label: "Past 30 Days", value: "30d" },
+    { label: "Past 60 Days", value: "60d" },
+    { label: "Past 90 Days", value: "90d" },
+    { label: "Year to Date", value: "ytd" },
+    { label: "Past 1 Year", value: "1y" },
+  ];
+  const prevYear = new Date().getFullYear() - 1;
+  for (let q = 4; q >= 1; q--) opts.push({ label: `Q${q} ${prevYear}`, value: `${prevYear}Q${q}` });
+  return (
+    <Select value={value} onValueChange={onChange}>
+      <SelectTrigger className={className}><SelectValue placeholder="Select range" /></SelectTrigger>
+      <SelectContent>{opts.map(o => <SelectItem key={o.value} value={o.value} className="text-xs font-bold uppercase">{o.label}</SelectItem>)}</SelectContent>
+    </Select>
+  );
+}
+
 export default function Activities({ 
   selectedPortfolioId, 
   selectedAccountType = "all" 
@@ -79,19 +99,30 @@ export default function Activities({
     { enabled: !!selectedPortfolioId }
   );
 
+  const [activitySearch, setActivitySearch] = useState("");
+  const [cashPage, setCashPage] = useState(1);
+  const pageSize = 50;
   const filteredCashActivities = useMemo(() => {
     if (!cashActivities) return [];
-    const base = !cashAccountId 
+    let base: any[] = !cashAccountId 
       ? cashActivities 
       : cashActivities.filter((a: any) => a.accountId === Number(cashAccountId));
-    
+    if (activitySearch) {
+      const q = activitySearch.toLowerCase();
+      base = base.filter((a:any) => (a.description||"").toLowerCase().includes(q) || (a.transactionType||"").toLowerCase().includes(q));
+    }
     return [...base].sort((a: any, b: any) => {
       const dateA = new Date(a.date).getTime();
       const dateB = new Date(b.date).getTime();
       if (dateB !== dateA) return dateB - dateA;
       return b.id - a.id;
     });
-  }, [cashActivities, cashAccountId]);
+  }, [cashActivities, cashAccountId, activitySearch]);
+  const pagedCashActivities = useMemo(() => {
+    const start = (cashPage - 1) * pageSize;
+    return filteredCashActivities.slice(start, start + pageSize);
+  }, [filteredCashActivities, cashPage]);
+  const cashTotalPages = Math.max(1, Math.ceil(filteredCashActivities.length / pageSize));
 
   const filteredPurchases = useMemo(() => {
     if (!viewingPurchases) return [];

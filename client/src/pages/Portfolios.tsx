@@ -32,6 +32,9 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
   const { data: incomeTable } = trpc.etf.getIncomeTable.useQuery(
     { portfolioId: portfolioFilter === "all" ? undefined : parseInt(portfolioFilter) } as any
   );
+  const [pfIncomeSearch, setPfIncomeSearch] = useState("");
+  const [pfIncomeSortKey, setPfIncomeSortKey] = useState<string>("currentValue");
+  const [pfIncomeSortDir, setPfIncomeSortDir] = useState<"asc"|"desc">("desc");
   const [dashboardRange, setDashboardRange] = useState<string>("cm");
   const [isAddPortfolioOpen, setIsAddPortfolioOpen] = useState(false);
 
@@ -249,6 +252,47 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
       projectedDividend: truncateNumber(totals.projectedDividend)
     };
   }, [consolidatedHoldings]);
+
+  const filteredPfIncomeAssets = React.useMemo(() => {
+    if (!incomeTable?.assets) return [];
+    let rows = [...incomeTable.assets];
+    if (pfIncomeSearch) {
+      const q = pfIncomeSearch.toLowerCase();
+      rows = rows.filter((a:any) => a.symbol.toLowerCase().includes(q) || a.name.toLowerCase().includes(q));
+    }
+    const dir = pfIncomeSortDir === "asc" ? 1 : -1;
+    rows.sort((a:any,b:any) => {
+      const getVal = (r:any, key:string) => {
+        if (key==="symbol") return r.symbol;
+        if (key==="gainPercent") return parseFloat(r.gainPercent||"0");
+        if (key==="dividendsPercent") return parseFloat(r.dividendsPercent||"0");
+        if (key==="totalGainPercentInc") return parseFloat(r.totalGainPercentInc||"0");
+        return parseFloat(r[key]||"0");
+      };
+      const av = getVal(a, pfIncomeSortKey);
+      const bv = getVal(b, pfIncomeSortKey);
+      if (typeof av === "string" && typeof bv === "string") return av.localeCompare(bv) * dir;
+      return (av - bv) * dir;
+    });
+    return rows;
+  }, [incomeTable, pfIncomeSearch, pfIncomeSortKey, pfIncomeSortDir]);
+
+  const handlePfIncomeSort = (key: string) => {
+    if (pfIncomeSortKey === key) setPfIncomeSortDir(d => d === "asc" ? "desc" : "asc");
+    else { setPfIncomeSortKey(key); setPfIncomeSortDir(key==="symbol" ? "asc" : "desc"); }
+  };
+  const exportPfIncomeCsv = () => {
+    const rows = filteredPfIncomeAssets;
+    const headers = ["Symbol","Name","Type","Total Cost","Current Value","Gain","Gain%","Div/Interest","Div%","Value+Div","Gain Inc Div","Gain Inc%"];
+    const csv = [headers.join(",")].concat(rows.map((r:any)=>[
+      r.symbol, `"${r.name.replace(/"/g,'""')}"`, r.assetType, r.totalCost, r.currentValue, r.gain, r.gainPercent, r.dividendsReceived, r.dividendsPercent, r.currentValuePlusDividends, r.totalGainInc, r.totalGainPercentInc
+    ].join(","))).join("\n");
+    const blob = new Blob([csv], {type:"text/csv"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "all-portfolios-income.csv"; a.click();
+    URL.revokeObjectURL(url);
+  };
 
   const assetAndCashAllocation = useMemo(() => {
     if (!portfolios || !consolidatedHoldings) return [];
@@ -566,6 +610,30 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
             <h2 className="text-lg font-bold text-slate-800">Investment Dashboard</h2>
             <p className="text-xs text-slate-500 font-medium uppercase tracking-tight">Overview of all investment portfolios and accounts</p>
           </div>
+        </div>
+      </div>
+
+      <div className="sticky top-0 z-10 bg-white/80 backdrop-blur border border-border rounded-lg px-3 py-2 flex flex-wrap items-center gap-3 shadow-sm">
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Portfolio</span>
+          <Select value={portfolioFilter} onValueChange={setPortfolioFilter}>
+            <SelectTrigger className="h-8 text-xs font-bold min-w-[160px] bg-white">
+              <SelectValue placeholder="All Portfolios" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all" className="text-xs font-bold uppercase">All Portfolios</SelectItem>
+              {portfolios?.map(p => (
+                <SelectItem key={p.id} value={p.id.toString()} className="text-xs font-bold uppercase">{p.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="h-6 w-px bg-slate-200 hidden sm:block" />
+        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest hidden sm:block">Scope: {portfolioFilter === "all" ? `${portfolios?.length||0} portfolios` : portfolios?.find(p=>p.id.toString()===portfolioFilter)?.name || "—"}</div>
+        <div className="ml-auto flex items-center gap-2 text-[10px] font-bold text-slate-500">
+          <span className="hidden sm:inline">{filteredPfIncomeAssets?.length || incomeTable?.assets?.length || 0} assets</span>
+          <span className="hidden sm:inline">•</span>
+          <span>{formatCurrency(totals.overall)}</span>
         </div>
       </div>
 
@@ -1043,11 +1111,20 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
       </Card>
 
       <Card className="bg-white border-none shadow-sm shadow-slate-200/50 overflow-hidden">
-        <CardHeader className="pb-4 flex flex-row items-center justify-between space-y-0">
+        <CardHeader className="pb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 space-y-0">
           <div className="flex items-center gap-2">
             <DollarSign className="w-4 h-4 text-primary" />
             <CardTitle className="text-sm font-bold text-slate-800 uppercase tracking-widest">Holdings Income & Return</CardTitle>
-            <span className="text-[10px] font-bold text-slate-400 bg-slate-100 border px-2 py-0.5 rounded-full uppercase tracking-widest">{incomeTable?.assets?.length || 0} assets</span>
+            <span className="text-[10px] font-bold text-slate-400 bg-slate-100 border px-2 py-0.5 rounded-full uppercase tracking-widest">{filteredPfIncomeAssets.length}/{incomeTable?.assets?.length || 0} assets</span>
+          </div>
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <div className="relative flex-1 sm:w-48">
+              <input placeholder="Search symbol/name" value={pfIncomeSearch} onChange={e=>setPfIncomeSearch(e.target.value)} className="w-full h-8 pl-8 pr-3 text-xs border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-primary bg-white" />
+              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+              </span>
+            </div>
+            <button onClick={exportPfIncomeCsv} className="h-8 px-3 text-[10px] font-bold uppercase tracking-wider bg-white border border-slate-200 rounded-md hover:bg-slate-50 flex items-center gap-1.5 whitespace-nowrap">CSV</button>
           </div>
         </CardHeader>
         <CardContent className="pt-0">
@@ -1059,21 +1136,21 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
             ) : (
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="bg-slate-50 border-b border-slate-200">
-                    <th className="text-left py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest whitespace-nowrap">Asset</th>
-                    <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest whitespace-nowrap">Total Cost</th>
-                    <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest whitespace-nowrap">Current Value</th>
-                    <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest whitespace-nowrap">Gain / Loss</th>
-                    <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest whitespace-nowrap">% Gain</th>
-                    <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest whitespace-nowrap bg-blue-50/50">Div / Interest</th>
-                    <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest whitespace-nowrap bg-blue-50/50">% Div</th>
-                    <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest whitespace-nowrap">Value + Div</th>
-                    <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest whitespace-nowrap">Gain Inc Div</th>
-                    <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest whitespace-nowrap">% Gain Inc</th>
+                  <tr className="bg-slate-50 border-b border-slate-200 sticky top-0">
+                    <th className="text-left py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest whitespace-nowrap cursor-pointer hover:text-primary" onClick={()=>handlePfIncomeSort("symbol")}>Asset {pfIncomeSortKey==="symbol"&&(pfIncomeSortDir==="asc"?"↑":"↓")}</th>
+                    <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest whitespace-nowrap cursor-pointer hover:text-primary" onClick={()=>handlePfIncomeSort("totalCost")}>Total Cost {pfIncomeSortKey==="totalCost"&&(pfIncomeSortDir==="asc"?"↑":"↓")}</th>
+                    <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest whitespace-nowrap cursor-pointer hover:text-primary" onClick={()=>handlePfIncomeSort("currentValue")}>Current Value {pfIncomeSortKey==="currentValue"&&(pfIncomeSortDir==="asc"?"↑":"↓")}</th>
+                    <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest whitespace-nowrap cursor-pointer hover:text-primary" onClick={()=>handlePfIncomeSort("gain")}>Gain / Loss {pfIncomeSortKey==="gain"&&(pfIncomeSortDir==="asc"?"↑":"↓")}</th>
+                    <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest whitespace-nowrap cursor-pointer hover:text-primary" onClick={()=>handlePfIncomeSort("gainPercent")}>% Gain {pfIncomeSortKey==="gainPercent"&&(pfIncomeSortDir==="asc"?"↑":"↓")}</th>
+                    <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest whitespace-nowrap bg-blue-50/50 cursor-pointer hover:text-primary" onClick={()=>handlePfIncomeSort("dividendsReceived")}>Div / Interest {pfIncomeSortKey==="dividendsReceived"&&(pfIncomeSortDir==="asc"?"↑":"↓")}</th>
+                    <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest whitespace-nowrap bg-blue-50/50 cursor-pointer hover:text-primary" onClick={()=>handlePfIncomeSort("dividendsPercent")}>% Div {pfIncomeSortKey==="dividendsPercent"&&(pfIncomeSortDir==="asc"?"↑":"↓")}</th>
+                    <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest whitespace-nowrap cursor-pointer hover:text-primary" onClick={()=>handlePfIncomeSort("currentValuePlusDividends")}>Value + Div {pfIncomeSortKey==="currentValuePlusDividends"&&(pfIncomeSortDir==="asc"?"↑":"↓")}</th>
+                    <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest whitespace-nowrap cursor-pointer hover:text-primary" onClick={()=>handlePfIncomeSort("totalGainInc")}>Gain Inc Div {pfIncomeSortKey==="totalGainInc"&&(pfIncomeSortDir==="asc"?"↑":"↓")}</th>
+                    <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest whitespace-nowrap cursor-pointer hover:text-primary" onClick={()=>handlePfIncomeSort("totalGainPercentInc")}>% Gain Inc {pfIncomeSortKey==="totalGainPercentInc"&&(pfIncomeSortDir==="asc"?"↑":"↓")}</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {incomeTable.assets.map((a: any) => {
+                  {filteredPfIncomeAssets.map((a: any) => {
                     const gainNum = parseFloat(a.gain || "0");
                     const gainIncNum = parseFloat(a.totalGainInc || "0");
                     const isBond = a.assetType === "bond";

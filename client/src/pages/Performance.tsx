@@ -19,7 +19,7 @@ import {
 } from "recharts";
 import { TrendingUp, Activity, BarChart3, Database, RefreshCw, ArrowUpRight, ArrowDownRight } from "lucide-react";
 
-type TimeRange = "ytd" | "1y" | "all";
+type TimeRange = "1m" | "3m" | "6m" | "ytd" | "1y" | "3y" | "all";
 
 export default function Performance({ 
   selectedPortfolioId,
@@ -80,6 +80,10 @@ export default function Performance({
       const startOfYear = new Date(now.getFullYear(), 0, 1);
       return Math.ceil((now.getTime() - startOfYear.getTime()) / (1000 * 60 * 60 * 24));
     }
+    if (range === "1m") return 30;
+    if (range === "3m") return 90;
+    if (range === "6m") return 180;
+    if (range === "3y") return 1095;
     if (range === "all") return 3650; // Use a large number for all time
     return 365;
   };
@@ -177,8 +181,8 @@ export default function Performance({
   };
 
   const RangeSelector = ({ value, onChange, className }: { value: TimeRange, onChange: (val: TimeRange) => void, className?: string }) => (
-    <div className={`flex bg-slate-100 p-0.5 rounded-md ${className}`}>
-      {(["ytd", "1y", "all"] as const).map((period) => (
+    <div className={`flex bg-slate-100 p-0.5 rounded-md overflow-x-auto ${className}`}>
+      {(["1m", "3m", "6m", "ytd", "1y", "3y", "all"] as const).map((period) => (
         <button
           key={period}
           onClick={() => onChange(period)}
@@ -338,9 +342,10 @@ export default function Performance({
         </div>
         <div className="p-0">
           <div className="overflow-x-auto">
+            <div className="overflow-x-auto max-h-[60vh] overflow-y-auto">
             <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-slate-50/50 text-slate-400 font-bold text-[10px] uppercase tracking-tighter border-b border-slate-100">
+              <thead className="sticky top-0 bg-slate-50 z-10">
+                <tr className="bg-slate-50/95 text-slate-400 font-bold text-[10px] uppercase tracking-tighter border-b border-slate-100">
                   <th className="py-2 px-3 text-left">Year</th>
                   <th className="py-2 px-3 text-right">Cost Basis</th>
                   <th className="py-2 px-3 text-right">Start Val.</th>
@@ -404,6 +409,7 @@ export default function Performance({
                 )}
               </tbody>
             </table>
+            </div>
           </div>
         </div>
       </Card>
