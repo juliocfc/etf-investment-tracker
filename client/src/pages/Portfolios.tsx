@@ -16,6 +16,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Checkbox } from "@/components/ui/checkbox";
 import { AccountTypeAllocationChart, CHART_COLORS } from "./Portfolio";
 import IncomeTab from "./IncomeTab";
 
@@ -29,11 +31,14 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
   const { data: historyData } = trpc.portfolio.getHistory.useQuery({ days: 1825 });
   const { data: allHoldings } = trpc.portfolio.getAllHoldings.useQuery();
   const [expandedPortfolios, setExpandedPortfolios] = useState<Set<number>>(new Set());
-  const [portfolioFilter, setPortfolioFilter] = useState<string>("all");
-  const [currencyFilter, setCurrencyFilter] = useState<string>("all");
+  const [portfolioFilter, setPortfolioFilter] = useState<string[]>(()=>{ try{ const s=localStorage.getItem("portfolios:portfolioFilter"); if(s){ const v=JSON.parse(s); if(Array.isArray(v)) return v; if(typeof v==="string") return [v]; } }catch{} return ["all"]; });
+  const _setPortfolioFilter = (v: string[]) => { setPortfolioFilter(v); try{ localStorage.setItem("portfolios:portfolioFilter", JSON.stringify(v)); }catch{} };
+  const [currencyFilter, setCurrencyFilter] = useState<string>(()=>{ try{ const s=localStorage.getItem("portfolios:currencyFilter"); if(s) return JSON.parse(s); }catch{} return "all"; });
+  const _setCurrencyFilter = (v: string) => { setCurrencyFilter(v); try{ localStorage.setItem("portfolios:currencyFilter", JSON.stringify(v)); }catch{} };
   const distinctCurrencies = Array.from(new Set((portfolios || []).map((p:any)=>(p as any).baseCurrency || "USD"))).sort();
+  const isPortfolioSelected = (id: number | string) => portfolioFilter.includes("all") || portfolioFilter.includes(id.toString());
   const { data: incomeTable } = trpc.etf.getIncomeTable.useQuery(
-    { portfolioId: portfolioFilter === "all" ? undefined : parseInt(portfolioFilter) } as any
+    { portfolioId: portfolioFilter.includes("all") ? undefined : parseInt(portfolioFilter[0]), portfolioIds: portfolioFilter.includes("all") ? undefined : portfolioFilter.map(id=> parseInt(id)) } as any
   );
 
   const [dashboardRange, setDashboardRange] = useState<string>("cm");
@@ -60,7 +65,7 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
 
   const { data: dashboardActivities, isLoading: isActivitiesLoading } = trpc.etf.getInvestmentActivities.useQuery(
     { 
-      portfolioId: portfolioFilter === "all" ? undefined : parseInt(portfolioFilter),
+      portfolioId: portfolioFilter.includes("all") || portfolioFilter.length !== 1 ? undefined : parseInt(portfolioFilter[0]),
       range: dashboardRange
     }
   );
@@ -83,11 +88,11 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
   });
 
   const { data: yearlyPerformance, isLoading: isLoadingYearly } = trpc.portfolio.getYearlyPerformance.useQuery({ 
-    portfolioId: portfolioFilter === "all" ? undefined : parseInt(portfolioFilter) 
+    portfolioId: portfolioFilter.includes("all") || portfolioFilter.length !== 1 ? undefined : parseInt(portfolioFilter[0]) 
   });
 
   const { data: dividendReport, isLoading: isLoadingDividends } = trpc.etf.getDetailedDividendReport.useQuery(
-    { portfolioId: portfolioFilter === "all" ? undefined : parseInt(portfolioFilter) }
+    { portfolioId: portfolioFilter.includes("all") || portfolioFilter.length !== 1 ? undefined : parseInt(portfolioFilter[0]), portfolioIds: portfolioFilter.includes("all") ? undefined : portfolioFilter.map(id=> parseInt(id)) }
   );
 
   const [divFocusSymbol, setDivFocusSymbol] = useState<string>("ALL");
@@ -142,7 +147,7 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
   const consolidatedHoldings = useMemo(() => {
     if (!allHoldings) return [];
 
-    const filterId = portfolioFilter === "all" ? null : parseInt(portfolioFilter);
+    const filterId = portfolioFilter.includes("all") ? null : parseInt(portfolioFilter[0]);
     const currencyFilteredHoldings = currencyFilter === "all" ? allHoldings : (allHoldings as any[]).filter((h:any)=> ((h as any).baseCurrency || "USD") === currencyFilter);
     const assetMap: Record<string, { 
       symbol: string, 
@@ -156,7 +161,7 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
     let totalMktValue = 0;
 
     currencyFilteredHoldings.forEach((h: any) => {
-      if (filterId !== null && h.portfolioId !== filterId) return;
+      if (!isPortfolioSelected(h.portfolioId)) return;
 
       if (!assetMap[h.symbol]) {
         assetMap[h.symbol] = {
@@ -263,10 +268,10 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
   const assetAndCashAllocation = useMemo(() => {
     if (!portfolios || !consolidatedHoldings) return [];
 
-    const filterId = portfolioFilter === "all" ? null : parseInt(portfolioFilter);
+    const filterId = portfolioFilter.includes("all") ? null : parseInt(portfolioFilter[0]);
     
     const useUSD2 = filterId === null;
-    const cashPortfolios = currencyFilter === "all" ? portfolios : portfolios.filter((p:any)=> ((p as any).baseCurrency || "USD") === currencyFilter);
+    const cashPortfolios = (portfolios || []).filter((p:any)=> (currencyFilter==="all" || (p as any).baseCurrency===currencyFilter) && isPortfolioSelected(p.id));
     const totalCash = cashPortfolios.reduce((acc, p) => {
       if (filterId !== null && p.id !== filterId) return acc;
       const v = useUSD2 && (p as any).cashValueUSD ? (p as any).cashValueUSD : p.cashValue;
@@ -331,7 +336,7 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
       };
     }
 
-    const filterId = portfolioFilter === "all" ? null : parseInt(portfolioFilter);
+    const filterId = portfolioFilter.includes("all") ? null : parseInt(portfolioFilter[0]);
 
     months.forEach((monthKey, idx) => {
       const isLastMonth = idx === months.length - 1;
@@ -436,8 +441,8 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
 
   const totals = useMemo(() => {
     if (!portfolios) return { investment: 0, equity: 0, fixedIncome: 0, cash: 0, overall: 0, totalCost: 0, gain: 0, gainPercent: "0", investmentPercent: "0", equityPercent: "0", fixedIncomePercent: "0", cashPercent: "0" };
-    const filteredPortfolios = currencyFilter === "all" ? portfolios : portfolios.filter((p:any)=> ((p as any).baseCurrency || "USD") === currencyFilter);
-    const useUSD = portfolioFilter === "all";
+    const filteredPortfolios = (portfolios || []).filter((p:any)=> (currencyFilter==="all" || (p as any).baseCurrency===currencyFilter) && isPortfolioSelected(p.id));
+    const useUSD = portfolioFilter.includes("all");
     const investment = filteredPortfolios.reduce((acc, p) => acc + parseFloat(useUSD && (p as any).investmentValueUSD ? (p as any).investmentValueUSD : p.investmentValue), 0);
     const equity = filteredPortfolios.reduce((acc, p) => acc + parseFloat(useUSD && (p as any).equityInvestmentValueUSD ? (p as any).equityInvestmentValueUSD : ((p as any).equityInvestmentValue ?? p.investmentValue ?? "0")), 0);
     const fixedIncome = filteredPortfolios.reduce((acc, p) => acc + parseFloat(useUSD && (p as any).fixedIncomeInvestmentValueUSD ? (p as any).fixedIncomeInvestmentValueUSD : ((p as any).fixedIncomeInvestmentValue ?? "0")), 0);
@@ -474,7 +479,7 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
 
     portfolios.forEach(p => {
       // Filter by portfolio if needed
-      const filterId = portfolioFilter === "all" ? null : parseInt(portfolioFilter);
+      const filterId = portfolioFilter.includes("all") ? null : parseInt(portfolioFilter[0]);
       if (filterId !== null && p.id !== filterId) return;
 
       p.accounts.forEach((acc: any) => {
@@ -587,21 +592,37 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
       <div className="sticky top-0 z-10 bg-white/80 backdrop-blur border border-border rounded-lg px-3 py-2 flex flex-wrap items-center gap-3 shadow-sm">
         <div className="flex items-center gap-2">
           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Portfolio</span>
-          <Select value={portfolioFilter} onValueChange={setPortfolioFilter}>
-            <SelectTrigger className="h-8 text-xs font-bold min-w-[160px] bg-white">
-              <SelectValue placeholder="All Portfolios" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all" className="text-xs font-bold uppercase">All Portfolios</SelectItem>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" className="h-8 text-xs font-bold min-w-[160px] justify-between bg-white">
+                {portfolioFilter.includes("all") ? "All Portfolios" : portfolioFilter.length===1 ? (portfolios?.find(p=>p.id.toString()===portfolioFilter[0])?.name || "1 selected") : `${portfolioFilter.length} portfolios`}
+                <ChevronDown className="w-3 h-3 ml-2 opacity-50" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-64 p-2" align="start">
+              <div className="flex items-center space-x-2 p-2 hover:bg-slate-50 rounded">
+                <Checkbox checked={portfolioFilter.includes("all")} onCheckedChange={(c)=> { if(c) _setPortfolioFilter(["all"]); else _setPortfolioFilter([]); }} />
+                <span className="text-xs font-bold uppercase">All Portfolios</span>
+              </div>
+              <div className="h-px bg-slate-200 my-1" />
               {portfolios?.map(p => (
-                <SelectItem key={p.id} value={p.id.toString()} className="text-xs font-bold uppercase">{p.name}</SelectItem>
+                <div key={p.id} className="flex items-center space-x-2 p-2 hover:bg-slate-50 rounded">
+                  <Checkbox checked={portfolioFilter.includes(p.id.toString())} onCheckedChange={(c)=> {
+                    let next = [...portfolioFilter.filter(v=>v!=="all")];
+                    if(c) { if(!next.includes(p.id.toString())) next.push(p.id.toString()); } else { next = next.filter(v=>v!==p.id.toString()); }
+                    if(next.length===0) next = ["all"];
+                    _setPortfolioFilter(next);
+                  }} />
+                  <span className="text-xs font-bold uppercase truncate">{p.name}</span>
+                  <span className="ml-auto text-[9px] px-1 py-0.5 rounded bg-slate-100">{(p as any).baseCurrency || "USD"}</span>
+                </div>
               ))}
-            </SelectContent>
-          </Select>
+            </PopoverContent>
+          </Popover>
         </div>
         <div className="flex items-center gap-2">
           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Currency</span>
-          <Select value={currencyFilter} onValueChange={setCurrencyFilter}>
+          <Select value={currencyFilter} onValueChange={(v)=> _setCurrencyFilter(v)}>
             <SelectTrigger className="h-8 text-xs font-bold min-w-[120px] bg-white"><SelectValue placeholder="All" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all" className="text-xs font-bold uppercase">All Currencies</SelectItem>
@@ -610,7 +631,7 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
           </Select>
         </div>
         <div className="h-6 w-px bg-slate-200 hidden sm:block" />
-        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest hidden sm:block">Scope: {portfolioFilter === "all" ? `${portfolios?.filter((p:any)=> currencyFilter==="all" || (p as any).baseCurrency===currencyFilter).length||0} portfolios` : portfolios?.find(p=>p.id.toString()===portfolioFilter)?.name || "—"}{currencyFilter!=="all" ? ` • ${currencyFilter}` : ""}</div>
+        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest hidden sm:block">Scope: {portfolioFilter.includes("all") ? `${portfolios?.filter((p:any)=> currencyFilter==="all" || (p as any).baseCurrency===currencyFilter).length||0} portfolios` : portfolioFilter.length===1 ? (portfolios?.find(p=>p.id.toString()===portfolioFilter[0])?.name || "—") : `${portfolioFilter.length} portfolios`}{currencyFilter!=="all" ? ` • ${currencyFilter}` : ""}</div>
         <div className="ml-auto flex items-center gap-2 text-[10px] font-bold text-slate-500">
           <span className="hidden sm:inline">{incomeTable?.assets?.length || 0} assets</span>
           <span className="hidden sm:inline">•</span>
@@ -706,7 +727,7 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
               </tr>
             </thead>
             <tbody>
-              {portfolios?.filter((portfolio:any)=> currencyFilter==="all" || (portfolio as any).baseCurrency===currencyFilter).map((portfolio) => {
+              {portfolios?.filter((portfolio:any)=> (currencyFilter==="all" || (portfolio as any).baseCurrency===currencyFilter) && isPortfolioSelected(portfolio.id)).map((portfolio) => {
                 const pTotal = parseFloat(portfolio.totalValue);
                 const pInvPercent = pTotal > 0 ? ((parseFloat(portfolio.investmentValue) / pTotal) * 100).toFixed(1) : "0";
                 const pCashPercent = pTotal > 0 ? ((parseFloat(portfolio.cashValue) / pTotal) * 100).toFixed(1) : "0";
@@ -903,19 +924,7 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
           </div>
           <div className="flex items-center gap-2">
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Filter:</span>
-            <Select value={portfolioFilter} onValueChange={setPortfolioFilter}>
-              <SelectTrigger className="h-7 text-[10px] font-bold uppercase tracking-wider min-w-[140px] bg-slate-50 border-slate-200">
-                <SelectValue placeholder="All Portfolios" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all" className="text-[10px] font-bold uppercase">All Portfolios</SelectItem>
-                {portfolios?.map(p => (
-                  <SelectItem key={p.id} value={p.id.toString()} className="text-[10px] font-bold uppercase">
-                    {p.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Popover><PopoverTrigger asChild><Button variant="outline" className="h-7 text-[10px] font-bold uppercase tracking-wider min-w-[140px] bg-slate-50 border-slate-200 justify-between"><span className="truncate">{portfolioFilter.includes("all") ? "All Portfolios" : portfolioFilter.length===1 ? (portfolios||[]).find((p:any)=>String(p.id)===portfolioFilter[0])?.name || portfolioFilter[0] : `${portfolioFilter.length} portfolios`}</span><ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" /></Button></PopoverTrigger><PopoverContent className="w-[240px] p-2 space-y-1"><label className="flex items-center gap-2 px-2 py-1.5 text-sm cursor-pointer hover:bg-accent rounded"><Checkbox checked={portfolioFilter.includes("all")} onCheckedChange={(v:any)=>{ if(v) setPortfolioFilter(["all"]); else setPortfolioFilter([(portfolios?.[0] as any)?.id ? String((portfolios[0] as any).id) : "all"]) }} /><span>All Portfolios</span></label>{(portfolios||[]).map((p:any)=> (<label key={p.id} className="flex items-center gap-2 px-2 py-1.5 text-sm cursor-pointer hover:bg-accent rounded"><Checkbox checked={portfolioFilter.includes(String(p.id))} onCheckedChange={(v:any)=>{ let next=[...portfolioFilter]; if(v){ next=next.filter(x=>x!=="all"); next.push(String(p.id)); } else { next=next.filter(x=>x!==String(p.id)); } if(next.length===0) next=["all"]; setPortfolioFilter(next); }} /><span>{p.name}</span></label>))}</PopoverContent></Popover>
           </div>
         </CardHeader>
         <CardContent className="pt-0">
@@ -1011,19 +1020,7 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
           </div>
           <div className="flex items-center gap-2">
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Filter:</span>
-            <Select value={portfolioFilter} onValueChange={setPortfolioFilter}>
-              <SelectTrigger className="h-7 text-[10px] font-bold uppercase tracking-wider min-w-[140px] bg-slate-50 border-slate-200">
-                <SelectValue placeholder="All Portfolios" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all" className="text-[10px] font-bold uppercase">All Portfolios</SelectItem>
-                {portfolios?.map(p => (
-                  <SelectItem key={p.id} value={p.id.toString()} className="text-[10px] font-bold uppercase">
-                    {p.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Popover><PopoverTrigger asChild><Button variant="outline" className="h-7 text-[10px] font-bold uppercase tracking-wider min-w-[140px] bg-slate-50 border-slate-200 justify-between"><span className="truncate">{portfolioFilter.includes("all") ? "All Portfolios" : portfolioFilter.length===1 ? (portfolios||[]).find((p:any)=>String(p.id)===portfolioFilter[0])?.name || portfolioFilter[0] : `${portfolioFilter.length} portfolios`}</span><ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" /></Button></PopoverTrigger><PopoverContent className="w-[240px] p-2 space-y-1"><label className="flex items-center gap-2 px-2 py-1.5 text-sm cursor-pointer hover:bg-accent rounded"><Checkbox checked={portfolioFilter.includes("all")} onCheckedChange={(v:any)=>{ if(v) setPortfolioFilter(["all"]); else setPortfolioFilter([(portfolios?.[0] as any)?.id ? String((portfolios[0] as any).id) : "all"]) }} /><span>All Portfolios</span></label>{(portfolios||[]).map((p:any)=> (<label key={p.id} className="flex items-center gap-2 px-2 py-1.5 text-sm cursor-pointer hover:bg-accent rounded"><Checkbox checked={portfolioFilter.includes(String(p.id))} onCheckedChange={(v:any)=>{ let next=[...portfolioFilter]; if(v){ next=next.filter(x=>x!=="all"); next.push(String(p.id)); } else { next=next.filter(x=>x!==String(p.id)); } if(next.length===0) next=["all"]; setPortfolioFilter(next); }} /><span>{p.name}</span></label>))}</PopoverContent></Popover>
           </div>
         </CardHeader>
         <CardContent className="pt-4">
@@ -1098,19 +1095,7 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
             </div>
             <div className="flex items-center gap-2">
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Filter:</span>
-              <Select value={portfolioFilter} onValueChange={setPortfolioFilter}>
-                <SelectTrigger className="h-7 text-[10px] font-bold uppercase tracking-wider min-w-[140px] bg-slate-50 border-slate-200">
-                  <SelectValue placeholder="All Portfolios" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all" className="text-[10px] font-bold uppercase">All Portfolios</SelectItem>
-                  {portfolios?.map(p => (
-                    <SelectItem key={p.id} value={p.id.toString()} className="text-[10px] font-bold uppercase">
-                      {p.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Popover><PopoverTrigger asChild><Button variant="outline" className="h-7 text-[10px] font-bold uppercase tracking-wider min-w-[140px] bg-slate-50 border-slate-200 justify-between"><span className="truncate">{portfolioFilter.includes("all") ? "All Portfolios" : portfolioFilter.length===1 ? (portfolios||[]).find((p:any)=>String(p.id)===portfolioFilter[0])?.name || portfolioFilter[0] : `${portfolioFilter.length} portfolios`}</span><ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" /></Button></PopoverTrigger><PopoverContent className="w-[240px] p-2 space-y-1"><label className="flex items-center gap-2 px-2 py-1.5 text-sm cursor-pointer hover:bg-accent rounded"><Checkbox checked={portfolioFilter.includes("all")} onCheckedChange={(v:any)=>{ if(v) setPortfolioFilter(["all"]); else setPortfolioFilter([(portfolios?.[0] as any)?.id ? String((portfolios[0] as any).id) : "all"]) }} /><span>All Portfolios</span></label>{(portfolios||[]).map((p:any)=> (<label key={p.id} className="flex items-center gap-2 px-2 py-1.5 text-sm cursor-pointer hover:bg-accent rounded"><Checkbox checked={portfolioFilter.includes(String(p.id))} onCheckedChange={(v:any)=>{ let next=[...portfolioFilter]; if(v){ next=next.filter(x=>x!=="all"); next.push(String(p.id)); } else { next=next.filter(x=>x!==String(p.id)); } if(next.length===0) next=["all"]; setPortfolioFilter(next); }} /><span>{p.name}</span></label>))}</PopoverContent></Popover>
             </div>
           </CardHeader>
           <CardContent className="pt-0">
@@ -1192,19 +1177,7 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
             </div>
             <div className="flex items-center gap-2">
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Filter:</span>
-              <Select value={portfolioFilter} onValueChange={setPortfolioFilter}>
-                <SelectTrigger className="h-7 text-[10px] font-bold uppercase tracking-wider min-w-[140px] bg-slate-50 border-slate-200">
-                  <SelectValue placeholder="All Portfolios" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all" className="text-[10px] font-bold uppercase">All Portfolios</SelectItem>
-                  {portfolios?.map(p => (
-                    <SelectItem key={p.id} value={p.id.toString()} className="text-[10px] font-bold uppercase">
-                      {p.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Popover><PopoverTrigger asChild><Button variant="outline" className="h-7 text-[10px] font-bold uppercase tracking-wider min-w-[140px] bg-slate-50 border-slate-200 justify-between"><span className="truncate">{portfolioFilter.includes("all") ? "All Portfolios" : portfolioFilter.length===1 ? (portfolios||[]).find((p:any)=>String(p.id)===portfolioFilter[0])?.name || portfolioFilter[0] : `${portfolioFilter.length} portfolios`}</span><ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" /></Button></PopoverTrigger><PopoverContent className="w-[240px] p-2 space-y-1"><label className="flex items-center gap-2 px-2 py-1.5 text-sm cursor-pointer hover:bg-accent rounded"><Checkbox checked={portfolioFilter.includes("all")} onCheckedChange={(v:any)=>{ if(v) setPortfolioFilter(["all"]); else setPortfolioFilter([(portfolios?.[0] as any)?.id ? String((portfolios[0] as any).id) : "all"]) }} /><span>All Portfolios</span></label>{(portfolios||[]).map((p:any)=> (<label key={p.id} className="flex items-center gap-2 px-2 py-1.5 text-sm cursor-pointer hover:bg-accent rounded"><Checkbox checked={portfolioFilter.includes(String(p.id))} onCheckedChange={(v:any)=>{ let next=[...portfolioFilter]; if(v){ next=next.filter(x=>x!=="all"); next.push(String(p.id)); } else { next=next.filter(x=>x!==String(p.id)); } if(next.length===0) next=["all"]; setPortfolioFilter(next); }} /><span>{p.name}</span></label>))}</PopoverContent></Popover>
             </div>
           </CardHeader>
           <CardContent className="pt-0">
@@ -1324,19 +1297,7 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
             </div>
             <div className="flex items-center gap-2">
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Filter:</span>
-              <Select value={portfolioFilter} onValueChange={setPortfolioFilter}>
-                <SelectTrigger className="h-7 text-[10px] font-bold uppercase tracking-wider min-w-[140px] bg-slate-50 border-slate-200">
-                  <SelectValue placeholder="All Portfolios" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all" className="text-[10px] font-bold uppercase">All Portfolios</SelectItem>
-                  {portfolios?.map(p => (
-                    <SelectItem key={p.id} value={p.id.toString()} className="text-[10px] font-bold uppercase">
-                      {p.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Popover><PopoverTrigger asChild><Button variant="outline" className="h-7 text-[10px] font-bold uppercase tracking-wider min-w-[140px] bg-slate-50 border-slate-200 justify-between"><span className="truncate">{portfolioFilter.includes("all") ? "All Portfolios" : portfolioFilter.length===1 ? (portfolios||[]).find((p:any)=>String(p.id)===portfolioFilter[0])?.name || portfolioFilter[0] : `${portfolioFilter.length} portfolios`}</span><ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" /></Button></PopoverTrigger><PopoverContent className="w-[240px] p-2 space-y-1"><label className="flex items-center gap-2 px-2 py-1.5 text-sm cursor-pointer hover:bg-accent rounded"><Checkbox checked={portfolioFilter.includes("all")} onCheckedChange={(v:any)=>{ if(v) setPortfolioFilter(["all"]); else setPortfolioFilter([(portfolios?.[0] as any)?.id ? String((portfolios[0] as any).id) : "all"]) }} /><span>All Portfolios</span></label>{(portfolios||[]).map((p:any)=> (<label key={p.id} className="flex items-center gap-2 px-2 py-1.5 text-sm cursor-pointer hover:bg-accent rounded"><Checkbox checked={portfolioFilter.includes(String(p.id))} onCheckedChange={(v:any)=>{ let next=[...portfolioFilter]; if(v){ next=next.filter(x=>x!=="all"); next.push(String(p.id)); } else { next=next.filter(x=>x!==String(p.id)); } if(next.length===0) next=["all"]; setPortfolioFilter(next); }} /><span>{p.name}</span></label>))}</PopoverContent></Popover>
             </div>
           </div>
           <div className="flex flex-col md:flex-row items-center justify-center gap-16">
@@ -1553,7 +1514,7 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
       </Dialog>
         </>
       ) : (
-        <IncomeTab selectedPortfolioId={portfolioFilter === "all" ? undefined : parseInt(portfolioFilter)} selectedCurrency={currencyFilter} />
+        <IncomeTab selectedPortfolioId={portfolioFilter.includes("all") ? undefined : parseInt(portfolioFilter[0])} selectedPortfolioIds={portfolioFilter.includes("all") ? undefined : portfolioFilter.map(id=> parseInt(id))} selectedCurrency={currencyFilter} />
       )}
     </div>
   );

@@ -61,12 +61,13 @@ export const bondRouter = router({
   getHoldings: protectedProcedure
     .input(z.object({
       portfolioId: z.number().optional(),
+      portfolioIds: z.array(z.number()).optional(),
       accountId: z.number().optional(),
       accountType: z.string().optional(),
       currency: z.string().optional(),
     }))
     .query(async ({ ctx, input }) => {
-      let holdings = await getUserBondHoldings(ctx.user.id, input.portfolioId, input.accountId);
+      let holdings = (input as any).portfolioIds && (input as any).portfolioIds.length ? await getUserBondHoldings(ctx.user.id) : await getUserBondHoldings(ctx.user.id, input.portfolioId, input.accountId);
       if (input.accountType && input.accountId === undefined) {
         const db = await getDb();
         const conditions: any[] = [eq(accounts.userId, ctx.user.id), eq(accounts.accountType, input.accountType)];
@@ -75,6 +76,7 @@ export const bondRouter = router({
         const matchingIds = matchingAccounts.map((a: any) => a.id);
         holdings = holdings.filter((h: any) => matchingIds.includes(h.accountId));
       }
+      if ((input as any).portfolioIds && (input as any).portfolioIds.length) holdings = holdings.filter((h:any)=> (input as any).portfolioIds.includes((h as any).portfolioId));
       if ((input as any).currency && (input as any).currency !== "all") {
         const db2 = await getDb();
         const allPf = await db2.select().from((await import("../drizzle/schema")).portfolios).where(eq((await import("../drizzle/schema")).portfolios.userId, ctx.user.id));
@@ -462,7 +464,7 @@ export const bondRouter = router({
     .input(z.object({ portfolioId: z.number(), accountId: z.number().optional(), accountType: z.string().optional() }))
     .query(async ({ ctx, input }) => {
       // minimal bond-only summary for inclusion in etf summary – client can also use etf summary combined
-      let holdings = await getUserBondHoldings(ctx.user.id, input.portfolioId, input.accountId);
+      let holdings = (input as any).portfolioIds && (input as any).portfolioIds.length ? await getUserBondHoldings(ctx.user.id) : await getUserBondHoldings(ctx.user.id, input.portfolioId, input.accountId);
       if (input.accountType && input.accountId === undefined) {
         const db = await getDb();
         const matchingAccounts = await db.select({ id: accounts.id }).from(accounts).where(and(eq(accounts.userId, ctx.user.id), eq(accounts.portfolioId, input.portfolioId), eq(accounts.accountType, input.accountType)));

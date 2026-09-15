@@ -81,6 +81,28 @@ const FinanceIndependence: React.FC = () => {
     return d;
   });
 
+  // Portfolio filter synced with Dashboard (localStorage portfolios:portfolioFilter)
+  const readPortfolioFilter = (): string[] => {
+    try {
+      const s = localStorage.getItem("portfolios:portfolioFilter");
+      if (s) {
+        const v = JSON.parse(s);
+        if (Array.isArray(v)) return v.length ? v : ["all"];
+        if (typeof v === "string") return [v];
+      }
+    } catch {}
+    return ["all"];
+  };
+  const [portfolioFilter, setPortfolioFilter] = useState<string[]>(() => readPortfolioFilter());
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => { if (e.key === "portfolios:portfolioFilter") setPortfolioFilter(readPortfolioFilter()); };
+    const onFocus = () => setPortfolioFilter(readPortfolioFilter());
+    window.addEventListener("storage", onStorage);
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onFocus);
+    return () => { window.removeEventListener("storage", onStorage); window.removeEventListener("focus", onFocus); document.removeEventListener("visibilitychange", onFocus); };
+  }, []);
+
   // Data fetching
   const { data: user } = trpc.auth.me.useQuery();
   const { data: holdings, isPending: isHoldingsPending, error: holdingsError } = trpc.portfolio.getAllHoldings.useQuery();
@@ -176,17 +198,31 @@ const FinanceIndependence: React.FC = () => {
     updateFullSimAssetMutation.mutate({ id, ...updates });
   };
 
+  // Filtered holdings/portfolios based on dashboard selection
+  const isAllPortfolios = portfolioFilter.includes("all");
+  const selectedIds = portfolioFilter.filter(v=>v!=="all").map(v=>parseInt(v));
+  const filteredHoldings = useMemo(()=> {
+    if (!holdings) return holdings;
+    if (isAllPortfolios) return holdings;
+    return (holdings as any[]).filter((h:any)=> selectedIds.includes(h.portfolioId));
+  }, [holdings, portfolioFilter]);
+  const filteredPortfolios = useMemo(()=> {
+    if (!portfolios) return portfolios;
+    if (isAllPortfolios) return portfolios;
+    return (portfolios as any[]).filter((p:any)=> selectedIds.includes(p.id));
+  }, [portfolios, portfolioFilter]);
+
   // Memos
   const totalPortfolioValue = useMemo(() => {
-    if (!portfolios) return 0;
-    const cash = portfolios.reduce((acc, p) => acc + parseFloat((p as any).cashValueUSD ?? p.cashValue), 0);
-    const investment = portfolios.reduce((acc, p) => acc + parseFloat((p as any).investmentValueUSD ?? p.investmentValue), 0);
+    if (!filteredPortfolios) return 0;
+    const cash = filteredPortfolios.reduce((acc, p) => acc + parseFloat((p as any).cashValueUSD ?? p.cashValue), 0);
+    const investment = filteredPortfolios.reduce((acc, p) => acc + parseFloat((p as any).investmentValueUSD ?? p.investmentValue), 0);
     return cash + investment;
-  }, [portfolios]);
+  }, [filteredPortfolios]);
 
   const monthlyIncome = useMemo(() => {
-    if (!holdings) return 0;
-    const totalAnnual = holdings.reduce((sum, h) => {
+    if (!filteredHoldings) return 0;
+    const totalAnnual = filteredHoldings.reduce((sum, h) => {
       const qty = parseFloat(h.quantity.toString());
       if ((h as any).assetType === "bond") {
         const coupon = parseFloat(((h as any).couponRateUSD ?? (h as any).couponRate) || "0");
@@ -196,7 +232,7 @@ const FinanceIndependence: React.FC = () => {
       return sum + qty * dps;
     }, 0);
     return totalAnnual / 12;
-  }, [holdings]);
+  }, [filteredHoldings]);
 
   const distributedExpenses = useMemo(() => {
     const expensesList = expenses || [];
@@ -238,7 +274,7 @@ const FinanceIndependence: React.FC = () => {
       const usagePercent = parseFloat(asset.usagePercent) || 100;
       const costNeeded = totalCapitalNeeded * (allocationPercent / 100);
       const totalSharesNeeded = asset.price > 0 ? Math.ceil(costNeeded / asset.price) : 0;
-      const currentShares = holdings ? holdings.filter(h => h.symbol.toUpperCase() === asset.symbol.toUpperCase()).reduce((sum, h) => sum + parseFloat(h.quantity.toString()), 0) : 0;
+      const currentShares = filteredHoldings ? filteredHoldings.filter(h => h.symbol.toUpperCase() === asset.symbol.toUpperCase()).reduce((sum, h) => sum + parseFloat(h.quantity.toString()), 0) : 0;
       const currentValue = currentShares * asset.price;
       const remainingSharesNeeded = Math.max(0, totalSharesNeeded - currentShares);
       const remainingCostNeeded = remainingSharesNeeded * asset.price;
@@ -249,7 +285,7 @@ const FinanceIndependence: React.FC = () => {
       const monthlyDivUsed = (desiredMonthlyDiv * usagePercent) / 100;
       return { ...asset, monthlyDPS, totalSharesNeeded, costNeeded, currentShares, currentValue, remainingSharesNeeded, remainingCostNeeded, progressPercent, allocationPercent, usagePercent, currentMonthlyDiv, desiredMonthlyDiv, monthlyDivUsed };
     });
-  }, [fullSimData, totals.amount, holdings]);
+  }, [fullSimData, totals.amount, filteredHoldings]);
 
   const fullSimTotals = useMemo(() => {
     return fullSimulationResults.reduce((acc, curr) => ({
@@ -481,7 +517,7 @@ const FinanceIndependence: React.FC = () => {
       evolution,
       chartData
     };
-  }, [totals.amount, totalPortfolioValue, retirementWithdrawalRate, retirementReturnRate, retirementInflationRate, retirementStartDate, userBirthDate, ssAmount, ssAge, lifeExpectancy, holdings]);
+  }, [totals.amount, totalPortfolioValue, retirementWithdrawalRate, retirementReturnRate, retirementInflationRate, retirementStartDate, userBirthDate, ssAmount, ssAge, lifeExpectancy, filteredHoldings]);
 
   // View States
   if (holdingsError || expensesError) {
@@ -520,6 +556,7 @@ const FinanceIndependence: React.FC = () => {
             <p className="text-xs text-slate-500 font-medium uppercase tracking-widest">Track your path to dividend-funded living</p>
           </div>
         </div>
+        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest hidden sm:block">Scope: {isAllPortfolios ? `${filteredPortfolios?.length||0} portfolios` : filteredPortfolios?.length===1 ? filteredPortfolios[0]?.name : `${filteredPortfolios?.length} portfolios`} {!isAllPortfolios && <span className="ml-1 text-slate-300">• filtered by Dashboard</span>}</div>
       </div>
 
       {/* Income & Progress Overview */}

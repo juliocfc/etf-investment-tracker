@@ -19,10 +19,12 @@ import { DollarSign, Calendar, ListFilter, Trophy, RefreshCw, BarChart3, Trendin
 
 export default function IncomeTab({ 
   selectedPortfolioId,
+  selectedPortfolioIds,
   selectedAccountType = "all",
   selectedCurrency = "all"
 }: { 
   selectedPortfolioId?: number,
+  selectedPortfolioIds?: number[],
   selectedAccountType?: string,
   selectedCurrency?: string
 }) {
@@ -31,6 +33,7 @@ export default function IncomeTab({
   const { data: report, isLoading } = trpc.etf.getDetailedDividendReport.useQuery(
     { 
       portfolioId: selectedPortfolioId,
+      portfolioIds: selectedPortfolioIds,
       accountType: selectedAccountType === "all" ? undefined : selectedAccountType,
       currency: selectedCurrency === "all" ? undefined : selectedCurrency
     },
@@ -43,12 +46,12 @@ export default function IncomeTab({
   );
 
   const { data: bondHoldings } = trpc.bond.getHoldings.useQuery(
-    { portfolioId: selectedPortfolioId, accountType: selectedAccountType === "all" ? undefined : selectedAccountType, currency: selectedCurrency === "all" ? undefined : selectedCurrency },
+    { portfolioId: selectedPortfolioId, portfolioIds: selectedPortfolioIds, accountType: selectedAccountType === "all" ? undefined : selectedAccountType, currency: selectedCurrency === "all" ? undefined : selectedCurrency },
     { enabled: true }
   );
 
   const { data: incomeTable } = trpc.etf.getIncomeTable.useQuery(
-    { portfolioId: selectedPortfolioId, accountType: selectedAccountType === "all" ? undefined : selectedAccountType, currency: selectedCurrency === "all" ? undefined : selectedCurrency },
+    { portfolioId: selectedPortfolioId, portfolioIds: selectedPortfolioIds, accountType: selectedAccountType === "all" ? undefined : selectedAccountType, currency: selectedCurrency === "all" ? undefined : selectedCurrency },
     { enabled: true }
   );
 
@@ -86,13 +89,14 @@ export default function IncomeTab({
   }, [bondHoldings]);
 
   const { data: dividendCalendar } = trpc.etf.getDividendCalendar.useQuery(
-    { portfolioId: selectedPortfolioId, accountType: selectedAccountType === "all" ? undefined : selectedAccountType, currency: selectedCurrency === "all" ? undefined : selectedCurrency },
+    { portfolioId: selectedPortfolioId, portfolioIds: selectedPortfolioIds, accountType: selectedAccountType === "all" ? undefined : selectedAccountType, currency: selectedCurrency === "all" ? undefined : selectedCurrency },
     { enabled: true }
   );
 
   const { data: projections, isLoading: isProjectionLoading } = trpc.etf.getProjectedDividends.useQuery(
     { 
       portfolioId: selectedPortfolioId, 
+      portfolioIds: selectedPortfolioIds,
       withDRIP: withDRIP,
       accountType: selectedAccountType === "all" ? undefined : selectedAccountType,
       currency: selectedCurrency === "all" ? undefined : selectedCurrency
