@@ -240,6 +240,9 @@ export const fiFullSimulationAssets = sqliteTable("fifullsimulationassets", {
   symbol: text("symbol").notNull(),
   allocation: text("allocation").default("0").notNull(),
   usagePercent: text("usagePercent").default("100").notNull(),
+  assetType: text("assetType").default("etf").notNull(),
+  couponRate: text("couponRate"),
+  manualPrice: text("manualPrice"),
   createdAt: integer("createdAt", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 

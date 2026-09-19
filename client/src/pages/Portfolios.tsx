@@ -147,7 +147,9 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
   const consolidatedHoldings = useMemo(() => {
     if (!allHoldings) return [];
 
-    const filterId = portfolioFilter.includes("all") ? null : parseInt(portfolioFilter[0]);
+    const isAllHold = portfolioFilter.includes("all");
+    const isConsolidatedHold = isAllHold || portfolioFilter.length > 1;
+    const filterId = isAllHold ? null : parseInt(portfolioFilter[0]);
     const currencyFilteredHoldings = currencyFilter === "all" ? allHoldings : (allHoldings as any[]).filter((h:any)=> ((h as any).baseCurrency || "USD") === currencyFilter);
     const assetMap: Record<string, { 
       symbol: string, 
@@ -176,7 +178,7 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
         } as any;
       }
 
-      const isConsolidated = filterId === null;
+      const isConsolidated = isConsolidatedHold;
       const qty = parseFloat(h.quantity);
       const priceUSD = (h as any).currentPriceUSD ? parseFloat((h as any).currentPriceUSD) : parseFloat(h.currentPrice);
       const purchaseUSD = (h as any).purchasePriceUSD ? parseFloat((h as any).purchasePriceUSD) : parseFloat(h.purchasePrice);
@@ -268,12 +270,12 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
   const assetAndCashAllocation = useMemo(() => {
     if (!portfolios || !consolidatedHoldings) return [];
 
-    const filterId = portfolioFilter.includes("all") ? null : parseInt(portfolioFilter[0]);
+    const isAll2 = portfolioFilter.includes("all");
+    const isConsolidated2 = isAll2 || portfolioFilter.length > 1;
     
-    const useUSD2 = filterId === null;
+    const useUSD2 = isConsolidated2;
     const cashPortfolios = (portfolios || []).filter((p:any)=> (currencyFilter==="all" || (p as any).baseCurrency===currencyFilter) && isPortfolioSelected(p.id));
     const totalCash = cashPortfolios.reduce((acc, p) => {
-      if (filterId !== null && p.id !== filterId) return acc;
       const v = useUSD2 && (p as any).cashValueUSD ? (p as any).cashValueUSD : p.cashValue;
       return acc + parseFloat(v);
     }, 0);
@@ -336,8 +338,6 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
       };
     }
 
-    const filterId = portfolioFilter.includes("all") ? null : parseInt(portfolioFilter[0]);
-
     months.forEach((monthKey, idx) => {
       const isLastMonth = idx === months.length - 1;
       const [year, month] = monthKey.split('-').map(Number);
@@ -348,14 +348,14 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
 
       if (isLastMonth) {
         portfolios.forEach(p => {
-          if (filterId !== null && p.id !== filterId) return;
+          if (!isPortfolioSelected(p.id)) return;
           p.accounts.forEach((acc: any) => {
             latestAccountCash[`${p.id}-${acc.id}`] = parseFloat(acc.cashValue);
           });
         });
       } else {
         historyData.cashHistory.forEach((record: any) => {
-          if (filterId !== null && record.portfolioId !== filterId) return;
+          if (!isPortfolioSelected(record.portfolioId)) return;
           const recordDate = new Date(record.date);
           if (recordDate <= monthEndDate) {
             const key = `${record.portfolioId}-${record.accountId}`;
@@ -372,13 +372,13 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
       let totalInv = 0;
       if (isLastMonth) {
         portfolios.forEach(p => {
-          if (filterId !== null && p.id !== filterId) return;
+          if (!isPortfolioSelected(p.id)) return;
           totalInv += parseFloat(p.investmentValue);
         });
       } else {
         const symbolQty: Record<string, number> = {};
         historyData.purchases.forEach((p: any) => {
-          if (filterId !== null && p.portfolioId !== filterId) return;
+          if (!isPortfolioSelected(p.portfolioId)) return;
           const purchaseDate = new Date(p.purchaseDate);
           const soldDate = p.soldDate ? new Date(p.soldDate) : null;
           if (purchaseDate <= monthEndDate && (!p.isSold || (soldDate && soldDate > monthEndDate))) {
@@ -442,7 +442,7 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
   const totals = useMemo(() => {
     if (!portfolios) return { investment: 0, equity: 0, fixedIncome: 0, cash: 0, overall: 0, totalCost: 0, gain: 0, gainPercent: "0", investmentPercent: "0", equityPercent: "0", fixedIncomePercent: "0", cashPercent: "0" };
     const filteredPortfolios = (portfolios || []).filter((p:any)=> (currencyFilter==="all" || (p as any).baseCurrency===currencyFilter) && isPortfolioSelected(p.id));
-    const useUSD = portfolioFilter.includes("all");
+    const useUSD = portfolioFilter.includes("all") || portfolioFilter.length > 1;
     const investment = filteredPortfolios.reduce((acc, p) => acc + parseFloat(useUSD && (p as any).investmentValueUSD ? (p as any).investmentValueUSD : p.investmentValue), 0);
     const equity = filteredPortfolios.reduce((acc, p) => acc + parseFloat(useUSD && (p as any).equityInvestmentValueUSD ? (p as any).equityInvestmentValueUSD : ((p as any).equityInvestmentValue ?? p.investmentValue ?? "0")), 0);
     const fixedIncome = filteredPortfolios.reduce((acc, p) => acc + parseFloat(useUSD && (p as any).fixedIncomeInvestmentValueUSD ? (p as any).fixedIncomeInvestmentValueUSD : ((p as any).fixedIncomeInvestmentValue ?? "0")), 0);
@@ -478,9 +478,7 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
     let totalValueAcrossAll = 0;
 
     portfolios.forEach(p => {
-      // Filter by portfolio if needed
-      const filterId = portfolioFilter.includes("all") ? null : parseInt(portfolioFilter[0]);
-      if (filterId !== null && p.id !== filterId) return;
+      if (!isPortfolioSelected(p.id)) return;
 
       p.accounts.forEach((acc: any) => {
         const type = acc.accountType || "Brokerage";

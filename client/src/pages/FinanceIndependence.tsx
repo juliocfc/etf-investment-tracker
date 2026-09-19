@@ -65,6 +65,9 @@ const FinanceIndependence: React.FC = () => {
   const [fullSimSymbol, setFullSimSymbol] = useState("");
   const [fullSimAllocation, setFullSimAllocation] = useState("0");
   const [fullSimUsage, setFullSimUsage] = useState("100");
+  const [fullSimAssetType, setFullSimAssetType] = useState<"etf"|"bond">("etf");
+  const [fullSimCouponRate, setFullSimCouponRate] = useState("");
+  const [fullSimPrice, setFullSimPrice] = useState("");
 
   // Retirement Longevity State
   const [retirementWithdrawalRate, setRetirementWithdrawalRate] = useState<string>("");
@@ -143,6 +146,9 @@ const FinanceIndependence: React.FC = () => {
       setFullSimSymbol("");
       setFullSimAllocation("0");
       setFullSimUsage("100");
+      setFullSimAssetType("etf");
+      setFullSimCouponRate("");
+      setFullSimPrice("");
     },
   });
 
@@ -191,7 +197,11 @@ const FinanceIndependence: React.FC = () => {
 
   const handleAddFullSimAsset = () => {
     if (!fullSimSymbol) return;
-    addFullSimAssetMutation.mutate({ symbol: fullSimSymbol, allocation: fullSimAllocation, usagePercent: fullSimUsage });
+    if (fullSimAssetType === "bond") {
+      addFullSimAssetMutation.mutate({ symbol: fullSimSymbol, allocation: fullSimAllocation, usagePercent: fullSimUsage, assetType: "bond", couponRate: fullSimCouponRate || "0", manualPrice: fullSimPrice || undefined });
+    } else {
+      addFullSimAssetMutation.mutate({ symbol: fullSimSymbol, allocation: fullSimAllocation, usagePercent: fullSimUsage, assetType: "etf" });
+    }
   };
 
   const handleUpdateFullSim = (id: number, updates: { allocation?: string, usagePercent?: string }) => {
@@ -671,22 +681,34 @@ const FinanceIndependence: React.FC = () => {
         <CardHeader className="flex flex-row items-center justify-between border-b border-slate-50 pb-4">
           <div className="flex items-center gap-2"><Target className="w-5 h-5 text-indigo-600" /><CardTitle className="text-sm font-bold uppercase tracking-wider">Total Portfolio Simulation (Full Coverage)</CardTitle></div>
           <div className="flex flex-wrap items-center gap-2">
-            <div className="relative"><Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" /><Input placeholder="Symbol" className="h-8 w-32 pl-8 text-[10px] font-bold uppercase" value={fullSimSymbol} onChange={(e) => setFullSimSymbol(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleAddFullSimAsset()} /></div>
-            <Input type="number" placeholder="Alloc %" className="h-8 w-16 text-[10px] font-bold text-right" value={fullSimAllocation} onChange={(e) => setFullSimAllocation(e.target.value)} />
+            <div className="relative"><Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" /><Input placeholder="Symbol" className="h-8 w-28 pl-8 text-[10px] font-bold uppercase" value={fullSimSymbol} onChange={(e) => setFullSimSymbol(e.target.value.toUpperCase())} onKeyDown={(e) => e.key === "Enter" && handleAddFullSimAsset()} /></div>
+            <select value={fullSimAssetType} onChange={(e)=> setFullSimAssetType(e.target.value as any)} className="h-8 w-[90px] text-[10px] font-bold uppercase border border-slate-200 rounded-md bg-white px-2">
+              <option value="etf">ETF</option>
+              <option value="bond">Bond</option>
+            </select>
+            {fullSimAssetType === "bond" ? (
+              <>
+                <Input type="number" placeholder="Coupon" className="h-8 w-20 text-[10px] font-bold text-right" value={fullSimCouponRate} onChange={(e) => setFullSimCouponRate(e.target.value)} title="Annual coupon rate" />
+                <Input type="number" placeholder="Price" className="h-8 w-20 text-[10px] font-bold text-right" value={fullSimPrice} onChange={(e) => setFullSimPrice(e.target.value)} title="Price per bond" />
+              </>
+            ) : null}
+            <Input type="number" placeholder="Alloc %" className="h-8 w-20 text-[10px] font-bold text-right" value={fullSimAllocation} onChange={(e) => setFullSimAllocation(e.target.value)} step="0.01" min="0" max="100" />
             <div className="flex items-center gap-1 bg-slate-50 px-2 rounded h-8 border border-slate-200"><span className="text-[8px] font-bold text-slate-400 uppercase">Usage %</span><Input type="number" className="h-6 w-12 border-none bg-transparent text-[10px] font-bold text-right p-0 focus-visible:ring-0" value={fullSimUsage} onChange={(e) => setFullSimUsage(e.target.value)} /></div>
             <Button size="sm" onClick={handleAddFullSimAsset} className="bg-indigo-600 hover:bg-indigo-700 h-8 font-bold uppercase text-[10px] tracking-widest" disabled={addFullSimAssetMutation.isPending}><Plus className="w-3.5 h-3.5 mr-1.5" />{addFullSimAssetMutation.isPending ? "..." : "Add"}</Button>
           </div>
         </CardHeader>
         <CardContent className="p-0">
-          <div className="p-4 bg-indigo-50/30 border-b border-indigo-50 flex justify-between items-center"><p className="text-[10px] text-indigo-700 font-bold uppercase tracking-widest leading-relaxed">Strategy: Define a complete asset mix to cover all {formatCurrency(totals.amount)} expenses. Usage % defines spendable dividend portion.</p>{fullSimTotals.allocation !== 100 && (<p className="text-[10px] text-orange-600 font-black uppercase bg-orange-50 px-2 py-1 rounded">Alloc: {fullSimTotals.allocation.toFixed(1)}%</p>)}</div>
+          <div className="p-4 bg-indigo-50/30 border-b border-indigo-50 flex justify-between items-center"><p className="text-[10px] text-indigo-700 font-bold uppercase tracking-widest leading-relaxed">Strategy: Define a complete asset mix to cover all {formatCurrency(totals.amount)} expenses. Usage % defines spendable dividend portion.</p>{fullSimTotals.allocation !== 100 && (<p className="text-[10px] text-orange-600 font-black uppercase bg-orange-50 px-2 py-1 rounded">Alloc: {fullSimTotals.allocation.toFixed(2)}%</p>)}</div>
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow className="bg-slate-50/50">
                   <TableHead className="font-bold text-[10px] uppercase h-10">Asset</TableHead>
-                  <TableHead className="text-right font-bold text-[10px] uppercase h-10">Alloc %</TableHead>
+                  <TableHead className="font-bold text-[10px] uppercase h-10">Type</TableHead>
+                  <TableHead className="text-right font-bold text-[10px] uppercase h-10 w-[90px]">Alloc %</TableHead>
                   <TableHead className="text-right font-bold text-[10px] uppercase h-10">Usage %</TableHead>
-                  <TableHead className="text-right font-bold text-[10px] uppercase h-10">Des. Div (Used)</TableHead>
+                  <TableHead className="text-right font-bold text-[10px] uppercase h-10">Yield / Coupon</TableHead>
+                  <TableHead className="text-right font-bold text-[10px] uppercase h-10">Des. Div/Int (Used)</TableHead>
                   <TableHead className="text-right font-bold text-[10px] uppercase h-10">Cur. Shares</TableHead>
                   <TableHead className="text-right font-bold text-[10px] uppercase h-10">Rem. Shares</TableHead>
                   <TableHead className="text-right font-bold text-[10px] uppercase h-10">Target Shares</TableHead>
@@ -698,13 +720,15 @@ const FinanceIndependence: React.FC = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {fullSimulationResults.length === 0 ? (<TableRow><TableCell colSpan={11} className="text-center py-8 text-slate-400 italic text-xs">No simulation assets added.</TableCell></TableRow>) : (
+                {fullSimulationResults.length === 0 ? (<TableRow><TableCell colSpan={14} className="text-center py-8 text-slate-400 italic text-xs">No simulation assets added.</TableCell></TableRow>) : (
                   fullSimulationResults.map((asset) => (
                     <TableRow key={asset.id} className="hover:bg-slate-50/50">
-                      <TableCell className="font-bold text-slate-700">{asset.symbol}</TableCell>
-                      <TableCell className="text-right"><Input type="number" className="h-7 w-16 text-right font-mono text-[11px] ml-auto" value={asset.allocation} onChange={(e) => handleUpdateFullSim(asset.id, { allocation: e.target.value })} /></TableCell>
+                      <TableCell className="font-bold text-slate-700"><div className="flex items-center gap-1">{asset.symbol} <span className={`text-[8px] px-1 py-0.5 rounded font-bold uppercase ${asset.assetType==="bond"?"bg-amber-100 text-amber-700":"bg-blue-100 text-blue-700"}`}>{asset.assetType==="bond"?"BOND 2×/yr":"ETF"}</span></div></TableCell>
+                      <TableCell className="text-center"><span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded ${asset.assetType==="bond"?"bg-amber-50 text-amber-600":"bg-slate-50 text-slate-500"}`}>{asset.assetType==="bond"?"2×/yr":"ETF"}</span></TableCell>
+                      <TableCell className="text-right"><Input type="number" className="h-7 w-20 text-right font-mono text-[11px] ml-auto" value={asset.allocation} onChange={(e) => handleUpdateFullSim(asset.id, { allocation: e.target.value })} step="0.01" min="0" max="100" /></TableCell>
                       <TableCell className="text-right"><Input type="number" className="h-7 w-20 text-right font-mono text-[11px] ml-auto" value={asset.usagePercent} onChange={(e) => handleUpdateFullSim(asset.id, { usagePercent: e.target.value })} /></TableCell>
-                      <TableCell className="text-right font-mono text-xs font-bold text-green-600">{formatCurrency(asset.monthlyDivUsed)}</TableCell>
+                      <TableCell className="text-right font-mono text-[10px] text-slate-500">{asset.assetType==="bond" ? `${(asset.couponRate||asset.annualDPS).toString()} coupon • ${(asset.price>0? (asset.annualDPS/asset.price*100).toFixed(2):"0")}%` : `${(asset.price>0? (asset.annualDPS/asset.price*100).toFixed(2):"0")}%`}</TableCell>
+                      <TableCell className="text-right font-mono text-xs font-bold text-green-600">{formatCurrency(asset.monthlyDivUsed)}<div className="text-[8px] text-slate-400 font-normal">{asset.assetType==="bond" ? "int. 2×/yr" : "div"}</div></TableCell>
                       <TableCell className="text-right font-mono text-xs text-slate-500">{asset.currentShares.toLocaleString()}</TableCell>
                       <TableCell className="text-right font-mono text-xs font-bold text-indigo-600">{asset.remainingSharesNeeded.toLocaleString()}</TableCell>
                       <TableCell className="text-right font-mono text-xs font-bold text-slate-700">{asset.totalSharesNeeded.toLocaleString()}</TableCell>
@@ -720,7 +744,7 @@ const FinanceIndependence: React.FC = () => {
               <TableFooter className="bg-indigo-50/50">
                 <TableRow>
                   <TableCell className="font-bold text-indigo-700 uppercase text-[10px]">Totals</TableCell>
-                  <TableCell className="text-right font-mono text-xs font-bold">{fullSimTotals.allocation.toFixed(1)}%</TableCell><TableCell />
+                  <TableCell /><TableCell className="text-right font-mono text-xs font-bold">{fullSimTotals.allocation.toFixed(2)}%</TableCell><TableCell /><TableCell />
                   <TableCell className="text-right font-mono text-xs font-bold text-green-700">{formatCurrency(fullSimTotals.monthlyDivUsed)}</TableCell>
                   <TableCell colSpan={3} />
                   <TableCell className="text-right font-mono text-xs font-bold text-green-700">{(fullSimTotals.cost > 0 ? (fullSimTotals.currentValue / fullSimTotals.cost) * 100 : 0).toFixed(1)}%</TableCell>

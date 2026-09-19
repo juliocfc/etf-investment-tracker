@@ -439,6 +439,49 @@ export async function getDb() {
     _db = drizzle(client);
   }
 
+  // Auto-migrate missing columns for existing DB files (handles db/etf-tracker.db vs local.db divergence)
+  try {
+    const rawClient = (_db as any).$client ?? (_db as any).client ?? null;
+    // Use a direct libsql client for PRAGMA regardless of drizzle wrapper
+    const migUrl = url || localPath;
+    const migClient = migUrl.startsWith('file:') ? createClient({ url: migUrl }) : null;
+    const exec = async (sql: string) => {
+      if (migClient) { try { await migClient.execute(sql); } catch {} }
+      // Also try via drizzle's raw client if available
+      try { await (_db as any).$client?.execute?.(sql); } catch {}
+    };
+    // Check and add fifullsimulationassets columns if missing
+    let needCheck = true;
+    try {
+      const c = migClient ?? rawClient;
+      if (c) {
+        const res: any = await c.execute("PRAGMA table_info(fifullsimulationassets)");
+        const cols = (res.rows || res || []).map((r:any)=> (r[1] ?? r.name ?? r.columnName ?? "").toString());
+        const hasAssetType = cols.includes("assetType");
+        const hasCoupon = cols.includes("couponRate");
+        const hasPrice = cols.includes("manualPrice");
+        if (!hasAssetType) { await exec("ALTER TABLE fifullsimulationassets ADD COLUMN assetType TEXT DEFAULT 'etf' NOT NULL"); console.log("[Database] Migrated fifullsimulationassets.assetType"); }
+        if (!hasCoupon) { await exec("ALTER TABLE fifullsimulationassets ADD COLUMN couponRate TEXT"); console.log("[Database] Migrated fifullsimulationassets.couponRate"); }
+        if (!hasPrice) { await exec("ALTER TABLE fifullsimulationassets ADD COLUMN manualPrice TEXT"); console.log("[Database] Migrated fifullsimulationassets.manualPrice"); }
+        // Also ensure portfolios.baseCurrency and fxrates exist (for older DBs)
+        const res2: any = await c.execute("PRAGMA table_info(portfolios)");
+        const pCols = (res2.rows || res2 || []).map((r:any)=> (r[1] ?? r.name ?? "").toString());
+        if (!pCols.includes("baseCurrency")) { await exec("ALTER TABLE portfolios ADD COLUMN baseCurrency TEXT DEFAULT 'USD' NOT NULL"); console.log("[Database] Migrated portfolios.baseCurrency"); }
+        const res3: any = await c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='fxrates'");
+        const hasFx = (res3.rows || res3 || []).length > 0 || (Array.isArray(res3) && res3.length>0);
+        if (!hasFx) {
+          try { await exec("CREATE TABLE fxrates (id INTEGER PRIMARY KEY AUTOINCREMENT, base TEXT NOT NULL, quote TEXT NOT NULL, rate TEXT NOT NULL, date INTEGER NOT NULL, createdAt INTEGER DEFAULT CURRENT_TIMESTAMP NOT NULL)"); } catch {}
+          try { await exec("CREATE UNIQUE INDEX fxrates_base_quote_date ON fxrates(base, quote, date)"); } catch {}
+          console.log("[Database] Created fxrates table");
+        }
+      }
+    } catch (e) {
+      console.warn("[Database] Auto-migrate check failed (non-fatal):", (e as any)?.message);
+    } finally {
+      try { await migClient?.close?.(); } catch {}
+    }
+  } catch {}
+
   return _db;
 }
 

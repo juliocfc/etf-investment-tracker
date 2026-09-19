@@ -415,6 +415,80 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
     return items;
   }, [bondHoldings, bondSortConfig, holdingsSearch, holdingsFilter]);
 
+  // Investment Assets Detail for this portfolio (similar to All Investment Assets on dashboard)
+  const portfolioInvestmentAssets = useMemo(() => {
+    if (!holdings && !bondHoldings) return [];
+    const isBRL = (summary as any)?.baseCurrency === "BRL" || (holdings as any)?.[0]?.baseCurrency === "BRL";
+    const displayIsBRL = false; // show in portfolio currency
+    const assetMap: Record<string, any> = {};
+    let totalMktValue = 0;
+    // Use summary.holdings if available for richer dividend data, else use holdings+bondHoldings
+    const sourceHoldings: any[] = (summary as any)?.holdings && (summary as any).holdings.length > 0 ? (summary as any).holdings : [...(holdings||[]), ...(bondHoldings||[])];
+    // Filter by search
+    const filtered = holdingsSearch ? sourceHoldings.filter((h:any)=> h.symbol.toLowerCase().includes(holdingsSearch.toLowerCase()) || (h.name||"").toLowerCase().includes(holdingsSearch.toLowerCase())) : sourceHoldings;
+    filtered.forEach((h: any) => {
+      if (holdingsFilter === "etf" && h.assetType === "bond") return;
+      if (holdingsFilter === "bond" && h.assetType !== "bond") return;
+      const sym = h.symbol;
+      if (!assetMap[sym]) {
+        assetMap[sym] = {
+          symbol: sym,
+          name: h.name,
+          quantity: 0,
+          totalCost: 0,
+          currentPrice: parseFloat(h.currentPrice || h.purchasePrice || "0"),
+          annualDividendPerShare: parseFloat(h.annualDividendPerShare || "0"),
+          couponRate: h.couponRate || "0",
+          assetType: h.assetType || (parseFloat(h.couponRate||"0")>0 ? "bond" : "etf"),
+        };
+      }
+      const qty = parseFloat(h.quantity || "0");
+      const price = parseFloat(h.currentPrice || h.purchasePrice || "0");
+      const avgCost = parseFloat(h.averageCost || h.purchasePrice || "0");
+      // For portfolio page, use local values (no USD conversion)
+      assetMap[sym].quantity += qty;
+      assetMap[sym].totalCost += qty * avgCost;
+      assetMap[sym].currentPrice = price;
+      if (h.annualDividendPerShare) assetMap[sym].annualDividendPerShare = parseFloat(h.annualDividendPerShare);
+      if (h.couponRate) assetMap[sym].couponRate = h.couponRate;
+      if (h.assetType === "bond") assetMap[sym].assetType = "bond";
+      totalMktValue += truncateNumber(qty * price);
+    });
+    const allMapped = Object.values(assetMap).map((asset: any) => {
+      const mktValue = truncateNumber(asset.quantity * asset.currentPrice);
+      const gainLoss = mktValue - asset.totalCost;
+      const gainLossPercent = asset.totalCost > 0 ? (gainLoss / asset.totalCost) * 100 : 0;
+      const avgCost = asset.quantity > 0 ? asset.totalCost / asset.quantity : 0;
+      const isBond = asset.assetType === "bond" || parseFloat(asset.couponRate||"0")>0;
+      const annualRate = isBond ? parseFloat(asset.couponRate||"0") : asset.annualDividendPerShare;
+      const projectedDividend = asset.quantity * annualRate;
+      const divYield = asset.currentPrice > 0 ? (annualRate / asset.currentPrice)*100 : 0;
+      const allocation = totalMktValue > 0 ? (mktValue / totalMktValue)*100 : 0;
+      return { ...asset, avgCost, mktValue, gainLoss, gainLossPercent, projectedDividend, divYield, allocation };
+    });
+    const equities = allMapped.filter((a:any)=> a.assetType !== "bond");
+    const bonds = allMapped.filter((a:any)=> a.assetType === "bond");
+    if (bonds.length > 0) {
+      const bondQty = bonds.reduce((s:any,b:any)=> s+b.quantity,0);
+      const bondCost = bonds.reduce((s:any,b:any)=> s+b.totalCost,0);
+      const bondMkt = bonds.reduce((s:any,b:any)=> s+b.mktValue,0);
+      const bondProj = bonds.reduce((s:any,b:any)=> s+b.projectedDividend,0);
+      const bondAvgPrice = bondQty>0 ? bondMkt/bondQty : 0;
+      const bondAvgCost = bondQty>0 ? bondCost/bondQty : 0;
+      const bondGain = bondMkt - bondCost;
+      const bondGainPct = bondCost>0 ? (bondGain/bondCost)*100 : 0;
+      const bondYield = bondAvgPrice>0 ? ((bondProj/bondQty)/bondAvgPrice*100) : 0;
+      const bondAlloc = totalMktValue>0 ? (bondMkt/totalMktValue)*100 : 0;
+      equities.push({ symbol: "Bonds", name: `${bonds.length} Treasuries/Bonds`, quantity: bondQty, totalCost: bondCost, currentPrice: bondAvgPrice, avgCost: bondAvgCost, mktValue: bondMkt, gainLoss: bondGain, gainLossPercent: bondGainPct, annualDividendPerShare: bondQty>0?bondProj/bondQty:0, couponRate: bondQty>0?(bondProj/bondQty).toFixed(3):"0", projectedDividend: bondProj, divYield: bondYield, allocation: bondAlloc, assetType: "bond" });
+    }
+    return [...equities].sort((a,b)=> b.mktValue - a.mktValue);
+  }, [holdings, bondHoldings, summary, holdingsSearch, holdingsFilter]);
+
+  const portfolioInvestmentTotals = useMemo(() => {
+    const totals = portfolioInvestmentAssets.reduce((acc:any,curr:any)=>({ totalCost: acc.totalCost+curr.totalCost, mktValue: acc.mktValue+curr.mktValue, gainLoss: acc.gainLoss+curr.gainLoss, projectedDividend: acc.projectedDividend+curr.projectedDividend }), { totalCost:0, mktValue:0, gainLoss:0, projectedDividend:0 });
+    return { totalCost: truncateNumber(totals.totalCost), mktValue: truncateNumber(totals.mktValue), gainLoss: truncateNumber(totals.gainLoss), projectedDividend: truncateNumber(totals.projectedDividend) };
+  }, [portfolioInvestmentAssets]);
+
   const [editingAccount, setEditingAccount] = useState<{ id: number, name: string, number?: string, accountType: string } | null>(null);
   const [movingAccount, setMovingAccount] = useState<{ id: number, name: string, portfolioId: number } | null>(null);
   const [targetPortfolioId, setTargetPortfolioId] = useState<string>("");
@@ -2358,6 +2432,81 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                         <td className="text-right py-4 px-3 font-mono text-sm text-green-600">{formatCurrency(sortedBondHoldings.reduce((acc: number, h: any) => acc + parseFloat(h.quantity) * parseFloat(h.couponRate || "0"), 0).toFixed(2))}</td>
                         <td className="py-4 px-3"></td>
                         <td></td>
+                      </tr>
+                    </tfoot>
+                  )}
+                </table>
+              </div>
+            </Card>
+
+            {/* Investment Assets Detail - Portfolio (mirrors All Investment Assets on dashboard) */}
+            <Card className="bg-white shadow-sm border border-border overflow-hidden">
+              <div className="px-6 py-4 border-b border-border bg-slate-50/50 flex items-center justify-between">
+                <h2 className="text-sm font-bold text-slate-800 uppercase tracking-widest flex items-center gap-2">
+                  <Briefcase className="w-4 h-4 text-primary" />
+                  Investment Assets Detail
+                </h2>
+                <span className="text-[10px] font-bold text-slate-400 bg-slate-200/50 px-2 py-0.5 rounded-full uppercase tracking-widest">{portfolioInvestmentAssets.length} Assets</span>
+              </div>
+              <div className="overflow-x-auto rounded-lg">
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-200">
+                      <th className="text-left py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Asset</th>
+                      <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Quantity</th>
+                      <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Avg Cost</th>
+                      <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Total Cost</th>
+                      <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Current Price</th>
+                      <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Mkt Value</th>
+                      <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Allocation %</th>
+                      <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Gain/Loss</th>
+                      <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Gain/Loss %</th>
+                      <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Annual Div/Coupon</th>
+                      <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Yield %</th>
+                      <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Total Annual Div</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {portfolioInvestmentAssets.length > 0 ? (
+                      portfolioInvestmentAssets.map((asset: any) => {
+                        const isGain = asset.gainLoss >= 0;
+                        return (
+                          <tr key={asset.symbol} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/50 transition-colors">
+                            <td className="py-3 px-4">
+                              <div className="font-bold text-slate-800">{asset.symbol}</div>
+                              <div className="text-[10px] text-slate-400 font-medium truncate max-w-[150px]">{asset.name}</div>
+                            </td>
+                            <td className="py-3 px-4 text-right font-mono font-medium text-slate-700">{asset.quantity.toFixed(3)}</td>
+                            <td className="py-3 px-4 text-right font-mono text-slate-500 text-xs">{formatCurrency(asset.avgCost)}</td>
+                            <td className="py-3 px-4 text-right font-mono text-slate-600 text-xs">{formatCurrency(asset.totalCost)}</td>
+                            <td className="py-3 px-4 text-right font-mono font-bold text-slate-700">{formatCurrency(asset.currentPrice)}</td>
+                            <td className="py-3 px-4 text-right font-mono font-bold text-primary">{formatCurrency(asset.mktValue)}</td>
+                            <td className="py-3 px-4 text-right font-mono text-xs font-bold text-slate-600">{asset.allocation.toFixed(2)}%</td>
+                            <td className={`py-3 px-4 text-right font-mono text-xs font-bold ${isGain ? "text-green-600" : "text-red-600"}`}>{isGain ? "+" : ""}{formatCurrency(asset.gainLoss)}</td>
+                            <td className={`py-3 px-4 text-right font-mono text-xs font-bold ${isGain ? "text-green-600" : "text-red-600"}`}>{isGain ? "+" : ""}{asset.gainLossPercent.toFixed(2)}%</td>
+                            <td className="py-3 px-4 text-right font-mono text-xs text-slate-600">{formatCurrency(asset.assetType === "bond" ? parseFloat(asset.couponRate||"0") : asset.annualDividendPerShare)}</td>
+                            <td className="py-3 px-4 text-right font-mono text-xs font-medium text-blue-600">{asset.divYield.toFixed(2)}%</td>
+                            <td className="py-3 px-4 text-right font-mono text-xs font-bold text-blue-600">{formatCurrency(asset.projectedDividend)}</td>
+                          </tr>
+                        );
+                      })
+                    ) : (
+                      <tr><td colSpan={12} className="py-8 text-center text-slate-400 italic text-sm">No investment assets found.</td></tr>
+                    )}
+                  </tbody>
+                  {portfolioInvestmentAssets.length > 0 && (
+                    <tfoot className="bg-slate-100/50 font-bold border-t-2 border-slate-200">
+                      <tr>
+                        <td colSpan={3} className="py-4 px-4 uppercase text-[10px] tracking-widest text-slate-500">Portfolio Assets Totals</td>
+                        <td className="py-4 px-4 text-right font-mono text-xs text-slate-700">{formatCurrency(portfolioInvestmentTotals.totalCost)}</td>
+                        <td className="py-4 px-4 text-right"></td>
+                        <td className="py-4 px-4 text-right font-mono text-sm text-primary">{formatCurrency(portfolioInvestmentTotals.mktValue)}</td>
+                        <td className="py-4 px-4 text-right font-mono text-xs text-slate-600">100.00%</td>
+                        <td className={`py-4 px-4 text-right font-mono text-xs ${portfolioInvestmentTotals.gainLoss >= 0 ? "text-green-700" : "text-red-700"}`}>{portfolioInvestmentTotals.gainLoss >= 0 ? "+" : ""}{formatCurrency(portfolioInvestmentTotals.gainLoss)}</td>
+                        <td className={`py-4 px-4 text-right font-mono text-xs ${portfolioInvestmentTotals.gainLoss >= 0 ? "text-green-700" : "text-red-700"}`}>{portfolioInvestmentTotals.gainLoss >= 0 ? "+" : ""}{(portfolioInvestmentTotals.totalCost > 0 ? (portfolioInvestmentTotals.gainLoss / portfolioInvestmentTotals.totalCost)*100 : 0).toFixed(2)}%</td>
+                        <td className="py-4 px-4 text-right"></td>
+                        <td className="py-4 px-4 text-right font-mono text-xs font-medium text-blue-700">{(portfolioInvestmentTotals.mktValue > 0 ? (portfolioInvestmentTotals.projectedDividend / portfolioInvestmentTotals.mktValue)*100 : 0).toFixed(2)}%</td>
+                        <td className="py-4 px-4 text-right font-mono text-sm text-blue-700"><div>{formatCurrency(portfolioInvestmentTotals.projectedDividend)}</div><div className="text-[10px] opacity-70">({formatCurrency(portfolioInvestmentTotals.projectedDividend/12)}/month)</div></td>
                       </tr>
                     </tfoot>
                   )}
