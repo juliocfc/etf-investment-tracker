@@ -659,6 +659,7 @@ export const etfRouter = router({
     }))
     .query(async ({ ctx, input }) => {
       let holdings = (input as any).portfolioIds && (input as any).portfolioIds.length ? await getUserEtfHoldings(ctx.user.id) : await getUserEtfHoldings(ctx.user.id, input.portfolioId);
+      if ((input as any).portfolioIds && (input as any).portfolioIds.length) holdings = holdings.filter((h:any)=> (input as any).portfolioIds.includes((h as any).portfolioId));
       const db = await getDb();
 
       if (input.accountType) {
@@ -936,6 +937,7 @@ export const etfRouter = router({
     .input(z.object({ portfolioId: z.number().optional(), portfolioIds: z.array(z.number()).optional(), accountType: z.string().optional(), currency: z.string().optional() }))
     .query(async ({ ctx, input }) => {
       let holdings = (input as any).portfolioIds && (input as any).portfolioIds.length ? await getUserEtfHoldings(ctx.user.id) : await getUserEtfHoldings(ctx.user.id, input.portfolioId);
+      if ((input as any).portfolioIds && (input as any).portfolioIds.length) holdings = holdings.filter((h:any)=> (input as any).portfolioIds.includes((h as any).portfolioId));
       const db = await getDb();
       if (input.accountType) {
         const conditions: any[] = [eq(accounts.userId, ctx.user.id), eq(accounts.accountType, input.accountType)];
@@ -2760,12 +2762,14 @@ export const etfRouter = router({
     .input(
       z.object({
         portfolioId: z.number().optional(),
+        portfolioIds: z.array(z.number()).optional(),
         range: z.string(), // Changed to string to support dynamic quarterly keys
         accountType: z.string().optional(),
       })
     )
     .query(async ({ ctx, input }) => {
       let holdings = (input as any).portfolioIds && (input as any).portfolioIds.length ? await getUserEtfHoldings(ctx.user.id) : await getUserEtfHoldings(ctx.user.id, input.portfolioId);
+      if ((input as any).portfolioIds && (input as any).portfolioIds.length) holdings = holdings.filter((h:any)=> (input as any).portfolioIds.includes((h as any).portfolioId));
       
       if (input.accountType) {
         const db = await getDb();
@@ -2773,7 +2777,9 @@ export const etfRouter = router({
           eq(accounts.userId, ctx.user.id),
           eq(accounts.accountType, input.accountType)
         ];
-        if (input.portfolioId) {
+        if ((input as any).portfolioIds && (input as any).portfolioIds.length) {
+          accountConditions.push(inArray(accounts.portfolioId, (input as any).portfolioIds));
+        } else if (input.portfolioId) {
           accountConditions.push(eq(accounts.portfolioId, input.portfolioId));
         }
         

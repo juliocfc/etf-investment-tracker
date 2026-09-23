@@ -66,6 +66,7 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
   const { data: dashboardActivities, isLoading: isActivitiesLoading } = trpc.etf.getInvestmentActivities.useQuery(
     { 
       portfolioId: portfolioFilter.includes("all") || portfolioFilter.length !== 1 ? undefined : parseInt(portfolioFilter[0]),
+      portfolioIds: portfolioFilter.includes("all") ? undefined : portfolioFilter.map(id=> parseInt(id)),
       range: dashboardRange
     }
   );
@@ -88,7 +89,8 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
   });
 
   const { data: yearlyPerformance, isLoading: isLoadingYearly } = trpc.portfolio.getYearlyPerformance.useQuery({ 
-    portfolioId: portfolioFilter.includes("all") || portfolioFilter.length !== 1 ? undefined : parseInt(portfolioFilter[0]) 
+    portfolioId: portfolioFilter.includes("all") || portfolioFilter.length !== 1 ? undefined : parseInt(portfolioFilter[0]),
+    portfolioIds: portfolioFilter.includes("all") ? undefined : portfolioFilter.map(id=> parseInt(id))
   });
 
   const { data: dividendReport, isLoading: isLoadingDividends } = trpc.etf.getDetailedDividendReport.useQuery(

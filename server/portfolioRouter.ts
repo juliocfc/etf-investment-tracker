@@ -1,6 +1,6 @@
 import { router, protectedProcedure } from "./_core/trpc";
 import { z } from "zod";
-import { getDb, eq, and, desc, truncateNumber } from "./db";
+import { getDb, eq, and, desc, inArray, truncateNumber } from "./db";
 import { getFxRate } from "./fxService";
 import { portfolios, cashBalance, InsertPortfolio } from "../drizzle/schema";
 import { TRPCError } from "@trpc/server";
@@ -454,19 +454,21 @@ export const portfolioRouter = router({
 
   // Get yearly performance summary for all portfolios (consolidated)
   getYearlyPerformance: protectedProcedure
-    .input(z.object({ portfolioId: z.number().optional() }))
+    .input(z.object({ portfolioId: z.number().optional(), portfolioIds: z.array(z.number()).optional() }))
     .query(async ({ ctx, input }) => {
       const db = await getDb();
       const { getUserEtfHoldings, getCashBalanceHistory } = await import("./db");
       const { getSmartHistoricalPrices } = await import("./priceService");
       const { purchases: purchasesTable } = await import("../drizzle/schema");
 
-      const holdings = await getUserEtfHoldings(ctx.user.id, input.portfolioId);
+      const holdings = (input as any).portfolioIds && (input as any).portfolioIds.length ? (await getUserEtfHoldings(ctx.user.id)).filter((h:any)=> (input as any).portfolioIds.includes((h as any).portfolioId)) : await getUserEtfHoldings(ctx.user.id, input.portfolioId);
       
       const purchaseConditions = [
         eq(purchasesTable.userId, ctx.user.id),
       ];
-      if (input.portfolioId !== undefined) {
+      if ((input as any).portfolioIds && (input as any).portfolioIds.length) {
+        purchaseConditions.push(inArray(purchasesTable.portfolioId, (input as any).portfolioIds));
+      } else if (input.portfolioId !== undefined) {
         purchaseConditions.push(eq(purchasesTable.portfolioId, input.portfolioId));
       }
 
@@ -475,7 +477,7 @@ export const portfolioRouter = router({
         .where(and(...purchaseConditions))
         .orderBy(purchasesTable.purchaseDate);
       
-      const cashHistory = await getCashBalanceHistory(ctx.user.id, input.portfolioId);
+      const cashHistory = (input as any).portfolioIds && (input as any).portfolioIds.length ? (await getCashBalanceHistory(ctx.user.id)).filter((ch:any)=> (input as any).portfolioIds.includes((ch as any).portfolioId)) : await getCashBalanceHistory(ctx.user.id, input.portfolioId);
 
       const now = new Date();
       const currentYear = now.getFullYear();
