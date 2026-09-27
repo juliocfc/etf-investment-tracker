@@ -2514,96 +2514,67 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
               </div>
             </Card>
 
-            {/* Allocation & Management Grid */}
-            <div className="grid grid-cols-1 gap-8">
-              {/* Asset Class Distribution - Cash / Equities / Fixed Income */}
-              {summary && (
-                <Card className="p-6 bg-white shadow-sm border border-border">
-                  <div className="flex items-center gap-2 mb-6">
-                    <div className="p-1.5 bg-slate-100 rounded text-slate-600">
-                      <PieChart className="w-4 h-4" />
-                    </div>
-                    <h2 className="text-lg font-bold text-slate-800">Asset Class Distribution</h2>
-                  </div>
-                  <div className="flex flex-col md:flex-row items-center justify-center gap-16">
-                    <div className="shrink-0 flex items-center justify-center">
-                      <AccountTypeAllocationChart data={(() => {
-                        const total = parseFloat(summary.totalValue || "0");
-                        const cash = parseFloat(summary.cashBalance || "0");
-                        const equities = parseFloat((summary as any).equityInvestmentValue || "0");
-                        const fixed = parseFloat((summary as any).fixedIncomeInvestmentValue || "0");
-                        return [
-                          { type: "Cash", value: cash.toFixed(2), percentage: total > 0 ? (cash/total*100).toFixed(2) : "0" },
-                          { type: "Equities", value: equities.toFixed(2), percentage: total > 0 ? (equities/total*100).toFixed(2) : "0" },
-                          { type: "Fixed Income", value: fixed.toFixed(2), percentage: total > 0 ? (fixed/total*100).toFixed(2) : "0" },
-                        ].filter(i => parseFloat(i.value) > 0);
-                      })()} />
-                    </div>
-                    <div className="flex-1 w-full max-w-2xl">
-                      <div className="space-y-3">
-                        {(() => {
-                          const total = parseFloat(summary.totalValue || "0");
-                          const data = [
-                            { type: "Cash", value: parseFloat(summary.cashBalance || "0"), color: "#94a3b8" },
-                            { type: "Equities", value: parseFloat((summary as any).equityInvestmentValue || "0"), color: "#004a99" },
-                            { type: "Fixed Income", value: parseFloat((summary as any).fixedIncomeInvestmentValue || "0"), color: "#9333ea" },
-                          ].filter(i => i.value > 0);
-                          return data.map((item: any) => (
-                            <div key={item.type} className="flex justify-between items-center text-sm p-3 hover:bg-slate-50 rounded transition-colors">
-                              <div className="flex items-center gap-4">
-                                <div className="w-4 h-4 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
-                                <span className="font-bold text-slate-700">{item.type}</span>
-                              </div>
-                              <div className="flex items-center gap-6">
-                                <span className="font-mono font-bold text-slate-600 text-sm">{formatCurrency(item.value)}</span>
-                                <span className="font-mono font-bold text-slate-700 text-base w-16 text-right">{total > 0 ? (item.value/total*100).toFixed(2) : "0"}%</span>
+            {/* Allocation Detail Table - replaces charts */}
+            <Card className="bg-white shadow-sm border border-border overflow-hidden">
+              <div className="px-6 py-4 border-b border-border bg-slate-50/50 flex items-center justify-between">
+                <h2 className="text-sm font-bold text-slate-800 uppercase tracking-widest flex items-center gap-2">
+                  <PieChart className="w-4 h-4 text-primary" />
+                  Allocation Detail
+                </h2>
+                <span className="text-[10px] font-bold text-slate-400 bg-slate-200/50 px-2 py-0.5 rounded-full uppercase tracking-widest">{summary ? formatCurrency(summary.totalValue) : "-"}</span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-border">
+                      <th className="text-left py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Asset</th>
+                      <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Quantity</th>
+                      <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Current Value</th>
+                      <th className="text-right py-3 px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Allocation %</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {summary ? (
+                      getSortedAllocationWithCash(summary.allocationBreakdown, summary.cashBalance, summary.cashAllocationPercent).map((item: any) => (
+                        <tr key={item.symbol} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/50 transition-colors">
+                          <td className="py-3 px-4">
+                            <div className="flex items-center gap-2">
+                              {item.isCash ? <Wallet className="w-3 h-3 text-slate-400" /> : item.symbol === "BONDS" ? <Landmark className="w-3 h-3 text-purple-500" /> : <Briefcase className="w-3 h-3 text-primary/60" />}
+                              <div>
+                                <div className="font-bold text-slate-800">{item.isCash ? "Cash" : item.symbol}</div>
+                                <div className="text-[10px] text-slate-400 font-medium truncate max-w-[200px]">{item.isCash ? "Available Liquidity" : item.name}</div>
                               </div>
                             </div>
-                          ));
-                        })()}
-                      </div>
-                    </div>
-                  </div>
-                </Card>
-              )}
-
-              {/* Portfolio Allocation Pie Chart */}
-              {summary && (
-                <Card className="p-6 bg-white shadow-sm border border-border">
-                  <div className="flex items-center gap-2 mb-6">
-                    <div className="p-1.5 bg-slate-100 rounded text-slate-600">
-                      <FolderPlus className="w-4 h-4" />
-                    </div>
-                    <h2 className="text-lg font-bold text-slate-800">Portfolio Allocation</h2>
-                  </div>
-                  <div className="flex flex-col md:flex-row items-center justify-center gap-16">
-                    <div className="shrink-0 flex items-center justify-center">
-                      <PortfolioAllocationChart data={groupBondsInAllocation(summary.allocationBreakdown)} cashPercent={summary.cashAllocationPercent} />
-                    </div>
-                    <div className="flex-1 w-full max-w-2xl">
-                      <div className="space-y-3">
-                        {getSortedAllocationWithCash(summary.allocationBreakdown, summary.cashBalance, summary.cashAllocationPercent).map((item: any, index: number) => (
-                          <div key={item.symbol} className="flex justify-between items-center text-sm p-3 hover:bg-slate-50 rounded transition-colors">
-                            <div className="flex items-center gap-4">
-                              <div
-                                className="w-4 h-4 rounded-full shrink-0"
-                                style={{ backgroundColor: item.isCash ? "#e2e8f0" : CHART_COLORS[index % CHART_COLORS.length] }}
-                              />
-                              <span className={item.isCash ? "font-bold text-slate-600 w-16" : "font-bold text-primary w-16"}>{item.symbol}</span>
-                              <span className="text-slate-500 text-xs truncate max-w-[250px] md:max-w-[400px]">{item.name}</span>
+                          </td>
+                          <td className="py-3 px-4 text-right font-mono text-slate-600 text-xs">{item.isCash ? "-" : (()=>{ if(item.symbol==="BONDS"){ const bonds=(summary as any).holdings?.filter((x:any)=>x.assetType==="bond")||[]; const qty=bonds.reduce((s:any,b:any)=>s+parseFloat(b.quantity||"0"),0); return qty? qty.toFixed(3) : "-"; } const h=(summary as any).holdings?.find((x:any)=>x.symbol===item.symbol); return h ? Number(h.quantity).toFixed(3) : "-"; })()}</td>
+                          <td className="py-3 px-4 text-right font-mono font-bold text-slate-700">{formatCurrency(item.currentValue)}</td>
+                          <td className="py-3 px-4 text-right">
+                            <div className="flex items-center justify-end gap-3">
+                              <div className="w-24 h-1.5 bg-slate-100 rounded-full overflow-hidden hidden sm:block">
+                                <div className={`h-full rounded-full ${item.isCash ? "bg-slate-300" : item.symbol==="BONDS" ? "bg-purple-500" : "bg-primary"}`} style={{ width: `${item.percentage}%` }} />
+                              </div>
+                              <span className="font-mono font-bold text-primary text-xs w-12 text-right">{Number(item.percentage).toFixed(2)}%</span>
                             </div>
-                            <div className="flex items-center gap-6">
-                              <span className="font-mono font-bold text-slate-600 text-sm">{formatCurrency(item.currentValue)}</span>
-                              <span className="font-mono font-bold text-slate-700 text-base w-16 text-right">{item.percentage}%</span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </Card>
-              )}
-            </div>
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr><td colSpan={4} className="py-8 text-center text-slate-400 italic text-sm">No allocation data</td></tr>
+                    )}
+                  </tbody>
+                  {summary && (
+                    <tfoot className="bg-slate-50/80 font-bold border-t border-slate-200">
+                      <tr>
+                        <td colSpan={2} className="py-3 px-4 text-[10px] uppercase tracking-widest text-slate-500">Total</td>
+                        <td className="py-3 px-4 text-right font-mono text-sm text-slate-800">{formatCurrency(summary.totalValue)}</td>
+                        <td className="py-3 px-4 text-right font-mono text-xs text-primary">100.00%</td>
+                      </tr>
+                    </tfoot>
+                  )}
+                </table>
+              </div>
+              <div className="px-6 py-3 bg-slate-50/30 border-t border-slate-100 text-[10px] text-slate-400 font-medium">Cash, individual assets and aggregated bonds (grouped) with allocation % of total portfolio value.</div>
+            </Card>
           </>
 
           {/* Dialogs */}
