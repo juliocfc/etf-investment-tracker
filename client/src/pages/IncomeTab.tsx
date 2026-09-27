@@ -41,7 +41,7 @@ export default function IncomeTab({
   );
 
   const { data: accounts } = trpc.account.getAccounts.useQuery(
-    { portfolioId: selectedPortfolioId },
+    { portfolioId: selectedPortfolioId, portfolioIds: selectedPortfolioIds },
     { enabled: true }
   );
 
@@ -1042,13 +1042,14 @@ export default function IncomeTab({
               <tbody>
                 {filteredHistory.map((dividend: any, idx: number) => {
                   const account = accounts?.find((a: any) => a.id === dividend.accountId);
+                  const accountDisplayName = (dividend as any).accountName || account?.name || "Unknown";
                   return (
                     <tr key={idx} className="border-b border-border hover:bg-slate-50 transition-colors">
                       <td className="py-4 px-6 text-slate-600">
                         {new Date(dividend.exDate).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: '2-digit' })}
                       </td>
                       <td className="py-4 px-6 font-bold text-primary">{dividend.symbol}</td>
-                      <td className="py-4 px-6 text-slate-500 text-xs font-medium">{account?.name || "Unknown"}</td>
+                      <td className="py-4 px-6 text-slate-500 text-xs font-medium">{accountDisplayName}</td>
                       <td className="py-4 px-6 text-right font-mono text-slate-500">
                         {formatCurrency(dividend.dividendPerShare, 4)}
                       </td>

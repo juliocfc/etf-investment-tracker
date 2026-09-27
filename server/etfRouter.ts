@@ -718,6 +718,10 @@ export const etfRouter = router({
       const priorWindowStart = new Date(windowStart);
       priorWindowStart.setFullYear(priorWindowStart.getFullYear() - 1);
 
+      // Map accountId -> current name for history display (handles renames)
+      const allUserAccounts = await db.select().from(accounts).where(eq(accounts.userId, ctx.user.id));
+      const accountNameMap = new Map<number, string>(allUserAccounts.map((a:any)=> [a.id, a.name] as any));
+
       const allDividends = [];
       const etfBreakdownMap = new Map<string, any>();
 
@@ -803,6 +807,7 @@ export const etfRouter = router({
             const dividendRecord = {
               symbol: holding.symbol,
               accountId: (holding as any).accountId,
+              accountName: accountNameMap.get((holding as any).accountId) || null,
               exDate: div.exDate,
               dividendPerShare: div.dividendPerShare,
               quantityOwned,
