@@ -204,7 +204,7 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
       const isBond = asset.assetType === "bond" || parseFloat(asset.couponRate || "0") > 0;
       const annualRate = isBond ? parseFloat(asset.couponRate || "0") : asset.annualDividendPerShare;
       const projectedDividend = asset.quantity * annualRate;
-      const divYield = asset.currentPrice > 0 ? (annualRate / asset.currentPrice) * 100 : 0;
+      const divYield = isBond ? (avgCost > 0 ? (annualRate / avgCost) * 100 : 0) : (asset.currentPrice > 0 ? (annualRate / asset.currentPrice) * 100 : 0);
       const allocation = totalMktValue > 0 ? (mktValue / totalMktValue) * 100 : 0;
 
       return {
@@ -230,7 +230,7 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
       const bondAvgCost = bondQty > 0 ? bondCost / bondQty : 0;
       const bondGain = bondMkt - bondCost;
       const bondGainPct = bondCost > 0 ? (bondGain / bondCost) * 100 : 0;
-      const bondYield = bondAvgPrice > 0 ? ((bondProj / bondQty) / bondAvgPrice * 100) : 0;
+      const bondYield = bondAvgCost > 0 ? ((bondProj / bondQty) / bondAvgCost * 100) : 0;
       const bondAlloc = totalMktValue > 0 ? (bondMkt / totalMktValue) * 100 : 0;
       equities.push({
         symbol: "Bonds",

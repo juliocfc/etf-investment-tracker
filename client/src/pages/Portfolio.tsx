@@ -462,7 +462,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
       const isBond = asset.assetType === "bond" || parseFloat(asset.couponRate||"0")>0;
       const annualRate = isBond ? parseFloat(asset.couponRate||"0") : asset.annualDividendPerShare;
       const projectedDividend = asset.quantity * annualRate;
-      const divYield = asset.currentPrice > 0 ? (annualRate / asset.currentPrice)*100 : 0;
+      const divYield = isBond ? (avgCost > 0 ? (annualRate / avgCost)*100 : 0) : (asset.currentPrice > 0 ? (annualRate / asset.currentPrice)*100 : 0);
       const allocation = totalMktValue > 0 ? (mktValue / totalMktValue)*100 : 0;
       return { ...asset, avgCost, mktValue, gainLoss, gainLossPercent, projectedDividend, divYield, allocation };
     });
@@ -477,7 +477,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
       const bondAvgCost = bondQty>0 ? bondCost/bondQty : 0;
       const bondGain = bondMkt - bondCost;
       const bondGainPct = bondCost>0 ? (bondGain/bondCost)*100 : 0;
-      const bondYield = bondAvgPrice>0 ? ((bondProj/bondQty)/bondAvgPrice*100) : 0;
+      const bondYield = bondAvgCost>0 ? ((bondProj/bondQty)/bondAvgCost*100) : 0;
       const bondAlloc = totalMktValue>0 ? (bondMkt/totalMktValue)*100 : 0;
       equities.push({ symbol: "Bonds", name: `${bonds.length} Treasuries/Bonds`, quantity: bondQty, totalCost: bondCost, currentPrice: bondAvgPrice, avgCost: bondAvgCost, mktValue: bondMkt, gainLoss: bondGain, gainLossPercent: bondGainPct, annualDividendPerShare: bondQty>0?bondProj/bondQty:0, couponRate: bondQty>0?(bondProj/bondQty).toFixed(3):"0", projectedDividend: bondProj, divYield: bondYield, allocation: bondAlloc, assetType: "bond" });
     }
@@ -2375,6 +2375,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                       <th className="text-right py-3 px-3 text-slate-600 text-xs font-bold uppercase">Gain/Loss</th>
                       <th className="text-right py-3 px-3 text-slate-600 text-xs font-bold uppercase">Gain/Loss %</th>
                       <th className="text-right py-3 px-3 text-slate-600 text-xs font-bold uppercase">Coupon</th>
+                      <th className="text-right py-3 px-3 text-slate-600 text-xs font-bold uppercase">Yield</th>
                       <th className="text-right py-3 px-3 text-slate-600 text-xs font-bold uppercase">Annual Interest</th>
                       <th className="text-left py-3 px-3 text-slate-600 text-xs font-bold uppercase cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => requestBondSort("redemptionDate")}>
                         <div className="flex items-center gap-1">
@@ -2391,7 +2392,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                   </thead>
                   <tbody>
                     {sortedBondHoldings.length === 0 ? (
-                      <tr><td colSpan={12} className="py-10 text-center text-slate-400 text-sm">No bonds yet. Use Add Bond to buy a Treasury.</td></tr>
+                      <tr><td colSpan={13} className="py-10 text-center text-slate-400 text-sm">No bonds yet. Use Add Bond to buy a Treasury.</td></tr>
                     ) : sortedBondHoldings.map((holding: any) => (
                       <tr key={`bond-${holding.symbol}-${holding.id}`} className="border-b border-border hover:bg-slate-50 transition-colors text-sm">
                         <td className="py-3 px-3">
@@ -2407,6 +2408,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                         <td className={`text-right py-3 px-3 font-mono text-xs font-bold ${(parseFloat(holding.quantity) * parseFloat(holding.currentPrice) - parseFloat(holding.quantity) * parseFloat(holding.averageCost || holding.purchasePrice)) >= 0 ? "text-green-600" : "text-red-600"}`}>{(parseFloat(holding.quantity) * parseFloat(holding.currentPrice) - parseFloat(holding.quantity) * parseFloat(holding.averageCost || holding.purchasePrice)) >= 0 ? "+" : ""}{formatCurrency((parseFloat(holding.quantity) * parseFloat(holding.currentPrice) - parseFloat(holding.quantity) * parseFloat(holding.averageCost || holding.purchasePrice)).toFixed(2))}</td>
                         <td className={`text-right py-3 px-3 font-mono text-xs font-bold ${(parseFloat(holding.quantity) * parseFloat(holding.averageCost || holding.purchasePrice)) > 0 ? ((parseFloat(holding.quantity) * parseFloat(holding.currentPrice) - parseFloat(holding.quantity) * parseFloat(holding.averageCost || holding.purchasePrice)) / (parseFloat(holding.quantity) * parseFloat(holding.averageCost || holding.purchasePrice)) * 100) >= 0 ? "text-green-600" : "text-red-600" : "text-slate-400"}`}>{(parseFloat(holding.quantity) * parseFloat(holding.averageCost || holding.purchasePrice)) > 0 ? (((parseFloat(holding.quantity) * parseFloat(holding.currentPrice) - parseFloat(holding.quantity) * parseFloat(holding.averageCost || holding.purchasePrice)) / (parseFloat(holding.quantity) * parseFloat(holding.averageCost || holding.purchasePrice)) * 100).toFixed(2) + "%") : "-"}</td>
                         <td className="text-right py-3 px-3 font-mono text-xs text-slate-600">{holding.couponRate && parseFloat(holding.couponRate) > 0 ? `${parseFloat(holding.couponRate).toFixed(3)}%` : "-"}</td>
+                        <td className="text-right py-3 px-3 font-mono text-xs font-bold text-blue-600">{holding.couponRate && parseFloat(holding.averageCost || holding.purchasePrice) > 0 ? `${(parseFloat(holding.couponRate) / parseFloat(holding.averageCost || holding.purchasePrice) * 100).toFixed(2)}%` : "-"}</td>
                         <td className="text-right py-3 px-3 font-mono text-xs font-bold text-green-600">{holding.couponRate && parseFloat(holding.couponRate) > 0 ? formatCurrency(parseFloat(holding.quantity) * parseFloat(holding.couponRate)) : "-"}</td>
                         <td className="py-3 px-3 text-xs text-slate-600">{holding.redemptionDate ? formatUTCDate(new Date(holding.redemptionDate)) : "-"}</td>
                         <td className="text-center py-3 px-3">
@@ -2429,6 +2431,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                         <td className={`text-right py-4 px-3 font-mono text-sm ${(sortedBondHoldings.reduce((acc: number, h: any) => acc + parseFloat(h.quantity) * parseFloat(h.currentPrice), 0) - sortedBondHoldings.reduce((acc: number, h: any) => acc + parseFloat(h.quantity) * parseFloat(h.averageCost || h.purchasePrice), 0)) >= 0 ? "text-green-600" : "text-red-600"}`}>{(sortedBondHoldings.reduce((acc: number, h: any) => acc + parseFloat(h.quantity) * parseFloat(h.currentPrice), 0) - sortedBondHoldings.reduce((acc: number, h: any) => acc + parseFloat(h.quantity) * parseFloat(h.averageCost || h.purchasePrice), 0)) >= 0 ? "+" : ""}{formatCurrency((sortedBondHoldings.reduce((acc: number, h: any) => acc + parseFloat(h.quantity) * parseFloat(h.currentPrice), 0) - sortedBondHoldings.reduce((acc: number, h: any) => acc + parseFloat(h.quantity) * parseFloat(h.averageCost || h.purchasePrice), 0)).toFixed(2))}</td>
                         <td className={`text-right py-4 px-3 font-mono text-sm ${(sortedBondHoldings.reduce((acc: number, h: any) => acc + parseFloat(h.quantity) * parseFloat(h.averageCost || h.purchasePrice), 0) > 0 ? ((sortedBondHoldings.reduce((acc: number, h: any) => acc + parseFloat(h.quantity) * parseFloat(h.currentPrice), 0) - sortedBondHoldings.reduce((acc: number, h: any) => acc + parseFloat(h.quantity) * parseFloat(h.averageCost || h.purchasePrice), 0)) / sortedBondHoldings.reduce((acc: number, h: any) => acc + parseFloat(h.quantity) * parseFloat(h.averageCost || h.purchasePrice), 0) * 100) >= 0 ? "text-green-600" : "text-red-600" : "text-slate-400")}`}>{sortedBondHoldings.reduce((acc: number, h: any) => acc + parseFloat(h.quantity) * parseFloat(h.averageCost || h.purchasePrice), 0) > 0 ? (((sortedBondHoldings.reduce((acc: number, h: any) => acc + parseFloat(h.quantity) * parseFloat(h.currentPrice), 0) - sortedBondHoldings.reduce((acc: number, h: any) => acc + parseFloat(h.quantity) * parseFloat(h.averageCost || h.purchasePrice), 0)) / sortedBondHoldings.reduce((acc: number, h: any) => acc + parseFloat(h.quantity) * parseFloat(h.averageCost || h.purchasePrice), 0) * 100).toFixed(2) + "%") : "-"}</td>
                         <td className="text-right py-4 px-3 font-mono text-sm text-purple-600">{(() => { const totalQty = sortedBondHoldings.reduce((acc: number, h: any) => acc + parseFloat(h.quantity || "0"), 0); const totalAnnual = sortedBondHoldings.reduce((acc: number, h: any) => acc + parseFloat(h.quantity) * parseFloat(h.couponRate || "0"), 0); const avgCoupon = totalQty > 0 ? (totalAnnual / totalQty) : 0; return avgCoupon.toFixed(3) + "%"; })()}</td>
+                        <td className="text-right py-4 px-3 font-mono text-sm font-bold text-blue-600">{(() => { const totalAnnual = sortedBondHoldings.reduce((acc: number, h: any) => acc + parseFloat(h.quantity) * parseFloat(h.couponRate || "0"), 0); const totalCost = sortedBondHoldings.reduce((acc: number, h: any) => acc + parseFloat(h.quantity) * parseFloat(h.averageCost || h.purchasePrice || "0"), 0); const avgYield = totalCost > 0 ? (totalAnnual / totalCost * 100) : 0; return avgYield.toFixed(2) + "%"; })()}</td>
                         <td className="text-right py-4 px-3 font-mono text-sm text-green-600">{formatCurrency(sortedBondHoldings.reduce((acc: number, h: any) => acc + parseFloat(h.quantity) * parseFloat(h.couponRate || "0"), 0).toFixed(2))}</td>
                         <td className="py-4 px-3"></td>
                         <td></td>

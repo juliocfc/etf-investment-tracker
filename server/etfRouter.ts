@@ -279,7 +279,7 @@ export const etfRouter = router({
         const db = await getDb();
         const allPurchases = await db.select()
           .from(purchases)
-          .where(eq(purchases.holdingId, Number(holdingId)))
+          .where(and(eq(purchases.holdingId, Number(holdingId)), eq(purchases.isSold, false)))
           .orderBy(purchases.purchaseDate, purchases.id);
 
         let remainingToSell = quantityNum;
@@ -1386,7 +1386,7 @@ export const etfRouter = router({
         const db = await getDb();
         const allPurchases = await db.select()
           .from(purchases)
-          .where(eq(purchases.holdingId, Number(holdingId)))
+          .where(and(eq(purchases.holdingId, Number(holdingId)), eq(purchases.isSold, false)))
           .orderBy(purchases.purchaseDate, purchases.id); // Oldest first
 
         let remainingToSell = quantityNum;
