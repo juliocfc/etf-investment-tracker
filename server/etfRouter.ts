@@ -712,6 +712,18 @@ export const etfRouter = router({
       const priorYearQuarterKey = `${priorYearTargetYear} Q${targetQuarter}`;
       const currentQuarterKey = `${currentYear} Q${currentQuarter}`;
 
+      // Sequential previous quarter (Q-2) for QoQ sequential comparison
+      let previousQuarter: number;
+      let previousYear: number;
+      if (targetQuarter === 1) {
+        previousQuarter = 4;
+        previousYear = targetYear - 1;
+      } else {
+        previousQuarter = targetQuarter - 1;
+        previousYear = targetYear;
+      }
+      const previousQuarterKey = `${previousYear} Q${previousQuarter}`;
+
       const windowStart = new Date();
       windowStart.setFullYear(windowStart.getFullYear() - 1);
       
@@ -767,7 +779,7 @@ export const etfRouter = router({
         let etfTotalPriorWindow = 0;
         let etfTotalAllTime = 0;
         let etfTargetQuarterAmount = 0;
-        let etfPriorYearQuarterAmount = 0;
+        let etfPreviousQuarterAmount = 0;
         
         const etfQuarterly: Record<string, number> = {};
         lastQuarters.forEach((q: string) => etfQuarterly[q] = 0);
@@ -794,11 +806,11 @@ export const etfRouter = router({
             const exYear = exDate.getFullYear();
             const exQuarter = Math.floor(exDate.getMonth() / 3) + 1;
             
-            // Check if this dividend belongs to our comparison quarters
+            // Check if this dividend belongs to our comparison quarters (sequential QoQ)
             if (exYear === targetYear && exQuarter === targetQuarter) {
               etfTargetQuarterAmount += totalAmount;
-            } else if (exYear === priorYearTargetYear && exQuarter === targetQuarter) {
-              etfPriorYearQuarterAmount += totalAmount;
+            } else if (exYear === previousYear && exQuarter === previousQuarter) {
+              etfPreviousQuarterAmount += totalAmount;
             }
 
             const isInWindow = exDate >= windowStart;
@@ -837,7 +849,7 @@ export const etfRouter = router({
           existing.totalPriorYearNum += etfTotalPriorWindow;
           existing.totalAllTimeNum += etfTotalAllTime;
           existing.latestAmountNum += etfTargetQuarterAmount;
-          existing.priorAmountNum += etfPriorYearQuarterAmount;
+          existing.priorAmountNum += etfPreviousQuarterAmount;
           existing.currentEstimatedQuarterlyNum += estimatedQuarterlyAmount;
           lastQuarters.forEach((q: string) => {
             existing.quarterlyValues[q] = (existing.quarterlyValues[q] || 0) + (etfQuarterly[q] || 0);
@@ -852,8 +864,8 @@ export const etfRouter = router({
             quarterlyValues: { ...etfQuarterly },
             latestAmountNum: etfTargetQuarterAmount,
             latestDate: `${targetYear} Q${targetQuarter}`,
-            priorAmountNum: etfPriorYearQuarterAmount,
-            priorDate: `${priorYearTargetYear} Q${targetQuarter}`,
+            priorAmountNum: etfPreviousQuarterAmount,
+            priorDate: `${previousYear} Q${previousQuarter}`,
             currentEstimatedQuarterlyNum: estimatedQuarterlyAmount,
           });
         }
@@ -919,7 +931,8 @@ export const etfRouter = router({
         totalPriorYear: totalPriorYear.toFixed(2),
         totalAllTime: totalAllTime.toFixed(2),
         targetQuarterKey,
-        priorYearQuarterKey,
+        priorYearQuarterKey: previousQuarterKey,
+        previousQuarterKey,
         currentQuarterKey,
         consolidatedComparative: {
           latestAmount: consolidatedLatest.toFixed(2),

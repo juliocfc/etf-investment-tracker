@@ -918,8 +918,8 @@ export default function IncomeTab({
               <tr className="border-b border-border text-[10px] font-bold text-slate-400 uppercase tracking-widest">
                 <th className="text-left py-3 px-6">Asset</th>
                 <th className="text-right py-3 px-6 text-blue-600">{report?.currentQuarterKey || "Current Qtr"} (Est)</th>
-                <th className="text-right py-3 px-6">{report?.targetQuarterKey || "Last Quarter"}</th>
-                <th className="text-right py-3 px-6">{report?.priorYearQuarterKey || "Prior Year"}</th>
+                <th className="text-right py-3 px-6">{(report as any)?.targetQuarterKey || "Prev Qtr"}</th>
+                <th className="text-right py-3 px-6">{(report as any)?.previousQuarterKey || (report as any)?.priorYearQuarterKey || "Prev Qtr -1"}</th>
                 <th className="text-center py-3 px-6">QoQ Growth %</th>
                 <th className="text-right py-3 px-6">L12M Total</th>
                 <th className="text-right py-3 px-6">P12M Total</th>
