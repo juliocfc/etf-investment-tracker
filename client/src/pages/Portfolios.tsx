@@ -452,7 +452,7 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
     const safeEquity = equity || investment - fixedIncome;
     const safeFixed = fixedIncome;
     const cash = filteredPortfolios.reduce((acc, p) => acc + parseFloat(useUSD && (p as any).cashValueUSD ? (p as any).cashValueUSD : p.cashValue), 0);
-    const totalCost = filteredPortfolios.reduce((acc, p) => acc + parseFloat(p.totalCost || "0"), 0);
+    const totalCost = filteredPortfolios.reduce((acc, p) => acc + parseFloat(useUSD && (p as any).totalCostUSD ? (p as any).totalCostUSD : (p.totalCost || "0")), 0);
     const overall = investment + cash;
     const gain = investment - totalCost;
     const gainPercent = totalCost > 0 ? ((gain / totalCost) * 100).toFixed(2) : "0.00";
@@ -761,12 +761,22 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
                         <div className="font-mono font-medium text-slate-700">{(portfolio as any).baseCurrency !== "USD" && (portfolio as any).investmentValueUSD ? <><div>{formatCurrency((portfolio as any).investmentValueUSD, 2, "USD")}</div><div className="text-[10px] font-normal text-slate-400">~{formatCurrency(portfolio.investmentValue, 2, (portfolio as any).baseCurrency || "USD")}</div></> : formatCurrency(portfolio.investmentValue, 2, "USD")}</div>
                         <div className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter">{pInvPercent}%</div>
                       </td>
-                      <td className="py-4 px-4 text-right font-mono text-slate-500 text-xs">{formatCurrency(portfolio.totalCost || "0")}</td>
-                      <td className={`py-4 px-4 text-right font-mono text-xs font-bold ${isGain ? "text-green-600" : "text-red-600"}`}>
-                        {isGain ? "+" : ""}{formatCurrency(portfolio.gain || "0")}
+                      <td className="py-4 px-4 text-right font-mono text-slate-500 text-xs">
+                        {(portfolio as any).baseCurrency !== "USD" && (portfolio as any).totalCostUSD ? (
+                          <><div>{formatCurrency((portfolio as any).totalCostUSD, 2, "USD")}</div><div className="text-[10px] font-normal text-slate-400">~{formatCurrency(portfolio.totalCost || "0", 2, (portfolio as any).baseCurrency || "USD")}</div></>
+                        ) : (
+                          formatCurrency(portfolio.totalCost || "0", 2, "USD")
+                        )}
                       </td>
-                      <td className={`py-4 px-4 text-right font-mono text-xs font-bold ${isGain ? "text-green-600" : "text-red-600"}`}>
-                        {isGain ? "+" : ""}{portfolio.gainPercent || "0.00"}%
+                      <td className={`py-4 px-4 text-right font-mono text-xs font-bold ${((portfolio as any).gainUSD != null ? parseFloat((portfolio as any).gainUSD) >= 0 : isGain) ? "text-green-600" : "text-red-600"}`}>
+                        {(portfolio as any).baseCurrency !== "USD" && (portfolio as any).gainUSD != null ? (
+                          <><div>{parseFloat((portfolio as any).gainUSD) >= 0 ? "+" : ""}{formatCurrency((portfolio as any).gainUSD, 2, "USD")}</div><div className="text-[10px] font-normal text-slate-400">~{isGain ? "+" : ""}{formatCurrency(portfolio.gain || "0", 2, (portfolio as any).baseCurrency || "USD")}</div></>
+                        ) : (
+                          <>{isGain ? "+" : ""}{formatCurrency(portfolio.gain || "0", 2, "USD")}</>
+                        )}
+                      </td>
+                      <td className={`py-4 px-4 text-right font-mono text-xs font-bold ${((portfolio as any).gainUSD != null ? parseFloat((portfolio as any).gainUSD) >= 0 : isGain) ? "text-green-600" : "text-red-600"}`}>
+                        {((portfolio as any).baseCurrency !== "USD" && (portfolio as any).gainPercentUSD ? (parseFloat((portfolio as any).gainUSD) >= 0 ? "+" : "") + ((portfolio as any).gainPercentUSD || "0.00") : (isGain ? "+" : "") + (portfolio.gainPercent || "0.00"))}%
                       </td>
                       <td className="py-4 px-4">
                         <div className="flex items-center justify-center gap-2">
@@ -868,12 +878,22 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
                                         <div className="font-mono text-slate-700">{formatCurrency(portfolio.investmentValue)}</div>
                                         <div className="text-[8px] font-bold text-slate-400 uppercase">{pInvPercent}%</div>
                                       </td>
-                                      <td className="py-2.5 text-right font-mono text-slate-500 text-[10px]">{formatCurrency(portfolio.totalCost || "0")}</td>
-                                      <td className={`py-2.5 text-right font-mono text-[10px] font-bold ${isGain ? "text-green-600" : "text-red-600"}`}>
-                                        {isGain ? "+" : ""}{formatCurrency(portfolio.gain || "0")}
+                                      <td className="py-2.5 text-right font-mono text-slate-500 text-[10px]">
+                                        {(portfolio as any).baseCurrency !== "USD" && (portfolio as any).totalCostUSD ? (
+                                          <><div>{formatCurrency((portfolio as any).totalCostUSD, 2, "USD")}</div><div className="text-[8px] font-normal text-slate-400">~{formatCurrency(portfolio.totalCost || "0", 2, (portfolio as any).baseCurrency || "USD")}</div></>
+                                        ) : (
+                                          formatCurrency(portfolio.totalCost || "0", 2, "USD")
+                                        )}
                                       </td>
-                                      <td className={`py-2.5 text-right font-mono text-[10px] font-bold ${isGain ? "text-green-600" : "text-red-600"}`}>
-                                        {isGain ? "+" : ""}{portfolio.gainPercent || "0.00"}%
+                                      <td className={`py-2.5 text-right font-mono text-[10px] font-bold ${((portfolio as any).gainUSD != null ? parseFloat((portfolio as any).gainUSD) >= 0 : isGain) ? "text-green-600" : "text-red-600"}`}>
+                                        {(portfolio as any).baseCurrency !== "USD" && (portfolio as any).gainUSD != null ? (
+                                          <><div>{parseFloat((portfolio as any).gainUSD) >= 0 ? "+" : ""}{formatCurrency((portfolio as any).gainUSD, 2, "USD")}</div><div className="text-[8px] font-normal text-slate-400">~{isGain ? "+" : ""}{formatCurrency(portfolio.gain || "0", 2, (portfolio as any).baseCurrency || "USD")}</div></>
+                                        ) : (
+                                          <>{isGain ? "+" : ""}{formatCurrency(portfolio.gain || "0", 2, "USD")}</>
+                                        )}
+                                      </td>
+                                      <td className={`py-2.5 text-right font-mono text-[10px] font-bold ${((portfolio as any).gainUSD != null ? parseFloat((portfolio as any).gainUSD) >= 0 : isGain) ? "text-green-600" : "text-red-600"}`}>
+                                        {((portfolio as any).baseCurrency !== "USD" && (portfolio as any).gainPercentUSD ? (parseFloat((portfolio as any).gainUSD) >= 0 ? "+" : "") + ((portfolio as any).gainPercentUSD || "0.00") : (isGain ? "+" : "") + (portfolio.gainPercent || "0.00"))}%
                                       </td>
                                     </tr>
                                   </tbody>

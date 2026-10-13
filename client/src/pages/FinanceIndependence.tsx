@@ -70,7 +70,6 @@ const FinanceIndependence: React.FC = () => {
   const [fullSimPrice, setFullSimPrice] = useState("");
 
   // Retirement Longevity State
-  const [retirementWithdrawalRate, setRetirementWithdrawalRate] = useState<string>("");
   const [retirementReturnRate, setRetirementReturnRate] = useState<string>("5"); // Default 5%
   const [retirementInflationRate, setRetirementInflationRate] = useState<string>("3"); // Default 3%
   const [retirementStartDate, setRetirementStartDate] = useState<Date>(new Date());
@@ -168,7 +167,6 @@ const FinanceIndependence: React.FC = () => {
   // Lifecycle
   useEffect(() => {
     if (user) {
-      if (user.retirementWithdrawalRate) setRetirementWithdrawalRate(user.retirementWithdrawalRate);
       if (user.retirementReturnRate) setRetirementReturnRate(user.retirementReturnRate);
       if (user.retirementInflationRate) setRetirementInflationRate(user.retirementInflationRate);
       if (user.retirementStartDate) setRetirementStartDate(new Date(user.retirementStartDate));
@@ -382,8 +380,7 @@ const FinanceIndependence: React.FC = () => {
       projectedExpensesAtStart = annualExpenses * Math.pow(1 + inflationRate, fractionYearsToRetirement);
     }
 
-    const informedRate = parseFloat(retirementWithdrawalRate);
-    const effectiveInitialRate = !isNaN(informedRate) && informedRate > 0 ? informedRate / 100 : projectedExpensesAtStart / projectedPortfolioAtStart;
+    const effectiveInitialRate = projectedPortfolioAtStart > 0 ? projectedExpensesAtStart / projectedPortfolioAtStart : 0;
     const initialWithdrawal = projectedPortfolioAtStart * effectiveInitialRate;
     
     const baseSS = parseFloat(ssAmount) || 0;
@@ -527,7 +524,7 @@ const FinanceIndependence: React.FC = () => {
       evolution,
       chartData
     };
-  }, [totals.amount, totalPortfolioValue, retirementWithdrawalRate, retirementReturnRate, retirementInflationRate, retirementStartDate, userBirthDate, ssAmount, ssAge, lifeExpectancy, filteredHoldings]);
+  }, [totals.amount, totalPortfolioValue, retirementReturnRate, retirementInflationRate, retirementStartDate, userBirthDate, ssAmount, ssAge, lifeExpectancy, filteredHoldings]);
 
   // View States
   if (holdingsError || expensesError) {
@@ -897,7 +894,7 @@ const FinanceIndependence: React.FC = () => {
               <Popover><PopoverTrigger asChild><Button variant="outline" className="h-8 w-[160px] text-[10px] font-bold">{retirementStartDate ? format(retirementStartDate, "PPP") : "Pick Date"}</Button></PopoverTrigger><PopoverContent className="w-auto p-0"><Calendar mode="single" selected={retirementStartDate} onSelect={(d) => { if (d) { setRetirementStartDate(d); updateRetirementSettingsMutation.mutate({ startDate: d }); } }} captionLayout="dropdown" fromYear={new Date().getFullYear()} toYear={new Date().getFullYear()+50} /></PopoverContent></Popover>
             </div>
             <div className="flex flex-col gap-1"><span className="text-[10px] font-bold text-slate-400 uppercase">SS Annual</span><Input type="number" className="h-8 w-24 text-right" value={ssAmount} onChange={(e) => { setSsAmount(e.target.value); updateRetirementSettingsMutation.mutate({ ssAmount: e.target.value }); }} /></div>
-            <div className="flex flex-col gap-1"><span className="text-[10px] font-bold text-slate-400 uppercase">Withdrawal %</span><Input type="number" className="h-8 w-24 text-right" value={retirementWithdrawalRate} onChange={(e) => { setRetirementWithdrawalRate(e.target.value); updateRetirementSettingsMutation.mutate({ withdrawalRate: e.target.value }); }} /></div>
+            <div className="flex flex-col gap-1"><span className="text-[10px] font-bold text-slate-400 uppercase flex items-center gap-1">Withdrawal % <span className="text-[8px] normal-case font-normal text-slate-400" title="Calculated as (monthly expenses × 12, inflated to retirement start) ÷ estimated portfolio value at retirement start">auto</span></span><div className="h-8 w-24 flex items-center justify-end px-3 bg-slate-100 border rounded-md text-xs font-mono font-bold text-slate-700" title="Annual expenses at retirement ÷ Portfolio value at retirement start">{retirementResults ? `${retirementResults.withdrawalRate}%` : "—"}</div></div>
             <div className="flex flex-col gap-1"><span className="text-[10px] font-bold text-slate-400 uppercase">Return %</span><Input type="number" className="h-8 w-16 text-right" value={retirementReturnRate} onChange={(e) => { setRetirementReturnRate(e.target.value); updateRetirementSettingsMutation.mutate({ returnRate: e.target.value }); }} /></div>
             <div className="flex flex-col gap-1"><span className="text-[10px] font-bold text-slate-400 uppercase">Inflation %</span><Input type="number" className="h-8 w-16 text-right" value={retirementInflationRate} onChange={(e) => { setRetirementInflationRate(e.target.value); updateRetirementSettingsMutation.mutate({ inflationRate: e.target.value }); }} /></div>
             <div className="flex flex-col gap-1"><span className="text-[10px] font-bold text-slate-400 uppercase">Life Exp.</span><Input type="number" className="h-8 w-16 text-right" value={lifeExpectancy} onChange={(e) => { setLifeExpectancy(e.target.value); updateRetirementSettingsMutation.mutate({ lifeExpectancy: e.target.value }); }} /></div>

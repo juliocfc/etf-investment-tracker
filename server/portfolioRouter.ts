@@ -151,6 +151,9 @@ export const portfolioRouter = router({
       const baseCurrency = (portfolio as any).baseCurrency || "USD";
       const fxRate = baseCurrency === "USD" ? 1 : await getFxRate(baseCurrency, "USD", new Date());
       const toUSD = (v: number) => baseCurrency === "USD" ? v : truncateNumber(v * fxRate);
+      const portfolioTotalCostUSD = toUSD(portfolioTotalCost).toFixed(2);
+      const portfolioGainUSD = (toUSD(portfolioInvestmentValue) - toUSD(portfolioTotalCost)).toFixed(2);
+      const portfolioGainPercentUSD = parseFloat(portfolioTotalCostUSD) > 0 ? ((parseFloat(portfolioGainUSD) / parseFloat(portfolioTotalCostUSD)) * 100).toFixed(2) : "0.00";
       result.push({
         id: portfolio.id,
         name: portfolio.name,
@@ -169,6 +172,9 @@ export const portfolioRouter = router({
         fixedIncomeInvestmentValueUSD: toUSD(portfolioFixedIncomeValue).toFixed(2),
         cashValueUSD: toUSD(portfolioCashValue).toFixed(2),
         totalValueUSD: toUSD(truncateNumber(portfolioInvestmentValue + portfolioCashValue)).toFixed(2),
+        totalCostUSD: portfolioTotalCostUSD,
+        gainUSD: portfolioGainUSD,
+        gainPercentUSD: portfolioGainPercentUSD,
         fxRateToUSD: fxRate.toString(),
         accounts: accountDetails,
       });
