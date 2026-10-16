@@ -223,10 +223,33 @@ const FinanceIndependence: React.FC = () => {
   // Memos
   const totalPortfolioValue = useMemo(() => {
     if (!filteredPortfolios) return 0;
-    const cash = filteredPortfolios.reduce((acc, p) => acc + parseFloat((p as any).cashValueUSD ?? p.cashValue), 0);
-    const investment = filteredPortfolios.reduce((acc, p) => acc + parseFloat((p as any).investmentValueUSD ?? p.investmentValue), 0);
+    // Always use USD-converted values for longevity simulation – ensures BRL/other currencies are included at current FX
+    const cash = filteredPortfolios.reduce((acc, p) => {
+      const usd = (p as any).cashValueUSD;
+      const local = (p as any).cashValue;
+      const v = usd != null && usd !== "" ? usd : local;
+      return acc + parseFloat(v || "0");
+    }, 0);
+    // Prefer holdings-based USD valuation for accuracy (handles per-holding FX), fallback to portfolio summary
+    let investment = 0;
+    if (filteredHoldings && filteredHoldings.length > 0) {
+      investment = filteredHoldings.reduce((acc, h: any) => {
+        const qty = parseFloat(h.quantity?.toString() || "0");
+        if (!Number.isFinite(qty) || qty <= 1e-9) return acc;
+        const priceUSD = h.currentPriceUSD != null && h.currentPriceUSD !== "" ? parseFloat(h.currentPriceUSD) : parseFloat(h.currentPrice || "0");
+        const price = Number.isFinite(priceUSD) ? priceUSD : parseFloat(h.currentPrice || "0");
+        return acc + qty * (Number.isFinite(price) ? price : 0);
+      }, 0);
+    } else {
+      investment = filteredPortfolios.reduce((acc, p) => {
+        const usd = (p as any).investmentValueUSD;
+        const local = (p as any).investmentValue;
+        const v = usd != null && usd !== "" ? usd : local;
+        return acc + parseFloat(v || "0");
+      }, 0);
+    }
     return cash + investment;
-  }, [filteredPortfolios]);
+  }, [filteredPortfolios, filteredHoldings]);
 
   const monthlyIncome = useMemo(() => {
     if (!filteredHoldings) return 0;
