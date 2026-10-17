@@ -24,6 +24,8 @@ import {
   calculateAverageCost,
   deletePurchase,
   getUserBondHoldings,
+  createBondHolding,
+  addBondPurchase,
   getBondPurchases,
   calculateBondAverageCost,
   getBondPriceFromBrokerage,
@@ -1293,8 +1295,82 @@ export const etfRouter = router({
         holding = holdings.find((h: any) => h.symbol === input.symbol.toUpperCase());
 
         if (!holding) {
+          const symUpper = input.symbol.toUpperCase();
+          const isBondCusip = /^[0-9A-Z]{9}$/.test(symUpper) || (symUpper.length >= 6 && /\d/.test(symUpper) && /^[0-9A-Z]+$/.test(symUpper));
           if (input.type === "sell") {
+            if (isBondCusip) {
+              const bondHoldingsSell = await getUserBondHoldings(ctx.user.id, input.portfolioId, input.accountId);
+              const bhSell = bondHoldingsSell.find((h: any) => h.symbol === symUpper);
+              if (!bhSell) throw new Error("Cannot sell: No holding found for this symbol");
+              const qtySell = parseFloat(input.quantity);
+              const priceSell = parseFloat(input.price);
+              const interestSell = parseFloat((input as any).interest || "0");
+              const feesSell = parseFloat((input as any).fees || "0");
+              const holdingQtySell = parseFloat((bhSell as any).quantity || "0");
+              if (holdingQtySell < qtySell) throw new Error(`Insufficient quantity. Owned: ${holdingQtySell}, Requested: ${qtySell}`);
+              const totalProceedsSell = truncateNumber(qtySell * priceSell + interestSell - feesSell);
+              const descSell = `You sold/redeemed ${input.quantity} ${symUpper} at $${priceSell.toFixed(2)}`;
+              await updateCashBalance(ctx.user.id, input.portfolioId, "0", input.accountId, input.purchaseDate, { type: "deposit", transactionAmount: totalProceedsSell.toString(), description: descSell });
+              const dbSell = await getDb();
+              const { bondPurchases: bpTbl } = await import("../drizzle/schema");
+              const allPurchasesSell = await dbSell.select().from(bpTbl).where(eq(bpTbl.holdingId, (bhSell as any).id)).orderBy(bpTbl.purchaseDate, bpTbl.id);
+              let remainingSell = qtySell;
+              for (const p of allPurchasesSell as any[]) {
+                if (remainingSell <= 0) break;
+                if (p.isSold) continue;
+                const pq = parseFloat(p.quantity);
+                if (pq <= remainingSell) {
+                  const { updateBondPurchase } = await import("./db");
+                  await updateBondPurchase(p.id, { isSold: true, soldDate: input.purchaseDate, soldPrice: input.price });
+                  remainingSell -= pq;
+                } else {
+                  const rem = pq - remainingSell;
+                  const { updateBondPurchase: ubp2, addBondPurchase: abp2 } = await import("./db");
+                  await ubp2(p.id, { quantity: remainingSell.toString(), isSold: true, soldDate: input.purchaseDate, soldPrice: input.price });
+                  await abp2({ userId: p.userId, portfolioId: p.portfolioId, accountId: p.accountId, holdingId: p.holdingId, symbol: p.symbol, quantity: rem.toString(), price: p.price, interest: "0", fees: "0", purchaseDate: p.purchaseDate, redemptionDate: (p as any).redemptionDate, isSold: false });
+                  remainingSell = 0;
+                }
+              }
+              await calculateBondAverageCost((bhSell as any).id);
+              return { id: (bhSell as any).id, symbol: symUpper, routedAs: "bond" as const };
+            }
             throw new Error("Cannot sell: No holding found for this symbol");
+          }
+          if (isBondCusip) {
+            // Auto-route bond CUSIPs (e.g., 91282CRF0) to bond holdings – prevents brokerage import 500
+            const bondHoldingId = await createBondHolding({
+              userId: ctx.user.id,
+              portfolioId: input.portfolioId,
+              accountId: input.accountId,
+              symbol: symUpper,
+              name: symUpper,
+              quantity: "0",
+              purchasePrice: input.price,
+              currentPrice: input.price,
+              purchaseDate: input.purchaseDate,
+            });
+            const qtyNumBond = parseFloat(input.quantity);
+            const priceNumBond = parseFloat(input.price);
+            const feesNumBond = parseFloat((input as any).fees || "0");
+            const interestNumBond = parseFloat((input as any).interest || "0");
+            const totalCostBond = truncateNumber(qtyNumBond * priceNumBond + interestNumBond + feesNumBond);
+            const bondDesc = `You bought ${input.quantity} ${symUpper} at $${priceNumBond.toFixed(2)}`;
+            const cashResultBond = await updateCashBalance(ctx.user.id, input.portfolioId, "0", input.accountId, input.purchaseDate, { type: "withdrawal", transactionAmount: totalCostBond.toString(), description: bondDesc });
+            await addBondPurchase({
+              userId: ctx.user.id,
+              portfolioId: input.portfolioId,
+              accountId: input.accountId,
+              holdingId: bondHoldingId,
+              symbol: symUpper,
+              quantity: input.quantity,
+              price: input.price,
+              interest: interestNumBond.toString(),
+              fees: feesNumBond.toString(),
+              cashTransactionId: cashResultBond.historyId,
+              purchaseDate: input.purchaseDate,
+            });
+            await calculateBondAverageCost(bondHoldingId);
+            return { id: bondHoldingId, symbol: symUpper, routedAs: "bond" as const };
           }
           
           const name = (await fetchETFName(input.symbol.toUpperCase())) || input.symbol.toUpperCase();

@@ -199,6 +199,7 @@ export default function BrokerageTransactions() {
 
   const addHoldingMutation = trpc.etf.addHolding.useMutation();
   const executeTradeMutation = trpc.etf.executeTrade.useMutation();
+  const executeBondTradeMutation = trpc.bond.executeTrade.useMutation();
   const recordCashMutation = trpc.etf.recordCashTransaction.useMutation();
   const markImportedMutation = trpc.brokerage.markTransactionsAsImported.useMutation();
 
@@ -405,19 +406,35 @@ export default function BrokerageTransactions() {
 
         try {
           if (mapping.type === "buy" || mapping.type === "sell") {
-            // For buys and sells, we use the unified executeTrade mutation 
-            // which handles both the asset quantity and the cash balance update
-            await executeTradeMutation.mutateAsync({
-              portfolioId: mapping.portfolioId,
-              accountId: mapping.accountId,
-              holdingId: -1, // Look up by symbol
-              symbol: mapping.symbol,
-              quantity: mapping.quantity,
-              price: mapping.price,
-              purchaseDate: mapping.date,
-              type: mapping.type as "buy" | "sell",
-              fees: "0"
-            });
+            // Detect bond CUSIPs (e.g., 91282CRF0) vs ETF symbols – route to correct router
+            const symUpper = mapping.symbol.toUpperCase();
+            const isBondCusip = /^[0-9A-Z]{9}$/.test(symUpper) || (symUpper.length >= 6 && /\d/.test(symUpper) && /^[0-9A-Z]+$/.test(symUpper));
+            if (isBondCusip) {
+              await executeBondTradeMutation.mutateAsync({
+                portfolioId: mapping.portfolioId,
+                accountId: mapping.accountId,
+                holdingId: -1,
+                symbol: mapping.symbol,
+                quantity: mapping.quantity,
+                price: mapping.price,
+                purchaseDate: mapping.date,
+                type: mapping.type as "buy" | "sell",
+                interest: "0",
+                fees: "0"
+              });
+            } else {
+              await executeTradeMutation.mutateAsync({
+                portfolioId: mapping.portfolioId,
+                accountId: mapping.accountId,
+                holdingId: -1, // Look up by symbol
+                symbol: mapping.symbol,
+                quantity: mapping.quantity,
+                price: mapping.price,
+                purchaseDate: mapping.date,
+                type: mapping.type as "buy" | "sell",
+                fees: "0"
+              });
+            }
           } else {
             await recordCashMutation.mutateAsync({
               portfolioId: mapping.portfolioId,
