@@ -222,11 +222,13 @@ const Retirement: React.FC = () => {
       // Buckets at retirement start (projected) — only used when crash>0 to model 3-5y recovery without selling stocks
       const useBuckets = opts.crashPct>0;
       let b1 = accountBreakdown.cashTaxable + accountBreakdown.cashRetirement;
-      let b2 = accountBreakdown.fixedIncome + etfBucketSplit.income;
+      let b2Bonds = accountBreakdown.fixedIncome;
+      let b2Income = etfBucketSplit.income;
+      let b2 = b2Bonds + b2Income;
       let b3 = etfBucketSplit.growth;
       if (fractionYearsToRet>0 && totalPortfolioValue>0) {
         const scale = projectedPortfolioAtStart / totalPortfolioValue;
-        b1 *= scale; b2 *= scale; b3 *= scale;
+        b1 *= scale; b2Bonds *= scale; b2Income *= scale; b2 = b2Bonds + b2Income; b3 *= scale;
       }
       // track bucket total separately when useBuckets so balance mirrors buckets in recovery window
       for (let y=0; y<=yearsToSimulate; y++) {
@@ -253,6 +255,8 @@ const Retirement: React.FC = () => {
           const crashLoss = balance * equityPct * opts.crashPct;
           balance = Math.max(0, balance - crashLoss);
           crashApplied = crashLoss;
+          b2Income = Math.max(0, b2Income * (1 - opts.crashPct));
+          b2 = b2Bonds + b2Income;
           b3 = Math.max(0, b3 * (1 - opts.crashPct));
         }
         const startBal = useBuckets && y - yearsUntilRetirement >=0 && y - yearsUntilRetirement < 5 && isRetired ? (b1 + b2 + b3 + (isFirst ? crashApplied : 0)) : balance;
@@ -278,11 +282,12 @@ const Retirement: React.FC = () => {
         const afterWithdrawalBal = balance - netWithdrawal;
         if (!isCurrentYear) {
           if (useBuckets && y - yearsUntilRetirement >=0 && y - yearsUntilRetirement < 5) {
-            const b1Ret = 0.015, b2Ret = 0.03;
-            const b3Ret = yrReturn + 0.02;
-            const bucketEarnings = b1*b1Ret + b2*b2Ret + b3*b3Ret;
+            const b1Ret = 0.015, b2BondsRet = 0.03, b2IncomeRet = yrReturn + 0.015, b3Ret = yrReturn + 0.02;
+            const bucketEarnings = b1*b1Ret + b2Bonds*b2BondsRet + b2Income*b2IncomeRet + b3*b3Ret;
             b1 = b1 * (1 + b1Ret);
-            b2 = b2 * (1 + b2Ret);
+            b2Bonds = b2Bonds * (1 + b2BondsRet);
+            b2Income = b2Income * (1 + b2IncomeRet);
+            b2 = b2Bonds + b2Income;
             b3 = b3 * (1 + b3Ret);
             earnings = bucketEarnings;
           } else {
@@ -350,14 +355,30 @@ const Retirement: React.FC = () => {
       }
       const useB = opts.crashPct>0;
       let gb1 = accountBreakdown.cashTaxable + accountBreakdown.cashRetirement;
-      let gb2 = accountBreakdown.fixedIncome + etfBucketSplit.income;
+      let gb2Bonds = accountBreakdown.fixedIncome;
+      let gb2Income = etfBucketSplit.income;
+      let gb2 = gb2Bonds + gb2Income;
       let gb3 = etfBucketSplit.growth;
-      if (fractionYearsToRet>0 && totalPortfolioValue>0) { const sc = projectedPortfolioAtStart / totalPortfolioValue; gb1*=sc; gb2*=sc; gb3*=sc; }
+      if (fractionYearsToRet>0 && totalPortfolioValue>0) { const sc = projectedPortfolioAtStart / totalPortfolioValue; gb1*=sc; gb2Bonds*=sc; gb2Income*=sc; gb2=gb2Bonds+gb2Income; gb3*=sc; }
+      // Guardrail: cap growth at 50% at retirement, shift excess to Bucket 2 (bonds) — income also suffers drawdown
+      if (useB) {
+        const capGrowth = projectedPortfolioAtStart * 0.5;
+        if (gb3 > capGrowth) {
+          const excess = gb3 - capGrowth;
+          gb3 = capGrowth;
+          gb2Bonds += excess;
+          gb2 = gb2Bonds + gb2Income;
+        }
+      }
       // adjust for extraAtStart already added to bal, need to add to buckets proportionally if crash>0
       if (useB && extraAtStart!==0) {
         const totB = gb1+gb2+gb3 || 1;
         const addGb1 = extraAtStart * (gb1/totB); const addGb2 = extraAtStart * (gb2/totB); const addGb3 = extraAtStart * (gb3/totB);
-        gb1+=addGb1; gb2+=addGb2; gb3+=addGb3;
+        // split addGb2 into bonds/income proportionally
+        const totGb2 = gb2 || 1; const addBonds = addGb2 * (gb2Bonds/totGb2); const addInc = addGb2 * (gb2Income/totGb2);
+        gb1+=addGb1; gb2Bonds+=addBonds; gb2Income+=addInc; gb2=gb2Bonds+gb2Income; gb3+=addGb3;
+      } else if (extraAtStart!==0) {
+        // for non-crash extra, already in bal, no bucket split needed
       }
       let withdrawalForYear = annualExpenses;
       let initialWithdrawalForRun = customInitial;
@@ -381,6 +402,8 @@ const Retirement: React.FC = () => {
         if (isFirst && opts.crashPct>0) {
           const crashLoss = bal * equityPct * opts.crashPct;
           bal = Math.max(0, bal - crashLoss);
+          gb2Income = Math.max(0, gb2Income * (1 - opts.crashPct));
+          gb2 = gb2Bonds + gb2Income;
           gb3 = Math.max(0, gb3 * (1 - opts.crashPct));
           crashApplied = crashLoss;
         }
@@ -409,9 +432,9 @@ const Retirement: React.FC = () => {
             endBal = gb1+gb2+gb3;
           }
         } else if (useB && y - yearsUntilRetirement >=0 && y - yearsUntilRetirement < 5) {
-          const e1 = gb1*0.015, e2 = gb2*0.03, e3 = gb3*(yrReturn+0.02);
-          gb1 *= 1.015; gb2 *= 1.03; gb3 *= (1+yrReturn+0.02);
-          earnings = e1+e2+e3;
+          const e1 = gb1*0.015, e2B = gb2Bonds*0.03, e2I = gb2Income*(yrReturn+0.015), e3 = gb3*(yrReturn+0.02);
+          gb1 *= 1.015; gb2Bonds *= 1.03; gb2Income *= (1+yrReturn+0.015); gb2 = gb2Bonds+gb2Income; gb3 *= (1+yrReturn+0.02);
+          earnings = e1+e2B+e2I+e3;
           endBal = gb1+gb2+gb3;
         } else {
           const afterWithdrawal = bal - netWithdrawal;
@@ -420,7 +443,10 @@ const Retirement: React.FC = () => {
           if (useB) {
             const totB = gb1+gb2+gb3;
             const scaleB = totB>0 ? endBal / totB : 1;
-            gb1*=scaleB; gb2*=scaleB; gb3*=scaleB;
+            gb1*=scaleB;
+            const gb2TotBefore = gb2Bonds+gb2Income || 1;
+            gb2Bonds*=scaleB; gb2Income*=scaleB; gb2=gb2Bonds+gb2Income;
+            gb3*=scaleB;
           }
         }
         bal = endBal;
