@@ -211,7 +211,7 @@ const Retirement: React.FC = () => {
     const medicareAge = 65;
     const penaltyFreeAge = 59.5;
 
-    // Helper to simulate one scenario
+    // Helper to simulate one scenario — crash cases are bucket-aware (5y cash/bonds shield equities for 3-5y recovery)
     function simulateScenario(opts: { crashPct: number, highInflationYears: number, highInflationRate: number, lowReturnYears: number, lowReturnRate: number }) {
       let balance = currentPortfolioValue;
       let withdrawal = annualExpenses;
@@ -219,6 +219,16 @@ const Retirement: React.FC = () => {
       const evolution: any[] = [];
       let depletionYear: number | null = null;
       let depletionAge: number | null = null;
+      // Buckets at retirement start (projected) — only used when crash>0 to model 3-5y recovery without selling stocks
+      const useBuckets = opts.crashPct>0;
+      let b1 = accountBreakdown.cashTaxable + accountBreakdown.cashRetirement;
+      let b2 = accountBreakdown.fixedIncome + etfBucketSplit.income;
+      let b3 = etfBucketSplit.growth;
+      if (fractionYearsToRet>0 && totalPortfolioValue>0) {
+        const scale = projectedPortfolioAtStart / totalPortfolioValue;
+        b1 *= scale; b2 *= scale; b3 *= scale;
+      }
+      // track bucket total separately when useBuckets so balance mirrors buckets in recovery window
       for (let y=0; y<=yearsToSimulate; y++) {
         const simYear = currentYear + y;
         const curAge = ageToday + y;
@@ -238,14 +248,16 @@ const Retirement: React.FC = () => {
           if (opts.highInflationYears>0 && y - yearsUntilRetirement < opts.highInflationYears && y>=yearsUntilRetirement) yrInflation = opts.highInflationRate;
           if (opts.lowReturnYears>0 && y - yearsUntilRetirement < opts.lowReturnYears && y>=yearsUntilRetirement) yrReturn = opts.lowReturnRate;
         }
-        // Apply one-time crash at retirement year start (equity portion only)
         let crashApplied = 0;
         if (isFirst && opts.crashPct>0) {
           const crashLoss = balance * equityPct * opts.crashPct;
           balance = Math.max(0, balance - crashLoss);
           crashApplied = crashLoss;
+          b3 = Math.max(0, b3 * (1 - opts.crashPct));
         }
-        const startBal = balance;
+        const startBal = useBuckets && y - yearsUntilRetirement >=0 && y - yearsUntilRetirement < 5 && isRetired ? (b1 + b2 + b3 + (isFirst ? crashApplied : 0)) : balance;
+        // for crash recovery window, startBal should be bucket sum before withdrawal
+        const effectiveStart = useBuckets && isFirst && opts.crashPct>0 ? b1 + b2 + b3 + crashApplied : startBal;
         let netWithdrawal = 0;
         if (isRetired) {
           const target = isFirst ? initialWithdrawal : withdrawal;
@@ -253,12 +265,43 @@ const Retirement: React.FC = () => {
           if (gross<0) gross=0;
           if (isFirst) gross *= remainingMonthsFactor;
           netWithdrawal = Math.min(balance, gross);
+          if (useBuckets && y - yearsUntilRetirement >=0 && y - yearsUntilRetirement < 5) {
+            let remaining = netWithdrawal;
+            const takeB1 = Math.min(b1, remaining); b1 -= takeB1; remaining -= takeB1;
+            const takeB2 = Math.min(b2, remaining); b2 -= takeB2; remaining -= takeB2;
+            const takeB3 = Math.min(b3, remaining); b3 -= takeB3; remaining -= takeB3;
+          }
         }
         // Current year (y===0) is already at last quarter — treat balance as final, no extra full-year return
         const isCurrentYear = y === 0;
-        const afterWithdrawal = balance - netWithdrawal;
-        const earnings = isCurrentYear ? 0 : afterWithdrawal * yrReturn;
-        const endBal = afterWithdrawal + earnings;
+        let earnings = 0;
+        const afterWithdrawalBal = balance - netWithdrawal;
+        if (!isCurrentYear) {
+          if (useBuckets && y - yearsUntilRetirement >=0 && y - yearsUntilRetirement < 5) {
+            const b1Ret = 0.015, b2Ret = 0.03;
+            const b3Ret = yrReturn + 0.02;
+            const bucketEarnings = b1*b1Ret + b2*b2Ret + b3*b3Ret;
+            b1 = b1 * (1 + b1Ret);
+            b2 = b2 * (1 + b2Ret);
+            b3 = b3 * (1 + b3Ret);
+            earnings = bucketEarnings;
+          } else {
+            earnings = afterWithdrawalBal * yrReturn;
+            // keep buckets in sync outside window by scaling
+            if (useBuckets && b1+b2+b3>0) {
+              const totalB = b1+b2+b3;
+              const totalAfter = afterWithdrawalBal + earnings;
+              const scaleB = totalB>0 ? totalAfter / totalB : 1;
+              b1 *= scaleB; b2 *= scaleB; b3 *= scaleB;
+            }
+          }
+        } else {
+          earnings = 0;
+        }
+        const endBal = useBuckets && y - yearsUntilRetirement >=0 && y - yearsUntilRetirement < 5 && !isCurrentYear
+          ? b1 + b2 + b3
+          : afterWithdrawalBal + earnings;
+        const effectiveStartBal = useBuckets && y - yearsUntilRetirement >=0 && y - yearsUntilRetirement < 5 ? effectiveStart : startBal;
         const isPenalty = isRetired && curAge < penaltyFreeAge;
         const isMedicare = curAge >= medicareAge;
         const isSS = curAge >= ssStartAge && isRetired;
@@ -278,10 +321,10 @@ const Retirement: React.FC = () => {
 
     const scenarios = [
       { key: "base", label: "Base", desc: `${(returnRate*100).toFixed(0)}% return, ${(inflationRate*100).toFixed(0)}% inflation`, opts: { crashPct:0, highInflationYears:0, highInflationRate:0.06, lowReturnYears:0, lowReturnRate:0.02 } },
-      { key: "crash30", label: "Crash -30%", desc: "30% equity drop at retirement", opts: { crashPct:0.30, highInflationYears:0, highInflationRate:0.06, lowReturnYears:0, lowReturnRate:0.02 } },
-      { key: "crash40", label: "Crash -40%", desc: "40% equity drop at retirement", opts: { crashPct:0.40, highInflationYears:0, highInflationRate:0.06, lowReturnYears:0, lowReturnRate:0.02 } },
+      { key: "crash30", label: "Crash -30%", desc: "30% equity drop — 5y bucket shield + recovery", opts: { crashPct:0.30, highInflationYears:0, highInflationRate:0.06, lowReturnYears:0, lowReturnRate:0.02 } },
+      { key: "crash40", label: "Crash -40%", desc: "40% equity drop — 5y bucket shield + recovery", opts: { crashPct:0.40, highInflationYears:0, highInflationRate:0.06, lowReturnYears:0, lowReturnRate:0.02 } },
       { key: "highInfl", label: "High inflation", desc: "6% inflation 10y post-retire", opts: { crashPct:0, highInflationYears:10, highInflationRate:0.06, lowReturnYears:0, lowReturnRate:0.02 } },
-      { key: "stag", label: "Stagflation", desc: "-30% + 5% inflation 7y", opts: { crashPct:0.30, highInflationYears:7, highInflationRate:0.05, lowReturnYears:0, lowReturnRate:0.02 } },
+      { key: "stag", label: "Stagflation", desc: "-30% + 5% inflation 7y — bucket shield", opts: { crashPct:0.30, highInflationYears:7, highInflationRate:0.05, lowReturnYears:0, lowReturnRate:0.02 } },
       { key: "lowRet", label: "Low returns", desc: "2% return 10y post-retire", opts: { crashPct:0, highInflationYears:0, highInflationRate:0.06, lowReturnYears:10, lowReturnRate:0.02 } },
     ].map(s => ({ ...s, result: simulateScenario(s.opts) }));
 
@@ -297,6 +340,142 @@ const Retirement: React.FC = () => {
       }
       chartData.push(row);
     }
+
+    // Guardrails: for each failing scenario compute actionable fixes to survive to lifeExpectancy — bucket-aware for crash (5y shield)
+    function simulateWithInitialAndExtras(customInitial: number, extraAtStart: number, partTimeAnnual: number, partTimeYears: number, opts: any) {
+      let bal = currentPortfolioValue;
+      if (extraAtStart !== 0) {
+        const extraToday = fractionYearsToRet > 0 ? extraAtStart / Math.pow(1+returnRate, fractionYearsToRet) : extraAtStart;
+        bal = currentPortfolioValue + extraToday;
+      }
+      const useB = opts.crashPct>0;
+      let gb1 = accountBreakdown.cashTaxable + accountBreakdown.cashRetirement;
+      let gb2 = accountBreakdown.fixedIncome + etfBucketSplit.income;
+      let gb3 = etfBucketSplit.growth;
+      if (fractionYearsToRet>0 && totalPortfolioValue>0) { const sc = projectedPortfolioAtStart / totalPortfolioValue; gb1*=sc; gb2*=sc; gb3*=sc; }
+      // adjust for extraAtStart already added to bal, need to add to buckets proportionally if crash>0
+      if (useB && extraAtStart!==0) {
+        const totB = gb1+gb2+gb3 || 1;
+        const addGb1 = extraAtStart * (gb1/totB); const addGb2 = extraAtStart * (gb2/totB); const addGb3 = extraAtStart * (gb3/totB);
+        gb1+=addGb1; gb2+=addGb2; gb3+=addGb3;
+      }
+      let withdrawalForYear = annualExpenses;
+      let initialWithdrawalForRun = customInitial;
+      for (let y=0; y<=yearsToSimulate; y++) {
+        const simYear = currentYear + y;
+        const curAge = ageToday + y;
+        const isRetired = simYear >= retirementYear;
+        const isFirst = simYear === retirementYear;
+        let yearSS = 0;
+        if (isRetired && curAge >= ssStartAge) {
+          yearSS = baseSS * Math.pow(1+inflationRate, y);
+          if (isFirst) yearSS *= remainingMonthsFactor;
+        }
+        let yrReturn = returnRate;
+        let yrInflation = inflationRate;
+        if (isRetired) {
+          if (opts.highInflationYears>0 && y - yearsUntilRetirement < opts.highInflationYears && y>=yearsUntilRetirement) yrInflation = opts.highInflationRate;
+          if (opts.lowReturnYears>0 && y - yearsUntilRetirement < opts.lowReturnYears && y>=yearsUntilRetirement) yrReturn = opts.lowReturnRate;
+        }
+        let crashApplied = 0;
+        if (isFirst && opts.crashPct>0) {
+          const crashLoss = bal * equityPct * opts.crashPct;
+          bal = Math.max(0, bal - crashLoss);
+          gb3 = Math.max(0, gb3 * (1 - opts.crashPct));
+          crashApplied = crashLoss;
+        }
+        let netWithdrawal = 0;
+        if (isRetired) {
+          const target = isFirst ? initialWithdrawalForRun : withdrawalForYear;
+          let gross = target - yearSS;
+          const bridgeIdx = y - yearsUntilRetirement;
+          if (bridgeIdx >=0 && bridgeIdx < partTimeYears) gross -= partTimeAnnual * Math.pow(1+inflationRate, bridgeIdx);
+          if (gross<0) gross=0;
+          if (isFirst) gross *= remainingMonthsFactor;
+          netWithdrawal = Math.min(bal, gross);
+          if (useB && bridgeIdx >=0 && bridgeIdx < 5) {
+            let rem = netWithdrawal;
+            const t1 = Math.min(gb1, rem); gb1 -= t1; rem -= t1;
+            const t2 = Math.min(gb2, rem); gb2 -= t2; rem -= t2;
+            const t3 = Math.min(gb3, rem); gb3 -= t3; rem -= t3;
+          }
+        }
+        const isCurrentYear = y === 0;
+        let earnings = 0, endBal = 0;
+        if (isCurrentYear) {
+          earnings = 0; endBal = bal - netWithdrawal;
+          if (useB && isRetired) {
+            // buckets already reduced above, keep bal consistent
+            endBal = gb1+gb2+gb3;
+          }
+        } else if (useB && y - yearsUntilRetirement >=0 && y - yearsUntilRetirement < 5) {
+          const e1 = gb1*0.015, e2 = gb2*0.03, e3 = gb3*(yrReturn+0.02);
+          gb1 *= 1.015; gb2 *= 1.03; gb3 *= (1+yrReturn+0.02);
+          earnings = e1+e2+e3;
+          endBal = gb1+gb2+gb3;
+        } else {
+          const afterWithdrawal = bal - netWithdrawal;
+          earnings = afterWithdrawal * yrReturn;
+          endBal = afterWithdrawal + earnings;
+          if (useB) {
+            const totB = gb1+gb2+gb3;
+            const scaleB = totB>0 ? endBal / totB : 1;
+            gb1*=scaleB; gb2*=scaleB; gb3*=scaleB;
+          }
+        }
+        bal = endBal;
+        if (isRetired) {
+          if (isFirst) withdrawalForYear = initialWithdrawalForRun * (1+yrInflation);
+          else withdrawalForYear = withdrawalForYear * (1+yrInflation);
+        }
+        if (bal <=0 && isRetired) {
+          return { success: false, depletionAge: curAge };
+        }
+      }
+      return { success: true, depletionAge: null as any };
+    }
+
+    const targetLE = parseInt(lifeExpectancy)||85;
+    const guardrails = scenarios.map(s => {
+      if (s.result.success) return { key: s.key, label: s.label, success: true };
+      // Binary search max sustainable initial withdrawal (at retirement) that still succeeds
+      let low = 0, high = projectedExpensesAtStart;
+      // if already failing at very low withdrawal (~20%), still search
+      for (let iter=0; iter<20; iter++) {
+        const mid = (low+high)/2;
+        const r = simulateWithInitialAndExtras(mid, 0, 0, 0, s.opts);
+        if (r.success) low = mid; else high = mid;
+      }
+      const maxSustainableAtRet = low;
+      const suggestedTodayAt4Pct = (()=>{ const infl = inflationRate; const f = fractionYearsToRet; return maxSustainableAtRet / Math.pow(1+infl, f); })();
+      const currentToday = annualExpenses;
+      const reductionAtRet = projectedExpensesAtStart - maxSustainableAtRet;
+      const reductionToday = currentToday - suggestedTodayAt4Pct;
+      // Part-time: 5y
+      const partTimeYears = 5;
+      let ptLow=0, ptHigh=projectedExpensesAtStart;
+      for (let iter=0; iter<18; iter++) {
+        const mid=(ptLow+ptHigh)/2;
+        const r= simulateWithInitialAndExtras(projectedExpensesAtStart, 0, mid, partTimeYears, s.opts);
+        if (r.success) ptHigh=mid; else ptLow=mid;
+      }
+      const partTimeNeeded = ptHigh;
+      // Extra portfolio needed at retirement
+      let exLow=0, exHigh= projectedPortfolioAtStart;
+      for (let iter=0; iter<18; iter++) {
+        const mid=(exLow+exHigh)/2;
+        const r= simulateWithInitialAndExtras(projectedExpensesAtStart, mid, 0, 0, s.opts);
+        if (r.success) exHigh=mid; else exLow=mid;
+      }
+      const extraNeededAtRet = exHigh;
+      const extraNeededToday = extraNeededAtRet / Math.pow(1+returnRate, fractionYearsToRet);
+      return {
+        key: s.key, label: s.label, success: false,
+        maxSustainableAtRet, suggestedTodayAt4Pct, reductionAtRet, reductionToday,
+        partTimeNeeded, partTimeYears,
+        extraNeededAtRet, extraNeededToday,
+      };
+    });
 
     // Bucket recommendation
     const bridgeToPenFree = Math.max(0, penaltyFreeAge - ageAtRetirement);
@@ -370,7 +549,7 @@ const Retirement: React.FC = () => {
       annualExpenses, projectedPortfolioAtStart, projectedExpensesAtStart, effectiveRate, initialWithdrawal,
       ageToday, ageAtRetirement, yearsUntilRetirement, fractionYearsToRet, penaltyFreeAge, medicareAge, ssStartAge, bridgeToPenFree, bridgeToSS, bridgeToMedicare,
       bucket1Need, bucket2Need, bucket3Need, actualBucket1, actualBucket2, actualBucket3, etfIncomeUSD, etfGrowthUSD, bridgeCoverageYears, bridgeYearsCoveredGrowth, bridgeShortfallAtRet, bridgeSuccessWithGrowth, taxableAtStart, needBridge, taxableBridge,
-      scenarios, chartData, baseEvolution: base.result.evolution, equityPct
+      scenarios, chartData, baseEvolution: base.result.evolution, equityPct, guardrails
     };
   }, [totals.amount, totalPortfolioValue, retirementReturnRate, retirementInflationRate, retirementStartDate, userBirthDate, ssAmount, ssAge, lifeExpectancy, accountBreakdown, equityPct, etfBucketSplit]);
 
@@ -475,19 +654,19 @@ const Retirement: React.FC = () => {
           {/* Buckets */}
           <div className="grid md:grid-cols-3 gap-4">
             <Card className="border-l-4 border-l-emerald-500">
-              <CardHeader className="pb-2"><CardTitle className="text-xs font-black uppercase tracking-widest flex items-center gap-2"><Wallet className="w-4 h-4 text-emerald-600" />Bucket 1 — Cash (0–3y)</CardTitle><CardDescription className="text-[10px]">Bridge to 59.5 / SS, emergency</CardDescription></CardHeader>
+              <CardHeader className="pb-2"><CardTitle className="text-xs font-black uppercase tracking-widest flex items-center gap-2"><Wallet className="w-4 h-4 text-emerald-600" />Bucket 1 — Cash (0–3y)</CardTitle><CardDescription className="text-[10px]">Bridge to 59.5 / SS, emergency • {totalPortfolioValue>0 ? (retirementPlan.actualBucket1/totalPortfolioValue*100).toFixed(1) : "0.0"}% of portfolio</CardDescription></CardHeader>
               <CardContent>
-                <div className="text-2xl font-black">{formatCurrency(retirementPlan.actualBucket1)}</div>
-                <div className="text-[10px] text-slate-500">Have • Need {formatCurrency(retirementPlan.bucket1Need)} ({(retirementPlan.bucket1Need/retirementPlan.projectedPortfolioAtStart*100).toFixed(1)}%)</div>
+                <div className="text-2xl font-black">{formatCurrency(retirementPlan.actualBucket1)} <span className="text-[11px] font-bold text-slate-500">({totalPortfolioValue>0 ? (retirementPlan.actualBucket1/totalPortfolioValue*100).toFixed(1) : "0.0"}%)</span></div>
+                <div className="text-[10px] text-slate-500">Have • Need {formatCurrency(retirementPlan.bucket1Need)} ({(retirementPlan.bucket1Need/retirementPlan.projectedPortfolioAtStart*100).toFixed(1)}% of portfolio at retirement)</div>
                 <div className="mt-2 h-2 bg-slate-100 rounded-full overflow-hidden"><div className="h-full bg-emerald-500" style={{width:`${Math.min(100, retirementPlan.actualBucket1/retirementPlan.bucket1Need*100)}%`}} /></div>
                 <div className="text-[10px] mt-1 font-bold" style={{color: retirementPlan.actualBucket1 >= retirementPlan.bucket1Need ? "#059669" : "#dc2626"}}>{retirementPlan.actualBucket1 >= retirementPlan.bucket1Need ? "✓ Funded" : `Short ${formatCurrency(retirementPlan.bucket1Need - retirementPlan.actualBucket1)}`}</div>
               </CardContent>
             </Card>
             <Card className="border-l-4 border-l-blue-500">
-              <CardHeader className="pb-2"><CardTitle className="text-xs font-black uppercase tracking-widest flex items-center gap-2"><Landmark className="w-4 h-4 text-blue-600" />Bucket 2 — Income (3–10y)</CardTitle><CardDescription className="text-[10px]">Bonds + Income ETFs • 7y expenses</CardDescription></CardHeader>
+              <CardHeader className="pb-2"><CardTitle className="text-xs font-black uppercase tracking-widest flex items-center gap-2"><Landmark className="w-4 h-4 text-blue-600" />Bucket 2 — Income (3–10y)</CardTitle><CardDescription className="text-[10px]">Bonds + Income ETFs • 7y • {totalPortfolioValue>0 ? (retirementPlan.actualBucket2/totalPortfolioValue*100).toFixed(1) : "0.0"}% of portfolio</CardDescription></CardHeader>
               <CardContent>
-                <div className="text-2xl font-black">{formatCurrency(retirementPlan.actualBucket2)}</div>
-                <div className="text-[10px] text-slate-500">Have • Need {formatCurrency(retirementPlan.bucket2Need)}</div>
+                <div className="text-2xl font-black">{formatCurrency(retirementPlan.actualBucket2)} <span className="text-[11px] font-bold text-slate-500">({totalPortfolioValue>0 ? (retirementPlan.actualBucket2/totalPortfolioValue*100).toFixed(1) : "0.0"}%)</span></div>
+                <div className="text-[10px] text-slate-500">Have • Need {formatCurrency(retirementPlan.bucket2Need)} ({(retirementPlan.bucket2Need/retirementPlan.projectedPortfolioAtStart*100).toFixed(1)}% at retirement)</div>
                 <div className="text-[10px] text-slate-500 mt-1">↳ {formatCurrency(accountBreakdown.fixedIncome)} bonds + {formatCurrency(retirementPlan.etfIncomeUSD)} Income ETFs</div>
                 <div className="mt-2 h-2 bg-slate-100 rounded-full overflow-hidden"><div className="h-full bg-blue-500" style={{width:`${Math.min(100, retirementPlan.actualBucket2/retirementPlan.bucket2Need*100)}%`}} /></div>
                 <div className="text-[10px] mt-1 font-bold" style={{color: retirementPlan.actualBucket2 >= retirementPlan.bucket2Need ? "#059669" : "#dc2626"}}>{retirementPlan.actualBucket2 >= retirementPlan.bucket2Need ? "✓ Funded" : `Short ${formatCurrency(retirementPlan.bucket2Need - retirementPlan.actualBucket2)}`}</div>
@@ -495,10 +674,10 @@ const Retirement: React.FC = () => {
               </CardContent>
             </Card>
             <Card className="border-l-4 border-l-purple-500">
-              <CardHeader className="pb-2"><CardTitle className="text-xs font-black uppercase tracking-widest flex items-center gap-2"><TrendingUp className="w-4 h-4 text-purple-600" />Bucket 3 — Growth (10y+)</CardTitle><CardDescription className="text-[10px]">Growth ETFs • long horizon</CardDescription></CardHeader>
+              <CardHeader className="pb-2"><CardTitle className="text-xs font-black uppercase tracking-widest flex items-center gap-2"><TrendingUp className="w-4 h-4 text-purple-600" />Bucket 3 — Growth (10y+)</CardTitle><CardDescription className="text-[10px]">Growth ETFs • {totalPortfolioValue>0 ? (retirementPlan.actualBucket3/totalPortfolioValue*100).toFixed(1) : "0.0"}% of portfolio</CardDescription></CardHeader>
               <CardContent>
-                <div className="text-2xl font-black">{formatCurrency(retirementPlan.actualBucket3)}</div>
-                <div className="text-[10px] text-slate-500">Have • Remainder {formatCurrency(retirementPlan.bucket3Need)}</div>
+                <div className="text-2xl font-black">{formatCurrency(retirementPlan.actualBucket3)} <span className="text-[11px] font-bold text-slate-500">({totalPortfolioValue>0 ? (retirementPlan.actualBucket3/totalPortfolioValue*100).toFixed(1) : "0.0"}%)</span></div>
+                <div className="text-[10px] text-slate-500">Have • Remainder {formatCurrency(retirementPlan.bucket3Need)} ({(retirementPlan.bucket3Need/retirementPlan.projectedPortfolioAtStart*100).toFixed(1)}% at retirement)</div>
                 <div className="text-[10px] text-slate-500 mt-1">↳ {formatCurrency(retirementPlan.etfGrowthUSD)} Growth ETFs • {(equityPct*100).toFixed(0)}% equity</div>
                 <div className="mt-2 h-2 bg-slate-100 rounded-full overflow-hidden"><div className="h-full bg-purple-500" style={{width:`${Math.min(100, retirementPlan.bucket3Need>0 ? retirementPlan.actualBucket3/retirementPlan.bucket3Need*100 : 100)}%`}} /></div>
                 <div className="text-[10px] mt-1 text-slate-500">{etfBucketSplit.income>0 ? `${formatCurrency(etfBucketSplit.income)} Income → B2` : "Label Income ETFs to fill B2"}</div>
@@ -581,6 +760,57 @@ const Retirement: React.FC = () => {
               </div>
             </CardContent>
           </Card>
+
+          {/* Guardrails – actionable fixes to survive stress */}
+          {(retirementPlan.guardrails.filter((g:any)=> !g.success).length > 0) && (
+            <Card className="border-emerald-200 bg-emerald-50/20">
+              <CardHeader>
+                <CardTitle className="text-xs font-black uppercase tracking-widest flex items-center gap-2"><PiggyBank className="w-4 h-4 text-emerald-700" /> Guardrails — Pick ONE to Stay on Track</CardTitle>
+                <CardDescription className="text-xs">Each stress below shows 3 <span className="font-bold">alternative</span> fixes — choose <span className="font-bold">any one</span> to survive to {lifeExpectancy} (not all three).</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {retirementPlan.guardrails.filter((g:any)=> !g.success).map((g:any)=> {
+                  const s = retirementPlan.scenarios.find((x:any)=> x.key===g.key);
+                  const failAge = s?.result.depletionAge || parseInt(lifeExpectancy)||85;
+                  return (
+                    <div key={g.key} className="p-4 rounded-xl border bg-white shadow-sm">
+                      <div className="flex items-center justify-between">
+                        <div className="text-[11px] font-black uppercase tracking-widest">{g.label} <span className="font-normal normal-case text-slate-500">— {s?.desc} • depletes at {failAge}y</span></div>
+                        <span className="text-[10px] font-bold px-2 py-1 rounded bg-amber-100 text-amber-800 border border-amber-200">Guardrail needed</span>
+                      </div>
+                      <div className="grid md:grid-cols-[1fr_auto_1fr_auto_1fr] gap-2 mt-3 items-center">
+                        <div className="p-3 rounded-lg bg-slate-50 border">
+                          <div className="text-[10px] font-bold uppercase text-slate-500">A — Cut Spending</div>
+                          <div className="text-sm font-black">→ {formatCurrency(g.maxSustainableAtRet)}/y <span className="text-[10px] font-normal text-slate-500">at retirement</span></div>
+                          <div className="text-[11px] text-slate-600">≈ {formatCurrency(g.suggestedTodayAt4Pct)}/y today • save {formatCurrency(g.reductionAtRet)}/y ({(g.reductionAtRet/retirementPlan.projectedExpensesAtStart*100).toFixed(1)}% cut)</div>
+                          <div className="text-[10px] text-slate-400 mt-1">From {formatCurrency(retirementPlan.projectedExpensesAtStart)}/y → {formatCurrency(g.maxSustainableAtRet)}/y — {formatCurrency(g.reductionToday)}/y today ({(g.reductionToday/(totals.amount*12)*100).toFixed(1)}%)</div>
+                        </div>
+                        <div className="text-[10px] font-black text-slate-400 text-center">OR</div>
+                        <div className="p-3 rounded-lg bg-blue-50 border border-blue-100">
+                          <div className="text-[10px] font-bold uppercase text-blue-700">B — Part-Time ({g.partTimeYears}y)</div>
+                          <div className="text-sm font-black text-blue-800">+{formatCurrency(g.partTimeNeeded)}/y</div>
+                          <div className="text-[11px] text-slate-600">for {g.partTimeYears}y after retirement • total ~{formatCurrency(g.partTimeNeeded * g.partTimeYears)}</div>
+                          <div className="text-[10px] text-slate-400 mt-1">Covers gap without cutting base spend</div>
+                        </div>
+                        <div className="text-[10px] font-black text-slate-400 text-center">OR</div>
+                        <div className="p-3 rounded-lg bg-amber-50 border border-amber-100">
+                          <div className="text-[10px] font-bold uppercase text-amber-700">C — Add to Portfolio</div>
+                          <div className="text-sm font-black text-amber-800">+{formatCurrency(g.extraNeededAtRet)}</div>
+                          <div className="text-[11px] text-slate-600">at retirement • ≈ {formatCurrency(g.extraNeededToday)} today</div>
+                          <div className="text-[10px] text-slate-400 mt-1">One-time buffer • or delay ~{(g.extraNeededAtRet/retirementPlan.projectedExpensesAtStart).toFixed(1)}y of expenses</div>
+                        </div>
+                      </div>
+                      <div className="text-[10px] text-slate-500 mt-2 bg-emerald-50 border border-emerald-100 rounded p-2">↳ Pick <span className="font-bold">one</span>: keep {formatCurrency(totals.amount*12)}/y today and if {g.label} hits, <span className="font-bold">either</span> lower to {formatCurrency(g.suggestedTodayAt4Pct)}/y, <span className="font-bold">or</span> earn {formatCurrency(g.partTimeNeeded)}/y part-time {g.partTimeYears}y, <span className="font-bold">or</span> have {formatCurrency(g.extraNeededToday)} more saved today.</div>
+                    </div>
+                  );
+                })}
+                {retirementPlan.guardrails.filter((g:any)=> !g.success).length===0 && (
+                  <div className="text-xs text-emerald-700 font-bold">✓ All stress scenarios survive to {lifeExpectancy} — no guardrail needed. Keep buckets rebalanced.</div>
+                )}
+                <div className="text-[10px] text-slate-500 border-t pt-2">Guardrails are deterministic at {(parseFloat(retirementReturnRate)||0).toFixed(1)}%/{(parseFloat(retirementInflationRate)||0).toFixed(1)}% and current equity {(equityPct*100).toFixed(0)}% (Income ETFs in Bucket 2). Re-run after changing expenses or portfolio.</div>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Year-by-year */}
           <Card>
