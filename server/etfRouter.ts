@@ -131,6 +131,7 @@ export const etfRouter = router({
         purchasePrice: z.string(),
         purchaseDate: z.date(),
         desiredAllocation: z.string().optional(),
+        etfCategory: z.enum(["income", "growth"]).optional(),
         fees: z.string().optional(),
         type: z.enum(["buy", "sell"]).default("buy"),
       })
@@ -209,10 +210,13 @@ export const etfRouter = router({
           purchasePrice: input.purchasePrice,
           purchaseDate: input.purchaseDate,
           desiredAllocation: input.desiredAllocation || "0",
+          etfCategory: (input as any).etfCategory || "growth",
           currentPrice,
           lastPriceUpdate,
           annualDividendPerShare,
         });
+      } else if ((input as any).etfCategory) {
+        await updateEtfHolding(holdingId, { etfCategory: (input as any).etfCategory } as any);
       }
 
       const quantityNum = parseFloat(input.quantity);
@@ -344,18 +348,22 @@ export const etfRouter = router({
         purchasePrice: z.string().optional(),
         purchaseDate: z.date().optional(),
         desiredAllocation: z.string().optional(),
+        etfCategory: z.enum(["income", "growth"]).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
       const { id, portfolioId, ...updates } = input;
 
       if (id === -1 && input.symbol && portfolioId) {
-        // Update all holdings with this symbol in this portfolio
+        // Update all holdings with this symbol in this portfolio (also handles etfCategory bulk update)
         const db = await getDb();
         const symbol = input.symbol.toUpperCase();
-        
+        const setData: any = {};
+        if ((updates as any).desiredAllocation !== undefined) setData.desiredAllocation = (updates as any).desiredAllocation;
+        if ((updates as any).etfCategory !== undefined) setData.etfCategory = (updates as any).etfCategory;
+        if (Object.keys(setData).length === 0) return { success: true };
         await db.update(etfHoldings)
-          .set({ desiredAllocation: updates.desiredAllocation })
+          .set(setData)
           .where(and(
             eq(etfHoldings.userId, ctx.user.id),
             eq(etfHoldings.portfolioId, portfolioId),

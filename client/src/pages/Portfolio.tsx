@@ -143,6 +143,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
     purchaseDate: defaultDate,
     accountId: "",
     fees: "",
+    etfCategory: "growth" as "income" | "growth",
     type: "buy" as "buy" | "sell",
   });
 
@@ -954,8 +955,9 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
       purchasePrice: formData.purchasePrice,
       purchaseDate: mergeDateWithCurrentTime(formData.purchaseDate),
       fees: formData.fees,
+      etfCategory: formData.etfCategory,
       type: formData.type,
-    });
+    } as any);
   };
 
   const handleExecuteTrade = async (holdingId: number, symbol: string, accountId?: number) => {
@@ -1748,6 +1750,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                         purchaseDate: defaultDate,
                         accountId: accounts?.[0]?.id.toString() || "",
                         fees: "",
+                        etfCategory: "growth",
                         type: "buy",
                       });
 
@@ -1847,6 +1850,19 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                             onChange={(e) => handlePriceInputChange(e.target.value, (val) => setFormData(prev => ({ ...prev, fees: val })))}
                           />
                         </div>
+                        {formData.type === "buy" && (
+                          <div className="grid gap-2">
+                            <label className="text-xs font-bold text-slate-500 uppercase">Bucket Style</label>
+                            <Select value={formData.etfCategory} onValueChange={(v:any)=> setFormData(prev=> ({...prev, etfCategory: v}))}>
+                              <SelectTrigger><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="growth">Growth — Bucket 3 (long-term)</SelectItem>
+                                <SelectItem value="income">Income — Bucket 2 (income/bonds)</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <p className="text-[10px] text-slate-400">Income ETFs fund Bucket 2 with bonds; Growth stays in Bucket 3.</p>
+                          </div>
+                        )}
                         <div className="grid gap-2 p-3 bg-slate-50 rounded-md border border-slate-100">
                           <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
                             Estimated Transaction Total
@@ -1988,6 +2004,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                           )}
                         </div>
                       </th>
+                      <th className="text-left py-3 px-3 text-slate-600 whitespace-nowrap min-w-[135px]">Bucket</th>
                       <th className="text-right py-3 px-3 text-slate-600">Allocation</th>
                       <th className="text-center py-3 px-3 text-slate-600">Actions</th>
                     </tr>
@@ -2039,6 +2056,15 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                             </td>
                             <td className={`text-right py-3 px-3 font-mono text-xs font-bold ${isGain ? "text-green-600" : "text-red-600"}`}>
                               {isGain ? "+" : ""}{holding.gainPercent}%
+                            </td>
+                            <td className="py-3 px-3 overflow-visible">
+                              <Select value={(holding as any).etfCategory || "growth"} onValueChange={(v:any)=> updateHoldingMutation.mutate({ id: holding.id, symbol: holding.symbol, portfolioId: selectedPortfolioId, etfCategory: v } as any)}>
+                                <SelectTrigger className="h-7 text-[10px] font-bold uppercase w-[125px] max-w-[125px]"><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="growth">Growth • B3</SelectItem>
+                                  <SelectItem value="income">Income • B2</SelectItem>
+                                </SelectContent>
+                              </Select>
                             </td>
                             <td className="text-right py-3 px-3 font-mono">
                               <div className="flex flex-col items-end gap-1">
@@ -2149,6 +2175,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                                   {bdIsGain ? "+" : ""}{breakdown.gainPercent}%
                                 </td>
                                 <td></td>
+                                <td></td>
                                 <td className="py-2 px-3">
                                   <div className="flex items-center justify-center">
                                     <DropdownMenu>
@@ -2213,6 +2240,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                               (summary?.holdings?.filter((h:any)=> !h.assetType || h.assetType==="etf").reduce((acc: number, h: any) => acc + (parseFloat(h.averageCost || h.purchasePrice) * parseFloat(h.quantity)), 0) || 1)) * 100
                           ).toFixed(2)}%
                         </td>
+                        <td className="text-center py-4 px-3 text-slate-400 text-[10px]">—</td>
                         <td className="text-right py-4 px-3 font-mono text-slate-500 text-xs">100%</td>
                         <td></td>
                       </tr>

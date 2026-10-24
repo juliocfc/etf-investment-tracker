@@ -4,7 +4,7 @@ import { CommandDialog, CommandInput, CommandList, CommandEmpty, CommandGroup, C
 import { trpc } from "@/lib/trpc";
 import { formatCurrency } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Menu, X, LogOut, TrendingUp, Wallet, Briefcase, Plus, Mail, ArrowRightLeft, LayoutDashboard, ChevronDown } from "lucide-react";
+import { Menu, X, LogOut, TrendingUp, Wallet, Briefcase, Plus, Mail, ArrowRightLeft, LayoutDashboard, ChevronDown, PiggyBank } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import {
@@ -92,13 +92,13 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
               <button
                 onClick={() => onTabChange?.("fi")}
                 className={`flex items-center gap-2 px-4 py-2 rounded-md transition-all font-bold uppercase text-[11px] tracking-wider ${
-                  activeTab === "fi"
+                  activeTab === "fi" || activeTab === "retirement"
                     ? "bg-slate-100 text-[#004a99]"
                     : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
                 }`}
               >
-                <TrendingUp className="w-4 h-4" />
-                FI
+                <PiggyBank className="w-4 h-4" />
+                Retirement
               </button>
 
               {(user?.role === "admin" || user?.role === "premium") && (
@@ -282,13 +282,13 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
                   setMobileMenuOpen(false);
                 }}
                 className={`flex items-center gap-4 px-4 py-4 rounded-xl transition-all font-bold uppercase text-sm tracking-widest ${
-                  activeTab === "fi"
+                  activeTab === "fi" || activeTab === "retirement"
                     ? "bg-slate-100 text-[#004a99]"
                     : "text-slate-500 hover:bg-slate-50"
                 }`}
               >
-                <TrendingUp className="w-5 h-5" />
-                FI
+                <PiggyBank className="w-5 h-5" />
+                Retirement
               </button>
 
               {(user?.role === "admin" || user?.role === "premium") && (

@@ -75,6 +75,7 @@ export const etfHoldings = sqliteTable("etfholdings", {
   currentPrice: text("currentPrice").notNull(),
   annualDividendPerShare: text("annualDividendPerShare").default("0").notNull(),
   desiredAllocation: text("desiredAllocation").default("0").notNull(),
+  etfCategory: text("etfCategory").default("growth").notNull(), // "income" or "growth"
   purchaseDate: integer("purchaseDate", { mode: "timestamp" }).notNull(),
   lastPriceUpdate: integer("lastPriceUpdate", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
   createdAt: integer("createdAt", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),

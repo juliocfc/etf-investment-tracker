@@ -8,7 +8,7 @@ import DashboardLayout from "./components/DashboardLayout";
 import Holdings from "./pages/Portfolio";
 import Contact from "./pages/Contact";
 import Portfolios from "./pages/Portfolios";
-import FinanceIndependence from "./pages/FinanceIndependence";
+import Retirement from "./pages/Retirement";
 import BrokerageTransactions from "./pages/BrokerageTransactions";
 import Privacy from "./pages/Privacy";
 import { Button } from "./components/ui/button";
@@ -139,7 +139,9 @@ function DashboardRouter() {
           }} 
         />;
       case "fi":
-        return <FinanceIndependence />;
+        return <Retirement />;
+      case "retirement":
+        return <Retirement />;
       case "brokerage":
         return <BrokerageTransactions />;
       case "privacy":
