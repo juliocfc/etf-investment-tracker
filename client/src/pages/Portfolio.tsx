@@ -31,6 +31,9 @@ import Dividends from "./Dividends";
 
 export const CHART_COLORS = ["#004a99", "#3d8a3d", "#f2a900", "#cc0000", "#666666", "#94a3b8", "#38bdf8", "#10b981", "#fbbf24"];
 
+const qtyDecimals = (sym?: string) => ["BTC","ETH","BTC-USD","ETH-USD"].includes((sym||"").toUpperCase()) ? 8 : 4;
+const formatQty = (qty: any, sym?: string) => formatNumber(qty, qtyDecimals(sym));
+
 function groupBondsInAllocation(data: any[] | undefined): any[] {
   if (!data || data.length === 0) return data || [];
   const sortByValueDesc = (arr: any[]) => [...arr].sort((a: any, b: any) => parseFloat(b.currentValue ?? b.value ?? "0") - parseFloat(a.currentValue ?? a.value ?? "0"));
@@ -1556,7 +1559,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                                                 <span className="text-[9px] text-slate-400 truncate max-w-[150px]">{asset.name}</span>
                                               </div>
                                             </td>
-                                            <td className="text-right py-2.5 px-3 font-mono">{formatNumber(asset.quantity, 3)}</td>
+                                            <td className="text-right py-2.5 px-3 font-mono">{formatQty(asset.quantity, asset.symbol)}</td>
                                             <td className="text-right py-2.5 px-3 font-mono text-slate-500">{formatCurrency(truncateNumber(parseFloat(asset.averageCost)))}</td>
                                             <td className="text-right py-2.5 px-3 font-mono text-slate-500">{formatCurrency(truncateNumber(parseFloat(asset.totalCost)))}</td>
                                             <td className="text-right py-2.5 px-3 font-mono text-slate-500">{formatCurrency(truncateNumber(parseFloat(asset.currentPrice)))}</td>
@@ -1826,7 +1829,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                         <div className="grid grid-cols-2 gap-4">
                           <div className="grid gap-2">
                             <label className="text-xs font-bold text-slate-500 uppercase">Quantity</label>
-                            <Input ref={quantityInputRef} type="number" step="0.001" value={formData.quantity} onChange={(e) => setFormData(prev => ({ ...prev, quantity: e.target.value }))} />
+                            <Input ref={quantityInputRef} type="number" step="0.0001" value={formData.quantity} onChange={(e) => setFormData(prev => ({ ...prev, quantity: e.target.value }))} />
                           </div>
                           <div className="grid gap-2">
                             <label className="text-xs font-bold text-slate-500 uppercase">Price per Share</label>
@@ -2046,7 +2049,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                                 </TooltipContent>
                               </Tooltip>
                             </td>
-                            <td className="text-right py-3 px-3 font-mono text-xs font-medium">{formatNumber(holding.quantity, 3)}</td>
+                            <td className="text-right py-3 px-3 font-mono text-xs font-medium">{formatQty(holding.quantity, holding.symbol)}</td>
                             <td className="text-right py-3 px-3 font-mono text-xs text-slate-600">{formatCurrency(holding.averageCost)}</td>
                             <td className="text-right py-3 px-3 font-mono text-xs text-slate-600">{formatCurrency(holding.totalCost)}</td>
                             <td className="text-right py-3 px-3 font-mono text-xs text-slate-600">{formatCurrency(holding.currentPrice)}</td>
@@ -2163,7 +2166,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                                     </span>
                                   </div>
                                 </td>
-                                <td className="text-right py-2 px-3 font-mono text-[10px] text-slate-500">{formatNumber(breakdown.quantity, 3)}</td>
+                                <td className="text-right py-2 px-3 font-mono text-[10px] text-slate-500">{formatQty(breakdown.quantity, breakdown.symbol || holding.symbol)}</td>
                                 <td className="text-right py-2 px-3 font-mono text-[10px] text-slate-400">{formatCurrency(breakdown.averageCost)}</td>
                                 <td className="text-right py-2 px-3 font-mono text-[10px] text-slate-400">{formatCurrency(breakdown.totalCost)}</td>
                                 <td className="text-right py-2 px-3 font-mono text-[10px] text-slate-400">{formatCurrency(breakdown.currentPrice)}</td>
@@ -2428,7 +2431,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                           <div className="text-slate-500 text-[10px] leading-tight">{holding.name}</div>
                           {holding.redemptionDate && <div className="text-[10px] text-slate-400">Matures {new Date(holding.redemptionDate).toLocaleDateString()}</div>}
                         </td>
-                        <td className="text-right py-3 px-3 font-mono text-xs">{formatNumber(holding.quantity, 3)}</td>
+                        <td className="text-right py-3 px-3 font-mono text-xs">{formatQty(holding.quantity, holding.symbol)}</td>
                         <td className="text-right py-3 px-3 font-mono text-xs text-slate-600">{formatCurrency(holding.averageCost || holding.purchasePrice, 4)}</td>
                         <td className="text-right py-3 px-3 font-mono text-xs text-slate-600">{formatCurrency((parseFloat(holding.quantity) * parseFloat(holding.averageCost || holding.purchasePrice)).toFixed(2))}</td>
                         <td className="text-right py-3 px-3 font-mono text-xs text-slate-600">{formatCurrency(holding.currentPrice, 4)}</td>
@@ -2507,7 +2510,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                               <div className="font-bold text-slate-800">{asset.symbol}</div>
                               <div className="text-[10px] text-slate-400 font-medium truncate max-w-[150px]">{asset.name}</div>
                             </td>
-                            <td className="py-3 px-4 text-right font-mono font-medium text-slate-700">{asset.quantity.toFixed(3)}</td>
+                            <td className="py-3 px-4 text-right font-mono font-medium text-slate-700">{asset.quantity.toFixed(qtyDecimals(asset.symbol))}</td>
                             <td className="py-3 px-4 text-right font-mono text-slate-500 text-xs">{formatCurrency(asset.avgCost)}</td>
                             <td className="py-3 px-4 text-right font-mono text-slate-600 text-xs">{formatCurrency(asset.totalCost)}</td>
                             <td className="py-3 px-4 text-right font-mono font-bold text-slate-700">{formatCurrency(asset.currentPrice)}</td>
@@ -2577,7 +2580,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                               </div>
                             </div>
                           </td>
-                          <td className="py-3 px-4 text-right font-mono text-slate-600 text-xs">{item.isCash ? "-" : (()=>{ if(item.symbol==="BONDS"){ const bonds=(summary as any).holdings?.filter((x:any)=>x.assetType==="bond")||[]; const qty=bonds.reduce((s:any,b:any)=>s+parseFloat(b.quantity||"0"),0); return qty? qty.toFixed(3) : "-"; } const h=(summary as any).holdings?.find((x:any)=>x.symbol===item.symbol); return h ? Number(h.quantity).toFixed(3) : "-"; })()}</td>
+                          <td className="py-3 px-4 text-right font-mono text-slate-600 text-xs">{item.isCash ? "-" : (()=>{ if(item.symbol==="BONDS"){ const bonds=(summary as any).holdings?.filter((x:any)=>x.assetType==="bond")||[]; const qty=bonds.reduce((s:any,b:any)=>s+parseFloat(b.quantity||"0"),0); return qty? qty.toFixed(qtyDecimals(item.symbol)) : "-"; } const h=(summary as any).holdings?.find((x:any)=>x.symbol===item.symbol); return h ? Number(h.quantity).toFixed(qtyDecimals(item.symbol)) : "-"; })()}</td>
                           <td className="py-3 px-4 text-right font-mono font-bold text-slate-700">{formatCurrency(item.currentValue)}</td>
                           <td className="py-3 px-4 text-right">
                             <div className="flex items-center justify-end gap-3">
@@ -2787,7 +2790,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                   </div>
                   <div className="grid gap-2">
                     <label className="text-xs font-bold text-slate-500 uppercase">Quantity</label>
-                    <Input type="number" step="0.001" value={tradeData.quantity} onChange={(e) => setTradeData(prev => ({ ...prev, quantity: e.target.value }))} />
+                    <Input type="number" step="0.0001" value={tradeData.quantity} onChange={(e) => setTradeData(prev => ({ ...prev, quantity: e.target.value }))} />
                   </div>
                   <div className="grid gap-2">
                     <label className="text-xs font-bold text-slate-500 uppercase">Trade Date</label>
@@ -3244,7 +3247,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                                         <div key={asset.symbol} className="bg-white p-3 rounded border border-slate-100 shadow-sm flex justify-between items-center">
                                           <div>
                                             <div className="font-bold text-primary text-sm">{asset.symbol}</div>
-                                            <div className="text-[10px] text-slate-500 font-mono">{formatNumber(asset.quantity, 3)} units</div>
+                                            <div className="text-[10px] text-slate-500 font-mono">{formatQty(asset.quantity, asset.symbol)} units</div>
                                           </div>
                                           <div className="text-right">
                                             <div className="font-bold text-slate-700 text-sm">{formatCurrency(asset.currentValue)}</div>
@@ -3404,7 +3407,7 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                             </TooltipProvider>
                           </td>
                           <td className="text-right py-3 px-6 font-mono text-xs font-medium">
-                            {formatNumber(h.quantity, 3)}
+                            {formatQty(h.quantity, h.symbol)}
                           </td>
                           <td className="text-right py-3 px-6 font-mono text-xs text-slate-600">
                             {formatCurrency(h.averageCost)}
@@ -3859,7 +3862,7 @@ function TransferAssetDialog({
                         )}
                       </td>
                       <td className="p-2 font-mono text-slate-500">{formatUTCDate(p.purchaseDate)}</td>
-                      <td className="p-2 text-right font-mono font-bold">{formatNumber(p.quantity, 3)}</td>
+                      <td className="p-2 text-right font-mono font-bold">{formatQty(p.quantity, p.symbol)}</td>
                       <td className="p-2 text-right font-mono">{formatCurrency(p.price)}</td>
                     </tr>
                   ))}
@@ -3877,7 +3880,7 @@ function TransferAssetDialog({
             <div>
               <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total to Transfer</div>
               <div className="text-lg font-mono font-bold text-primary">
-                {formatNumber(activePurchases.filter((p: any) => selectedPurchaseIds.has(p.id)).reduce((acc: number, p: any) => acc + parseFloat(p.quantity), 0), 3)} shares
+                {formatQty(activePurchases.filter((p: any) => selectedPurchaseIds.has(p.id)).reduce((acc: number, p: any) => acc + parseFloat(p.quantity), 0), activePurchases[0]?.symbol)} shares
               </div>
             </div>
             <Button 
@@ -4053,7 +4056,7 @@ function PurchaseHistoryTable({
                     </span>
                   </td>
                   <td className={`text-right py-3 px-4 font-mono ${isSale ? "text-red-500" : ""}`}>
-                    {isSale ? "-" : ""}{formatNumber(purchase.quantity, 3)}
+                    {isSale ? "-" : ""}{formatQty(purchase.quantity, purchase.symbol)}
                   </td>
                   <td className="text-right py-3 px-4 font-mono font-medium">{formatCurrency(price)}</td>
                   <td className={`text-right py-3 px-4 font-mono font-bold ${isSale ? "text-red-600" : "text-slate-700"}`}>
@@ -4176,7 +4179,7 @@ function BondPurchaseHistoryTable({
                 <tr key={purchase.id} className={`border-b hover:bg-white ${isSale ? "bg-slate-50/50 italic opacity-60" : ""}`}>
                   <td className="py-3 px-4 font-mono text-xs text-slate-500">{dateStr}</td>
                   <td className="py-3 px-4"><span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border">{accountName}</span></td>
-                  <td className="text-right py-3 px-4 font-mono">{isSale ? "-" : ""}{formatNumber(purchase.quantity, 3)}</td>
+                  <td className="text-right py-3 px-4 font-mono">{isSale ? "-" : ""}{formatQty(purchase.quantity, purchase.symbol)}</td>
                   <td className="text-right py-3 px-4 font-mono">{formatCurrency(price, 4)}</td>
                   <td className="text-right py-3 px-4 font-mono text-slate-500">{formatCurrency(interest)}</td>
                   <td className="text-right py-3 px-4 font-mono font-bold">{isSale ? "-" : ""}{formatCurrency(totalCost)}</td>

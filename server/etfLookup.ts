@@ -10,9 +10,21 @@ const etfNameCache: Map<string, string> = new Map();
 /**
  * Fetch ETF/stock name from Yahoo Finance using quote (reliable) with search fallback
  */
+const CRYPTO_NAMES: Record<string, string> = {
+  BTC: "Bitcoin",
+  "BTC-USD": "Bitcoin",
+  ETH: "Ethereum",
+  "ETH-USD": "Ethereum",
+};
+
 export async function fetchETFName(symbol: string): Promise<string | null> {
   try {
     const sym = symbol.toUpperCase();
+    if (CRYPTO_NAMES[sym]) {
+      const name = CRYPTO_NAMES[sym];
+      etfNameCache.set(sym, name);
+      return name;
+    }
     // Check cache first
     if (etfNameCache.has(sym)) {
       return etfNameCache.get(sym) || null;

@@ -46,8 +46,56 @@ function b3Candidate(sym: string): string | null {
 /**
  * Fetch current price for an ETF symbol
  */
+const CRYPTO_MAP: Record<string, { id: string, yahoo: string, name: string }> = {
+  BTC: { id: "bitcoin", yahoo: "BTC-USD", name: "Bitcoin" },
+  ETH: { id: "ethereum", yahoo: "ETH-USD", name: "Ethereum" },
+  "BTC-USD": { id: "bitcoin", yahoo: "BTC-USD", name: "Bitcoin" },
+  "ETH-USD": { id: "ethereum", yahoo: "ETH-USD", name: "Ethereum" },
+};
+
+async function fetchCryptoPrice(symbol: string): Promise<PriceData | null> {
+  const sym = symbol.toUpperCase();
+  const entry = CRYPTO_MAP[sym];
+  if (!entry) return null;
+  const cached = priceCache.get(sym);
+  if (cached && (Date.now() - cached.timestamp < CACHE_TTL)) return cached.data;
+  // Try CoinGecko first
+  try {
+    console.log(`[FinancialApi] Fetching crypto price for ${sym} via CoinGecko`);
+    const resp = await axios.get(`https://api.coingecko.com/api/v3/simple/price?ids=${entry.id}&vs_currencies=usd`, { timeout: 8000 });
+    const price = resp.data?.[entry.id]?.usd;
+    if (price) {
+      const data = { symbol: sym, price: Number(price), timestamp: new Date() };
+      priceCache.set(sym, { data, timestamp: Date.now() });
+      priceCache.set(entry.yahoo, { data: { symbol: entry.yahoo, price: Number(price), timestamp: new Date() }, timestamp: Date.now() });
+      return data;
+    }
+  } catch (e: any) {
+    console.warn(`[FinancialApi] CoinGecko failed for ${sym}:`, e.message);
+  }
+  // Fallback to Yahoo with yahoo symbol
+  try {
+    console.log(`[FinancialApi] Fetching crypto price for ${sym} via Yahoo ${entry.yahoo}`);
+    const quote = await yahooFinance.quote(entry.yahoo);
+    if (quote && quote.regularMarketPrice) {
+      const data = { symbol: sym, price: quote.regularMarketPrice, timestamp: quote.regularMarketTime || new Date() };
+      priceCache.set(sym, { data, timestamp: Date.now() });
+      return data;
+    }
+  } catch (e: any) {
+    console.warn(`[FinancialApi] Yahoo crypto fallback failed for ${entry.yahoo}:`, e.message);
+  }
+  return null;
+}
+
 export async function fetchEtfPrice(symbol: string): Promise<PriceData | null> {
   const sym = symbol.toUpperCase();
+  // Crypto fast-path: BTC / ETH / BTC-USD / ETH-USD
+  if (CRYPTO_MAP[sym]) {
+    const cryptoData = await fetchCryptoPrice(sym);
+    if (cryptoData) return cryptoData;
+    // fall through to normal flow if crypto fetch fails (will try yahoo directly)
+  }
   
   // Check cache
   const cached = priceCache.get(sym);
@@ -158,7 +206,10 @@ export async function fetchHistoricalPrices(
   interval: '1d' | '1wk' | '1mo' = '1d'
 ): Promise<PriceData[]> {
   const symBase = symbol.toUpperCase();
-  const candidates = [symBase, b3Candidate(symBase)].filter(Boolean) as string[];
+  const cryptoYahoo = CRYPTO_MAP[symBase]?.yahoo;
+  const candidates: string[] = cryptoYahoo
+    ? [cryptoYahoo, symBase]
+    : ([symBase, b3Candidate(symBase)].filter(Boolean) as string[]);
   for (const sym of candidates) {
   try {
     const endDate = new Date();
@@ -240,6 +291,8 @@ export async function fetchDividendData(symbol: string): Promise<DividendData[]>
  * Validate ETF symbol exists and is tradeable
  */
 export async function validateEtfSymbol(symbol: string): Promise<boolean> {
+  const sym = symbol.toUpperCase();
+  if (sym === "BTC" || sym === "ETH" || sym === "BTC-USD" || sym === "ETH-USD") return true;
   const price = await fetchEtfPrice(symbol);
   return price !== null;
 }
@@ -248,6 +301,8 @@ export async function validateEtfSymbol(symbol: string): Promise<boolean> {
  * Calculate annual dividend per share based on historical data
  */
 export async function calculateAnnualDPS(symbol: string): Promise<number> {
+  const symUp = symbol.toUpperCase();
+  if (symUp === "BTC" || symUp === "ETH" || symUp === "BTC-USD" || symUp === "ETH-USD") return 0;
   try {
     const dividendData = await fetchDividendData(symbol);
     if (!dividendData || dividendData.length === 0) return 0;

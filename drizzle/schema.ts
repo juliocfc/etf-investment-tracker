@@ -287,6 +287,41 @@ export const bondPurchases = sqliteTable("bondpurchases", {
   createdAt: integer("createdAt", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
+export const cryptoHoldings = sqliteTable("cryptoholdings", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("userId").notNull(),
+  portfolioId: integer("portfolioId").notNull(),
+  accountId: integer("accountId").default(0).notNull(),
+  symbol: text("symbol").notNull(), // BTC, ETH
+  name: text("name").notNull(),
+  quantity: text("quantity").notNull(),
+  purchasePrice: text("purchasePrice").notNull(),
+  currentPrice: text("currentPrice").notNull(),
+  desiredAllocation: text("desiredAllocation").default("0").notNull(),
+  purchaseDate: integer("purchaseDate", { mode: "timestamp" }).notNull(),
+  lastPriceUpdate: integer("lastPriceUpdate", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+  createdAt: integer("createdAt", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+  updatedAt: integer("updatedAt", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+export const cryptoPurchases = sqliteTable("cryptopurchases", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("userId").notNull(),
+  portfolioId: integer("portfolioId").notNull(),
+  accountId: integer("accountId").default(0).notNull(),
+  holdingId: integer("holdingId").notNull(),
+  symbol: text("symbol").notNull(),
+  quantity: text("quantity").notNull(),
+  price: text("price").notNull(),
+  fees: text("fees").default("0").notNull(),
+  cashTransactionId: integer("cashTransactionId"),
+  purchaseDate: integer("purchaseDate", { mode: "timestamp" }).notNull(),
+  isSold: integer("isSold", { mode: "boolean" }).default(false),
+  soldDate: integer("soldDate", { mode: "timestamp" }),
+  soldPrice: text("soldPrice"),
+  createdAt: integer("createdAt", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
 export type Expense = typeof expenses.$inferSelect;
 export type InsertExpense = typeof expenses.$inferInsert;
 export type FiSimulationAsset = typeof fiSimulationAssets.$inferSelect;
