@@ -117,15 +117,16 @@ const Retirement: React.FC = () => {
 
   // Account-type and asset-class breakdown (USD)
   const accountBreakdown = useMemo(() => {
-    if (!filteredPortfolios) return { taxable:0, retirement:0, cashTaxable:0, cashRetirement:0, equity:0, fixedIncome:0, fixedTaxable:0, fixedRet:0, equityTaxable:0, equityRet:0, total:0 };
+    if (!filteredPortfolios) return { taxable:0, retirement:0, cashTaxable:0, cashRetirement:0, cashBrokerage:0, equity:0, fixedIncome:0, fixedTaxable:0, fixedRet:0, equityTaxable:0, equityRet:0, total:0 };
     const isCashUSD = (p:any)=> parseFloat((p.cashValueUSD ?? p.cashValue) || "0");
     const isInvUSD = (p:any)=> parseFloat((p.investmentValueUSD ?? p.investmentValue) || "0");
     let taxable=0, retirement=0;
-    let cashTaxable=0, cashRetirement=0;
+    let cashTaxable=0, cashRetirement=0, cashBrokerage=0;
     let equity=0, fixedIncome=0, fixedTaxable=0, fixedRet=0, equityTaxable=0, equityRet=0;
     for (const p of filteredPortfolios as any[]) {
       const isRetAcc = (p.accounts||[]).filter((a:any)=> a.accountType==="Retirement");
       const isTaxAcc = (p.accounts||[]).filter((a:any)=> a.accountType!=="Retirement");
+      const isBrokerageAcc = (p.accounts||[]).filter((a:any)=> a.accountType==="Brokerage");
       // Sum per account type in USD if available – fall back to pro-rata
       const pTotalInvUSD = isInvUSD(p);
       const pCashUSD = isCashUSD(p);
@@ -135,6 +136,7 @@ const Retirement: React.FC = () => {
       const totalAccInv = retAccInv + taxAccInv || 1;
       const retCash = isRetAcc.reduce((s:any,a:any)=> s + parseFloat(a.cashValue || "0"),0);
       const taxCash = isTaxAcc.reduce((s:any,a:any)=> s + parseFloat(a.cashValue || "0"),0);
+      const brokCash = isBrokerageAcc.reduce((s:any,a:any)=> s + parseFloat(a.cashValue || "0"),0);
       const totalCash = retCash + taxCash || 1;
       // Convert to USD proportionally
       const fx = p.baseCurrency==="USD" ? 1 : parseFloat(p.fxRateToUSD || "1");
@@ -143,10 +145,12 @@ const Retirement: React.FC = () => {
       const taxInvUSD = pTotalInvUSD * (taxAccInv/totalAccInv);
       const retCashUSD = pCashUSD * (retCash/totalCash);
       const taxCashUSD = pCashUSD * (taxCash/totalCash);
+      const brokCashUSD = pCashUSD * (brokCash/Math.max(1, totalCash));
       retirement += retInvUSD + retCashUSD;
       taxable += taxInvUSD + taxCashUSD;
       cashRetirement += retCashUSD;
       cashTaxable += taxCashUSD;
+      cashBrokerage += brokCashUSD;
       const pEquity = parseFloat((p.equityInvestmentValueUSD ?? p.equityInvestmentValue) ?? "0") || (pTotalInvUSD - parseFloat((p.fixedIncomeInvestmentValueUSD ?? "0") as any));
       const pFixed = parseFloat(p.fixedIncomeInvestmentValueUSD ?? p.fixedIncomeInvestmentValue ?? "0");
       equity += pEquity;
@@ -166,7 +170,7 @@ const Retirement: React.FC = () => {
       equityTaxable = equity * (taxable/Math.max(1, taxable+retirement)); equityRet = equity - equityTaxable;
       fixedTaxable = fixedIncome * (taxable/Math.max(1, taxable+retirement)); fixedRet = fixedIncome - fixedTaxable;
     }
-    return { taxable, retirement, cashTaxable, cashRetirement, equity, fixedIncome, fixedTaxable, fixedRet, equityTaxable, equityRet, total: taxable+retirement };
+    return { taxable, retirement, cashTaxable, cashRetirement, cashBrokerage, equity, fixedIncome, fixedTaxable, fixedRet, equityTaxable, equityRet, total: taxable+retirement };
   }, [filteredPortfolios]);
 
   const equityPct = useMemo(()=> {
@@ -236,11 +240,11 @@ const Retirement: React.FC = () => {
       let depletionAge: number | null = null;
       // Buckets at retirement start (projected) — only used when crash>0 to model 3-5y recovery without selling stocks
       const useBuckets = opts.crashPct>0;
-      let b1 = accountBreakdown.cashTaxable + accountBreakdown.cashRetirement;
+      let b1 = (accountBreakdown as any).cashBrokerage ?? accountBreakdown.cashTaxable;
       let b2Bonds = accountBreakdown.fixedIncome;
       let b2Income = etfBucketSplit.income;
       let b2 = b2Bonds + b2Income;
-      let b3 = etfBucketSplit.growth;
+      let b3 = etfBucketSplit.growth + (accountBreakdown.cashRetirement || 0);
       if (fractionYearsToRet>0 && totalPortfolioValue>0) {
         const scale = projectedPortfolioAtStart / totalPortfolioValue;
         b1 *= scale; b2Bonds *= scale; b2Income *= scale; b2 = b2Bonds + b2Income; b3 *= scale;
@@ -369,11 +373,11 @@ const Retirement: React.FC = () => {
         bal = currentPortfolioValue + extraToday;
       }
       const useB = opts.crashPct>0;
-      let gb1 = accountBreakdown.cashTaxable + accountBreakdown.cashRetirement;
+      let gb1 = (accountBreakdown as any).cashBrokerage ?? accountBreakdown.cashTaxable;
       let gb2Bonds = accountBreakdown.fixedIncome;
       let gb2Income = etfBucketSplit.income;
       let gb2 = gb2Bonds + gb2Income;
-      let gb3 = etfBucketSplit.growth;
+      let gb3 = etfBucketSplit.growth + (accountBreakdown.cashRetirement || 0);
       if (fractionYearsToRet>0 && totalPortfolioValue>0) { const sc = projectedPortfolioAtStart / totalPortfolioValue; gb1*=sc; gb2Bonds*=sc; gb2Income*=sc; gb2=gb2Bonds+gb2Income; gb3*=sc; }
       // Guardrail: cap growth at 50% at retirement, shift excess to Bucket 2 (bonds) — income also suffers drawdown
       if (useB) {
@@ -492,29 +496,40 @@ const Retirement: React.FC = () => {
       const currentToday = annualExpenses;
       const reductionAtRet = projectedExpensesAtStart - maxSustainableAtRet;
       const reductionToday = currentToday - suggestedTodayAt4Pct;
-      // Part-time: 5y
+      // Part-time: 5y, capped at realistic $60k/yr
       const partTimeYears = 5;
+      const PART_TIME_CAP = 60000;
       let ptLow=0, ptHigh=projectedExpensesAtStart;
       for (let iter=0; iter<18; iter++) {
         const mid=(ptLow+ptHigh)/2;
         const r= simulateWithInitialAndExtras(projectedExpensesAtStart, 0, mid, partTimeYears, s.opts);
         if (r.success) ptHigh=mid; else ptLow=mid;
       }
-      const partTimeNeeded = ptHigh;
-      // Extra portfolio needed at retirement
-      let exLow=0, exHigh= projectedPortfolioAtStart;
-      for (let iter=0; iter<18; iter++) {
-        const mid=(exLow+exHigh)/2;
-        const r= simulateWithInitialAndExtras(projectedExpensesAtStart, mid, 0, 0, s.opts);
-        if (r.success) exHigh=mid; else exLow=mid;
+      const partTimeNeededRaw = ptHigh;
+      const partTimeViable = partTimeNeededRaw <= PART_TIME_CAP + 1e-6;
+      const partTimeNeeded = partTimeViable ? partTimeNeededRaw : PART_TIME_CAP;
+      // If 60k for 5y is insufficient, find minimum years at 60k needed (0..30)
+      let partTimeYearsNeeded = partTimeYears;
+      if (!partTimeViable) {
+        // check if even 30y at cap fails -> cap at 30+
+        const at30 = simulateWithInitialAndExtras(projectedExpensesAtStart, 0, PART_TIME_CAP, 30, s.opts);
+        if (!at30.success) {
+          partTimeYearsNeeded = 30;
+        } else {
+          let yLow = 5, yHigh = 30;
+          for (let iter = 0; iter < 16; iter++) {
+            const mid = (yLow + yHigh) / 2;
+            const r = simulateWithInitialAndExtras(projectedExpensesAtStart, 0, PART_TIME_CAP, mid, s.opts);
+            if (r.success) yHigh = mid; else yLow = mid;
+          }
+          // round up to 1 decimal, minimum 5
+          partTimeYearsNeeded = Math.ceil(yHigh * 10) / 10;
+        }
       }
-      const extraNeededAtRet = exHigh;
-      const extraNeededToday = extraNeededAtRet / Math.pow(1+returnRate, fractionYearsToRet);
       return {
         key: s.key, label: s.label, success: false,
         maxSustainableAtRet, suggestedTodayAt4Pct, reductionAtRet, reductionToday,
-        partTimeNeeded, partTimeYears,
-        extraNeededAtRet, extraNeededToday,
+        partTimeNeeded, partTimeNeededRaw, partTimeViable, partTimeYears, partTimeYearsNeeded, PART_TIME_CAP,
       };
     });
 
@@ -522,18 +537,18 @@ const Retirement: React.FC = () => {
     const bridgeToPenFree = Math.max(0, penaltyFreeAge - ageAtRetirement);
     const bridgeToSS = Math.max(0, ssStartAge - ageAtRetirement);
     const bridgeToMedicare = Math.max(0, medicareAge - ageAtRetirement);
-    const bucket1Years = Math.min(3, Math.max(2, bridgeToSS>0 ? Math.min(bridgeToSS, 3) : 2));
+    const bucket1Years = 2;
     const bucket1Need = projectedExpensesAtStart * bucket1Years;
-    const bucket2Years = 7;
+    const bucket2Years = 3;
     const bucket2Need = projectedExpensesAtStart * bucket2Years;
     const bucket3Need = Math.max(0, projectedPortfolioAtStart - bucket1Need - bucket2Need);
-    const actualCash = accountBreakdown.cashTaxable + accountBreakdown.cashRetirement;
+    const actualCash = (accountBreakdown as any).cashBrokerage ?? accountBreakdown.cashTaxable;
     // Bucket mapping: Income ETFs join bonds in Bucket 2, Growth stays in Bucket 3
     const etfIncomeUSD = (etfBucketSplit as any).income || 0;
     const etfGrowthUSD = (etfBucketSplit as any).growth || 0;
-    const actualBucket1 = accountBreakdown.cashTaxable + accountBreakdown.cashRetirement; // cash 0-3y
+    const actualBucket1 = (accountBreakdown as any).cashBrokerage ?? accountBreakdown.cashTaxable; // brokerage cash only (0-2y)
     const actualBucket2 = accountBreakdown.fixedIncome + etfIncomeUSD; // bonds + income ETFs 3-10y
-    const actualBucket3 = etfGrowthUSD; // growth ETFs 10y+ (equity minus income portion)
+    const actualBucket3 = etfGrowthUSD + (accountBreakdown.cashRetirement || 0); // growth + retirement cash (5y+)
     // Taxable bridge adequacy
     const taxableBridge = accountBreakdown.taxable;
     const needBridge = projectedExpensesAtStart * Math.max(bridgeToPenFree, 1);
@@ -667,7 +682,7 @@ const Retirement: React.FC = () => {
             <Card className="p-4"><div className="text-[10px] font-bold uppercase text-slate-400">Today Value</div><div className="text-xl font-black">{formatCurrency(totalPortfolioValue)}</div><div className="text-[10px] text-slate-500">{formatCurrency(accountBreakdown.taxable)} taxable • {formatCurrency(accountBreakdown.retirement)} retirement</div></Card>
             <Card className="p-4"><div className="text-[10px] font-bold uppercase text-slate-400">At Retirement ({retirementPlan.ageAtRetirement}y)</div><div className="text-xl font-black">{formatCurrency(retirementPlan.projectedPortfolioAtStart)}</div><div className="text-[10px] text-slate-500">{retirementPlan.yearsUntilRetirement.toFixed(1)}y • {retirementPlan.effectiveRate*100>6 ? "⚠️" : "✓"} {(retirementPlan.effectiveRate*100).toFixed(2)}% withdrawal</div></Card>
             <Card className="p-4"><div className="text-[10px] font-bold uppercase text-slate-400">Annual Need at Start</div><div className="text-xl font-black">{formatCurrency(retirementPlan.projectedExpensesAtStart)}</div><div className="text-[10px] text-slate-500">{formatCurrency(retirementPlan.projectedExpensesAtStart/12)}/mo inflated</div></Card>
-            <Card className="p-4"><div className="text-[10px] font-bold uppercase text-slate-400">Bridge Needed</div><div className="text-xl font-black">{retirementPlan.bridgeToPenFree.toFixed(1)}y</div><div className="text-[10px] text-slate-500">to 59.5 • SS {retirementPlan.bridgeToSS.toFixed(1)}y • Medicare {retirementPlan.bridgeToMedicare.toFixed(1)}y</div></Card>
+            <Card className={`p-4 ${retirementPlan.bridgeToPenFree<=0 ? "" : retirementPlan.bridgeSuccessWithGrowth ? "bg-emerald-50 border-emerald-300" : "bg-amber-50 border-amber-300"}`}><div className="flex items-center justify-between"><div className="text-[10px] font-bold uppercase text-slate-400">Bridge Needed</div>{retirementPlan.bridgeToPenFree>0 && (<span className={`text-[10px] font-bold px-2 py-0.5 rounded ${retirementPlan.bridgeSuccessWithGrowth ? "bg-emerald-600 text-white" : "bg-amber-500 text-white"}`}>{retirementPlan.bridgeSuccessWithGrowth ? "✓ Covered" : "⚠ Not covered"}</span>)}</div><div className="text-xl font-black">{retirementPlan.bridgeToPenFree.toFixed(1)}y</div><div className="text-[10px] text-slate-500">to 59.5 • SS {retirementPlan.bridgeToSS.toFixed(1)}y • Medicare {retirementPlan.bridgeToMedicare.toFixed(1)}y</div><div className="text-[10px] mt-1 font-medium" style={{color: retirementPlan.bridgeSuccessWithGrowth ? "#059669" : "#d97706"}}>{retirementPlan.bridgeToPenFree<=0 ? "No bridge — penalty-free" : `${formatCurrency(accountBreakdown.taxable)} brokerage now • ${formatCurrency(retirementPlan.taxableAtStart)} at retirement vs need ${formatCurrency(retirementPlan.needBridge)}`}</div></Card>
             <Card className="p-4 bg-slate-900 text-white"><div className="text-[10px] font-bold uppercase text-slate-400">Runway (Base)</div><div className="text-xl font-black text-white">{retirementPlan.scenarios.find(s=>s.key==="base")?.result.depletionAge ? `to ${retirementPlan.scenarios.find(s=>s.key==="base")?.result.depletionAge}y` : `100+ y`}</div><div className="text-[10px] text-slate-400">{retirementPlan.scenarios.find(s=>s.key==="base")?.result.success ? "via base" : "depletes early"} • equity {(equityPct*100).toFixed(0)}%</div></Card>
           </div>
 
@@ -695,18 +710,18 @@ const Retirement: React.FC = () => {
           {/* Buckets */}
           <div className="grid md:grid-cols-3 gap-4">
             <Card className="border-l-4 border-l-emerald-500">
-              <CardHeader className="pb-2"><CardTitle className="text-xs font-black uppercase tracking-widest flex items-center gap-2"><Wallet className="w-4 h-4 text-emerald-600" />Bucket 1 — Cash (0–3y)</CardTitle><CardDescription className="text-[10px]">Bridge to 59.5 • brokerage only • {totalPortfolioValue>0 ? (retirementPlan.actualBucket1/totalPortfolioValue*100).toFixed(1) : "0.0"}% of portfolio</CardDescription></CardHeader>
+              <CardHeader className="pb-2"><CardTitle className="text-xs font-black uppercase tracking-widest flex items-center gap-2"><Wallet className="w-4 h-4 text-emerald-600" />Bucket 1 — Cash (0–2y)</CardTitle><CardDescription className="text-[10px]">2y • brokerage only • {totalPortfolioValue>0 ? (retirementPlan.actualBucket1/totalPortfolioValue*100).toFixed(1) : "0.0"}% of portfolio</CardDescription></CardHeader>
               <CardContent>
                 <div className="text-2xl font-black">{formatCurrency(retirementPlan.actualBucket1)} <span className="text-[11px] font-bold text-slate-500">({totalPortfolioValue>0 ? (retirementPlan.actualBucket1/totalPortfolioValue*100).toFixed(1) : "0.0"}%)</span></div>
                 <div className="text-[10px] text-slate-500">Have total • Need {formatCurrency(retirementPlan.bucket1Need)} ({(retirementPlan.bucket1Need/retirementPlan.projectedPortfolioAtStart*100).toFixed(1)}% at retirement)</div>
-                <div className="text-[10px] text-slate-500 mt-1">Brokerage (taxable) {formatCurrency(accountBreakdown.cashTaxable)} • Retirement {formatCurrency(accountBreakdown.cashRetirement)} {retirementPlan.bridgeToPenFree>0 ? `• Until 59.5 only ${formatCurrency(accountBreakdown.cashTaxable)} counts` : ""}</div>
-                <div className="mt-2 h-2 bg-slate-100 rounded-full overflow-hidden"><div className="h-full bg-emerald-500" style={{width:`${Math.min(100, (retirementPlan.bridgeToPenFree>0 ? accountBreakdown.cashTaxable : retirementPlan.actualBucket1)/retirementPlan.bucket1Need*100)}%`}} /></div>
-                <div className="text-[10px] mt-1 font-bold" style={{color: (retirementPlan.bridgeToPenFree>0 ? accountBreakdown.cashTaxable : retirementPlan.actualBucket1) >= retirementPlan.bucket1Need ? "#059669" : "#dc2626"}}>{(retirementPlan.bridgeToPenFree>0 ? accountBreakdown.cashTaxable : retirementPlan.actualBucket1) >= retirementPlan.bucket1Need ? "✓ Funded" : `Short ${formatCurrency(retirementPlan.bucket1Need - (retirementPlan.bridgeToPenFree>0 ? accountBreakdown.cashTaxable : retirementPlan.actualBucket1))} brokerage`}</div>
-                {retirementPlan.bridgeToPenFree>0 && accountBreakdown.cashRetirement>0 && <div className="text-[10px] mt-1 text-amber-600">Retirement cash {formatCurrency(accountBreakdown.cashRetirement)} locked until 59.5 — not counted for bridge • Consider moving to brokerage or Roth ladder</div>}
+                <div className="text-[10px] text-slate-500 mt-1">Brokerage {formatCurrency((accountBreakdown as any).cashBrokerage ?? accountBreakdown.cashTaxable)} • Retirement {formatCurrency(accountBreakdown.cashRetirement)} locked until 59.5 — not in Bucket 1</div>
+                <div className="mt-2 h-2 bg-slate-100 rounded-full overflow-hidden"><div className="h-full bg-emerald-500" style={{width:`${Math.min(100, retirementPlan.actualBucket1/retirementPlan.bucket1Need*100)}%`}} /></div>
+                <div className="text-[10px] mt-1 font-bold" style={{color: retirementPlan.actualBucket1 >= retirementPlan.bucket1Need ? "#059669" : "#dc2626"}}>{retirementPlan.actualBucket1 >= retirementPlan.bucket1Need ? "✓ Funded" : `Short ${formatCurrency(retirementPlan.bucket1Need - retirementPlan.actualBucket1)} brokerage`}</div>
+                {accountBreakdown.cashRetirement>0 && <div className="text-[10px] mt-1 text-amber-600">Retirement cash {formatCurrency(accountBreakdown.cashRetirement)} excluded from Bucket 1 • Keep for 59.5+ or Roth ladder</div>}
               </CardContent>
             </Card>
             <Card className="border-l-4 border-l-blue-500">
-              <CardHeader className="pb-2"><CardTitle className="text-xs font-black uppercase tracking-widest flex items-center gap-2"><Landmark className="w-4 h-4 text-blue-600" />Bucket 2 — Income (3–10y)</CardTitle><CardDescription className="text-[10px]">Bonds + Income ETFs • 7y • {totalPortfolioValue>0 ? (retirementPlan.actualBucket2/totalPortfolioValue*100).toFixed(1) : "0.0"}% of portfolio</CardDescription></CardHeader>
+              <CardHeader className="pb-2"><CardTitle className="text-xs font-black uppercase tracking-widest flex items-center gap-2"><Landmark className="w-4 h-4 text-blue-600" />Bucket 2 — Income (2–5y)</CardTitle><CardDescription className="text-[10px]">Bonds + Income ETFs • 3y • {totalPortfolioValue>0 ? (retirementPlan.actualBucket2/totalPortfolioValue*100).toFixed(1) : "0.0"}% of portfolio</CardDescription></CardHeader>
               <CardContent>
                 <div className="text-2xl font-black">{formatCurrency(retirementPlan.actualBucket2)} <span className="text-[11px] font-bold text-slate-500">({totalPortfolioValue>0 ? (retirementPlan.actualBucket2/totalPortfolioValue*100).toFixed(1) : "0.0"}%)</span></div>
                 <div className="text-[10px] text-slate-500">Have • Need {formatCurrency(retirementPlan.bucket2Need)} ({(retirementPlan.bucket2Need/retirementPlan.projectedPortfolioAtStart*100).toFixed(1)}% at retirement)</div>
@@ -717,11 +732,11 @@ const Retirement: React.FC = () => {
               </CardContent>
             </Card>
             <Card className="border-l-4 border-l-purple-500">
-              <CardHeader className="pb-2"><CardTitle className="text-xs font-black uppercase tracking-widest flex items-center gap-2"><TrendingUp className="w-4 h-4 text-purple-600" />Bucket 3 — Growth (10y+)</CardTitle><CardDescription className="text-[10px]">Growth ETFs • {totalPortfolioValue>0 ? (retirementPlan.actualBucket3/totalPortfolioValue*100).toFixed(1) : "0.0"}% of portfolio</CardDescription></CardHeader>
+              <CardHeader className="pb-2"><CardTitle className="text-xs font-black uppercase tracking-widest flex items-center gap-2"><TrendingUp className="w-4 h-4 text-purple-600" />Bucket 3 — Growth (5y+)</CardTitle><CardDescription className="text-[10px]">Growth ETFs • {totalPortfolioValue>0 ? (retirementPlan.actualBucket3/totalPortfolioValue*100).toFixed(1) : "0.0"}% of portfolio</CardDescription></CardHeader>
               <CardContent>
                 <div className="text-2xl font-black">{formatCurrency(retirementPlan.actualBucket3)} <span className="text-[11px] font-bold text-slate-500">({totalPortfolioValue>0 ? (retirementPlan.actualBucket3/totalPortfolioValue*100).toFixed(1) : "0.0"}%)</span></div>
                 <div className="text-[10px] text-slate-500">Have • Remainder {formatCurrency(retirementPlan.bucket3Need)} ({(retirementPlan.bucket3Need/retirementPlan.projectedPortfolioAtStart*100).toFixed(1)}% at retirement)</div>
-                <div className="text-[10px] text-slate-500 mt-1">↳ {formatCurrency(retirementPlan.etfGrowthUSD)} Growth ETFs • {(equityPct*100).toFixed(0)}% equity</div>
+                <div className="text-[10px] text-slate-500 mt-1">↳ {formatCurrency(retirementPlan.etfGrowthUSD)} Growth ETFs + {formatCurrency(accountBreakdown.cashRetirement)} retirement cash • {(equityPct*100).toFixed(0)}% equity</div>
                 <div className="mt-2 h-2 bg-slate-100 rounded-full overflow-hidden"><div className="h-full bg-purple-500" style={{width:`${Math.min(100, retirementPlan.bucket3Need>0 ? retirementPlan.actualBucket3/retirementPlan.bucket3Need*100 : 100)}%`}} /></div>
                 <div className="text-[10px] mt-1 text-slate-500">{etfBucketSplit.income>0 ? `${formatCurrency(etfBucketSplit.income)} Income → B2` : "Label Income ETFs to fill B2"}</div>
               </CardContent>
@@ -735,11 +750,32 @@ const Retirement: React.FC = () => {
               {(() => {
                 const recs: string[] = [];
                 if (retirementPlan.effectiveRate > 0.04) {
-                  const targetAtRet = retirementPlan.projectedPortfolioAtStart * 0.04;
-                  const infl = parseFloat(retirementInflationRate) || 0;
-                  const frac = (retirementPlan as any).fractionYearsToRet || 0;
-                  const suggestedToday = frac > 0 ? targetAtRet / Math.pow(1+infl, frac) : targetAtRet;
-                  recs.push(`Withdrawal ${(retirementPlan.effectiveRate*100).toFixed(2)}% exceeds 4% rule (at retirement ${formatCurrency(retirementPlan.projectedExpensesAtStart)}/y on ${formatCurrency(retirementPlan.projectedPortfolioAtStart)}). Consider: lower expenses ${formatCurrency(retirementPlan.projectedExpensesAtStart)} → ${formatCurrency(targetAtRet)} at retirement (≈${formatCurrency(totals.amount*12)} → ${formatCurrency(suggestedToday)} today at ${(infl*100).toFixed(1)}% infl), delay retirement or part-time income.`);
+                  const neededAtRet = retirementPlan.projectedExpensesAtStart / 0.04;
+                  const shortfallAtRet = neededAtRet - retirementPlan.projectedPortfolioAtStart;
+                  const returnRateNum = parseFloat(retirementReturnRate)/100 || 0;
+                  const inflNum = parseFloat(retirementInflationRate)/100 || 0;
+                  // delay years to reach 4% if portfolio grows at returnRate and expenses at inflation
+                  let delayYears: number | null = null;
+                  if (returnRateNum > inflNum) {
+                    const rate0 = retirementPlan.effectiveRate;
+                    const ratio = (1 + inflNum) / (1 + returnRateNum);
+                    const raw = Math.log(0.04 / rate0) / Math.log(ratio);
+                    if (isFinite(raw) && raw > 0) delayYears = Math.ceil(raw * 10) / 10;
+                    // cap search 0..30 via simulation if ratio method diverges
+                    if (delayYears === null || delayYears > 30) {
+                      let found: number | null = null;
+                      for (let d = 0.5; d <= 30; d += 0.5) {
+                        const projPort = retirementPlan.projectedPortfolioAtStart * Math.pow(1 + returnRateNum, d);
+                        const projExp = retirementPlan.projectedExpensesAtStart * Math.pow(1 + inflNum, d);
+                        if (projExp / projPort <= 0.04) { found = d; break; }
+                      }
+                      delayYears = found;
+                    }
+                    if (delayYears !== null && delayYears > 30) delayYears = null;
+                  }
+                  const todayNeeded = neededAtRet / Math.pow(1 + returnRateNum, (retirementPlan as any).fractionYearsToRet || 0);
+                  const delayText = delayYears !== null ? ` Alternatively, delay retirement ~${delayYears.toFixed(1)}y at ${(returnRateNum*100).toFixed(1)}% return / ${(inflNum*100).toFixed(1)}% inflation to reach 4%.` : (returnRateNum <= inflNum ? ` Return ${(returnRateNum*100).toFixed(1)}% ≤ inflation — delay alone won't lower the rate without extra saving.` : ``);
+                  recs.push(`Withdrawal ${(retirementPlan.effectiveRate*100).toFixed(2)}% exceeds 4% rule (at retirement ${formatCurrency(retirementPlan.projectedExpensesAtStart)}/y on ${formatCurrency(retirementPlan.projectedPortfolioAtStart)}). For 4%, need ${formatCurrency(neededAtRet)} at retirement — shortfall ${formatCurrency(shortfallAtRet)} (${(shortfallAtRet/neededAtRet*100).toFixed(1)}%). ≈ ${formatCurrency(todayNeeded)} needed today at ${(returnRateNum*100).toFixed(1)}% growth.${delayText}`);
                 }
                 if (!retirementPlan.bridgeSuccessWithGrowth) {
                   const haveY = retirementPlan.bridgeYearsCoveredGrowth.toFixed(1);
@@ -749,8 +785,8 @@ const Retirement: React.FC = () => {
                 } else if (retirementPlan.bridgeToPenFree > 0) {
                   recs.push(`Taxable bridge OK (modeled): ${formatCurrency(retirementPlan.taxableAtStart)} taxable at retirement covers ${retirementPlan.bridgeToPenFree.toFixed(1)}y to 59.5 at ${(parseFloat(retirementReturnRate)||0).toFixed(1)}%/${(parseFloat(retirementInflationRate)||0).toFixed(1)}% (SS offset ${formatCurrency(parseFloat(ssAmount)||0)}/y from ${ssAge}).`);
                 }
-                if (retirementPlan.actualBucket1 < retirementPlan.bucket1Need) recs.push(`Cash bucket underfunded by ${formatCurrency(retirementPlan.bucket1Need - retirementPlan.actualBucket1)} — move ${((retirementPlan.bucket1Need - retirementPlan.actualBucket1)/retirementPlan.projectedPortfolioAtStart*100).toFixed(1)}% to money market/T-Bills for 2–3y bridge.`);
-                if (retirementPlan.actualBucket2 < retirementPlan.bucket2Need *0.8) recs.push(`Bond bucket light — add ~${formatCurrency(retirementPlan.bucket2Need - retirementPlan.actualBucket2)} short/intermediate Treasuries to cover 7y stretch and dampen sequence risk.`);
+                if (retirementPlan.actualBucket1 < retirementPlan.bucket1Need) recs.push(`Cash bucket underfunded by ${formatCurrency(retirementPlan.bucket1Need - retirementPlan.actualBucket1)} — move ${((retirementPlan.bucket1Need - retirementPlan.actualBucket1)/retirementPlan.projectedPortfolioAtStart*100).toFixed(1)}% to money market/T-Bills for 2y.`);
+                if (retirementPlan.actualBucket2 < retirementPlan.bucket2Need *0.8) recs.push(`Bond bucket light — add ~${formatCurrency(retirementPlan.bucket2Need - retirementPlan.actualBucket2)} short/intermediate Treasuries to cover 3y stretch and dampen sequence risk.`);
                 if (equityPct > 0.75 && retirementPlan.ageAtRetirement > 55) recs.push(`Equity ${(equityPct*100).toFixed(0)}% is aggressive near retirement — glide to 60/40 or 50/50 by retirement, keep Bucket 3 for >10y horizon.`);
                 if (equityPct < 0.4) recs.push(`Equity ${(equityPct*100).toFixed(0)}% may not outpace inflation over ${parseInt(lifeExpectancy)-retirementPlan.ageAtRetirement}y — consider 40–60% equity for longevity.`);
                 const worst = retirementPlan.scenarios.filter(s=>s.key!=="base").sort((a,b)=>(a.result.depletionAge||999)-(b.result.depletionAge||999))[0];
@@ -809,7 +845,7 @@ const Retirement: React.FC = () => {
             <Card className="border-emerald-200 bg-emerald-50/20">
               <CardHeader>
                 <CardTitle className="text-xs font-black uppercase tracking-widest flex items-center gap-2"><PiggyBank className="w-4 h-4 text-emerald-700" /> Guardrails — Pick ONE to Stay on Track</CardTitle>
-                <CardDescription className="text-xs">Each stress below shows 3 <span className="font-bold">alternative</span> fixes — choose <span className="font-bold">any one</span> to survive to {lifeExpectancy} (not all three).</CardDescription>
+                <CardDescription className="text-xs">Each stress below shows 2 <span className="font-bold">alternative</span> fixes — choose <span className="font-bold">any one</span> to survive to {lifeExpectancy} (not all three). Part-time capped at {formatCurrency(60000)}/y realistic.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 {retirementPlan.guardrails.filter((g:any)=> !g.success).map((g:any)=> {
@@ -821,29 +857,32 @@ const Retirement: React.FC = () => {
                         <div className="text-[11px] font-black uppercase tracking-widest">{g.label} <span className="font-normal normal-case text-slate-500">— {s?.desc} • depletes at {failAge}y</span></div>
                         <span className="text-[10px] font-bold px-2 py-1 rounded bg-amber-100 text-amber-800 border border-amber-200">Guardrail needed</span>
                       </div>
-                      <div className="grid md:grid-cols-[1fr_auto_1fr_auto_1fr] gap-2 mt-3 items-center">
+                      <div className="grid md:grid-cols-[1fr_auto_1fr] gap-2 mt-3 items-center">
                         <div className="p-3 rounded-lg bg-slate-50 border">
-                          <div className="text-[10px] font-bold uppercase text-slate-500">A — Cut Spending</div>
+                          <div className="text-[10px] font-bold uppercase text-slate-500">A — Cut Spending <span className="text-[9px] font-normal normal-case text-slate-400">(permanent)</span></div>
                           <div className="text-sm font-black">→ {formatCurrency(g.maxSustainableAtRet)}/y <span className="text-[10px] font-normal text-slate-500">at retirement</span></div>
                           <div className="text-[11px] text-slate-600">≈ {formatCurrency(g.suggestedTodayAt4Pct)}/y today • save {formatCurrency(g.reductionAtRet)}/y ({(g.reductionAtRet/retirementPlan.projectedExpensesAtStart*100).toFixed(1)}% cut)</div>
-                          <div className="text-[10px] text-slate-400 mt-1">From {formatCurrency(retirementPlan.projectedExpensesAtStart)}/y → {formatCurrency(g.maxSustainableAtRet)}/y — {formatCurrency(g.reductionToday)}/y today ({(g.reductionToday/(totals.amount*12)*100).toFixed(1)}%)</div>
+                          <div className="text-[10px] text-slate-400 mt-1">Permanent — lowers withdrawal every year thereafter. From {formatCurrency(retirementPlan.projectedExpensesAtStart)}/y → {formatCurrency(g.maxSustainableAtRet)}/y — {formatCurrency(g.reductionToday)}/y today ({(g.reductionToday/(totals.amount*12)*100).toFixed(1)}%)</div>
                         </div>
                         <div className="text-[10px] font-black text-slate-400 text-center">OR</div>
-                        <div className="p-3 rounded-lg bg-blue-50 border border-blue-100">
-                          <div className="text-[10px] font-bold uppercase text-blue-700">B — Part-Time ({g.partTimeYears}y)</div>
-                          <div className="text-sm font-black text-blue-800">+{formatCurrency(g.partTimeNeeded)}/y</div>
-                          <div className="text-[11px] text-slate-600">for {g.partTimeYears}y after retirement • total ~{formatCurrency(g.partTimeNeeded * g.partTimeYears)}</div>
-                          <div className="text-[10px] text-slate-400 mt-1">Covers gap without cutting base spend</div>
-                        </div>
-                        <div className="text-[10px] font-black text-slate-400 text-center">OR</div>
-                        <div className="p-3 rounded-lg bg-amber-50 border border-amber-100">
-                          <div className="text-[10px] font-bold uppercase text-amber-700">C — Add to Portfolio</div>
-                          <div className="text-sm font-black text-amber-800">+{formatCurrency(g.extraNeededAtRet)}</div>
-                          <div className="text-[11px] text-slate-600">at retirement • ≈ {formatCurrency(g.extraNeededToday)} today</div>
-                          <div className="text-[10px] text-slate-400 mt-1">One-time buffer • or delay ~{(g.extraNeededAtRet/retirementPlan.projectedExpensesAtStart).toFixed(1)}y of expenses</div>
+                        <div className={`p-3 rounded-lg border ${g.partTimeViable ? "bg-blue-50 border-blue-100" : "bg-amber-50 border-amber-100"}`}>
+                          <div className={`text-[10px] font-bold uppercase ${g.partTimeViable ? "text-blue-700" : "text-amber-700"}`}>B — Part-Time ({g.partTimeViable ? `${g.partTimeYears}y` : `${g.partTimeYearsNeeded}y`})</div>
+                          {g.partTimeViable ? (
+                            <>
+                              <div className="text-sm font-black text-blue-800">+{formatCurrency(g.partTimeNeeded)}/y</div>
+                              <div className="text-[11px] text-slate-600">for {g.partTimeYears}y after retirement • total ~{formatCurrency(g.partTimeNeeded * g.partTimeYears)}</div>
+                              <div className="text-[10px] text-slate-400 mt-1">Temporary — 5y only, then back to base spend • capped at {formatCurrency(g.PART_TIME_CAP)}/y</div>
+                            </>
+                          ) : (
+                            <>
+                              <div className="text-sm font-black text-amber-800">+{formatCurrency(g.PART_TIME_CAP)}/y</div>
+                              <div className="text-[11px] text-slate-600">for {g.partTimeYearsNeeded}y after retirement • total ~{formatCurrency(g.PART_TIME_CAP * g.partTimeYearsNeeded)}{g.partTimeYearsNeeded>=30 ? " (30y+ — still short)" : ""}</div>
+                              <div className="text-[10px] text-slate-500 mt-1">Temporary — at {formatCurrency(g.PART_TIME_CAP)}/y, need {g.partTimeYearsNeeded}y (not {g.partTimeYears}y) to survive</div>
+                            </>
+                          )}
                         </div>
                       </div>
-                      <div className="text-[10px] text-slate-500 mt-2 bg-emerald-50 border border-emerald-100 rounded p-2">↳ Pick <span className="font-bold">one</span>: keep {formatCurrency(totals.amount*12)}/y today and if {g.label} hits, <span className="font-bold">either</span> lower to {formatCurrency(g.suggestedTodayAt4Pct)}/y, <span className="font-bold">or</span> earn {formatCurrency(g.partTimeNeeded)}/y part-time {g.partTimeYears}y, <span className="font-bold">or</span> have {formatCurrency(g.extraNeededToday)} more saved today.</div>
+                      <div className="text-[10px] text-slate-500 mt-2 bg-emerald-50 border border-emerald-100 rounded p-2">↳ Pick <span className="font-bold">one</span>: keep {formatCurrency(totals.amount*12)}/y today and if {g.label} hits, <span className="font-bold">either</span> lower to {formatCurrency(g.suggestedTodayAt4Pct)}/y<span className="font-bold"> or</span> earn {formatCurrency(g.PART_TIME_CAP)}≤/y part-time for {g.partTimeViable ? `${g.partTimeYears}y at ${formatCurrency(g.partTimeNeeded)}/y` : `${g.partTimeYearsNeeded}y at ${formatCurrency(g.PART_TIME_CAP)}/y`}.</div>
                     </div>
                   );
                 })}
