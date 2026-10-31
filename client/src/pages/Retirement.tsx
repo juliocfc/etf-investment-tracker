@@ -117,12 +117,12 @@ const Retirement: React.FC = () => {
 
   // Account-type and asset-class breakdown (USD)
   const accountBreakdown = useMemo(() => {
-    if (!filteredPortfolios) return { taxable:0, retirement:0, cashTaxable:0, cashRetirement:0, equity:0, fixedIncome:0, total:0 };
+    if (!filteredPortfolios) return { taxable:0, retirement:0, cashTaxable:0, cashRetirement:0, equity:0, fixedIncome:0, fixedTaxable:0, fixedRet:0, equityTaxable:0, equityRet:0, total:0 };
     const isCashUSD = (p:any)=> parseFloat((p.cashValueUSD ?? p.cashValue) || "0");
     const isInvUSD = (p:any)=> parseFloat((p.investmentValueUSD ?? p.investmentValue) || "0");
     let taxable=0, retirement=0;
     let cashTaxable=0, cashRetirement=0;
-    let equity=0, fixedIncome=0;
+    let equity=0, fixedIncome=0, fixedTaxable=0, fixedRet=0, equityTaxable=0, equityRet=0;
     for (const p of filteredPortfolios as any[]) {
       const isRetAcc = (p.accounts||[]).filter((a:any)=> a.accountType==="Retirement");
       const isTaxAcc = (p.accounts||[]).filter((a:any)=> a.accountType!=="Retirement");
@@ -147,15 +147,26 @@ const Retirement: React.FC = () => {
       taxable += taxInvUSD + taxCashUSD;
       cashRetirement += retCashUSD;
       cashTaxable += taxCashUSD;
-      equity += parseFloat((p.equityInvestmentValueUSD ?? p.equityInvestmentValue) ?? "0") || (pTotalInvUSD - parseFloat((p.fixedIncomeInvestmentValueUSD ?? "0") as any));
-      fixedIncome += parseFloat(p.fixedIncomeInvestmentValueUSD ?? p.fixedIncomeInvestmentValue ?? "0");
+      const pEquity = parseFloat((p.equityInvestmentValueUSD ?? p.equityInvestmentValue) ?? "0") || (pTotalInvUSD - parseFloat((p.fixedIncomeInvestmentValueUSD ?? "0") as any));
+      const pFixed = parseFloat(p.fixedIncomeInvestmentValueUSD ?? p.fixedIncomeInvestmentValue ?? "0");
+      equity += pEquity;
+      fixedIncome += pFixed;
+      // split equity/fixed by account type pro-rata
+      const eqTax = pEquity * (taxInvUSD / Math.max(1, pTotalInvUSD));
+      const eqRet = pEquity - eqTax;
+      const fxTax = pFixed * (taxInvUSD / Math.max(1, pTotalInvUSD));
+      const fxRet = pFixed - fxTax;
+      equityTaxable += eqTax; equityRet += eqRet;
+      fixedTaxable += fxTax; fixedRet += fxRet;
     }
     // If per-account split not accurate, fallback to overall
     if (equity===0 && fixedIncome===0) {
       const totalInv = filteredPortfolios.reduce((s:any,p:any)=> s + isInvUSD(p),0);
       equity = totalInv * 0.8; fixedIncome = totalInv * 0.2;
+      equityTaxable = equity * (taxable/Math.max(1, taxable+retirement)); equityRet = equity - equityTaxable;
+      fixedTaxable = fixedIncome * (taxable/Math.max(1, taxable+retirement)); fixedRet = fixedIncome - fixedTaxable;
     }
-    return { taxable, retirement, cashTaxable, cashRetirement, equity, fixedIncome, total: taxable+retirement };
+    return { taxable, retirement, cashTaxable, cashRetirement, equity, fixedIncome, fixedTaxable, fixedRet, equityTaxable, equityRet, total: taxable+retirement };
   }, [filteredPortfolios]);
 
   const equityPct = useMemo(()=> {
@@ -163,21 +174,25 @@ const Retirement: React.FC = () => {
     return inv>0 ? accountBreakdown.equity / inv : 0.6;
   }, [accountBreakdown]);
 
-  // ETF Income vs Growth breakdown for bucket mapping
+  // ETF Income vs Growth breakdown for bucket mapping (also split taxable vs retirement)
   const etfBucketSplit = useMemo(()=> {
-    if (!filteredHoldings) return { income:0, growth:0 };
-    let income=0, growth=0;
+    if (!filteredHoldings) return { income:0, growth:0, incomeTaxable:0, incomeRet:0, growthTaxable:0, growthRet:0 };
+    // Build accountType map from portfolios
+    const acctTypeMap = new Map<number,string>();
+    for (const p of (filteredPortfolios||[]) as any[]) for (const a of (p.accounts||[])) acctTypeMap.set(a.id, a.accountType);
+    let income=0, growth=0, incomeTaxable=0, incomeRet=0, growthTaxable=0, growthRet=0;
     for (const h of filteredHoldings as any[]) {
       if (h.assetType === "bond") continue;
       const qty = parseFloat(h.quantity?.toString()||"0");
       if (!Number.isFinite(qty) || qty<=1e-9) continue;
       const priceUSD = h.currentPriceUSD != null && h.currentPriceUSD!=="" ? parseFloat(h.currentPriceUSD) : parseFloat(h.currentPrice||"0");
       const val = qty * (Number.isFinite(priceUSD) ? priceUSD : 0);
-      if ((h as any).etfCategory === "income") income += val;
-      else growth += val;
+      const isRet = acctTypeMap.get(h.accountId) === "Retirement";
+      if ((h as any).etfCategory === "income") { income += val; if (isRet) incomeRet+=val; else incomeTaxable+=val; }
+      else { growth += val; if (isRet) growthRet+=val; else growthTaxable+=val; }
     }
-    return { income, growth };
-  }, [filteredHoldings]);
+    return { income, growth, incomeTaxable, incomeRet, growthTaxable, growthRet };
+  }, [filteredHoldings, filteredPortfolios]);
 
   // Retirement plan deterministic simulation
   const retirementPlan = useMemo(() => {
@@ -680,12 +695,14 @@ const Retirement: React.FC = () => {
           {/* Buckets */}
           <div className="grid md:grid-cols-3 gap-4">
             <Card className="border-l-4 border-l-emerald-500">
-              <CardHeader className="pb-2"><CardTitle className="text-xs font-black uppercase tracking-widest flex items-center gap-2"><Wallet className="w-4 h-4 text-emerald-600" />Bucket 1 — Cash (0–3y)</CardTitle><CardDescription className="text-[10px]">Bridge to 59.5 / SS, emergency • {totalPortfolioValue>0 ? (retirementPlan.actualBucket1/totalPortfolioValue*100).toFixed(1) : "0.0"}% of portfolio</CardDescription></CardHeader>
+              <CardHeader className="pb-2"><CardTitle className="text-xs font-black uppercase tracking-widest flex items-center gap-2"><Wallet className="w-4 h-4 text-emerald-600" />Bucket 1 — Cash (0–3y)</CardTitle><CardDescription className="text-[10px]">Bridge to 59.5 • brokerage only • {totalPortfolioValue>0 ? (retirementPlan.actualBucket1/totalPortfolioValue*100).toFixed(1) : "0.0"}% of portfolio</CardDescription></CardHeader>
               <CardContent>
                 <div className="text-2xl font-black">{formatCurrency(retirementPlan.actualBucket1)} <span className="text-[11px] font-bold text-slate-500">({totalPortfolioValue>0 ? (retirementPlan.actualBucket1/totalPortfolioValue*100).toFixed(1) : "0.0"}%)</span></div>
-                <div className="text-[10px] text-slate-500">Have • Need {formatCurrency(retirementPlan.bucket1Need)} ({(retirementPlan.bucket1Need/retirementPlan.projectedPortfolioAtStart*100).toFixed(1)}% of portfolio at retirement)</div>
-                <div className="mt-2 h-2 bg-slate-100 rounded-full overflow-hidden"><div className="h-full bg-emerald-500" style={{width:`${Math.min(100, retirementPlan.actualBucket1/retirementPlan.bucket1Need*100)}%`}} /></div>
-                <div className="text-[10px] mt-1 font-bold" style={{color: retirementPlan.actualBucket1 >= retirementPlan.bucket1Need ? "#059669" : "#dc2626"}}>{retirementPlan.actualBucket1 >= retirementPlan.bucket1Need ? "✓ Funded" : `Short ${formatCurrency(retirementPlan.bucket1Need - retirementPlan.actualBucket1)}`}</div>
+                <div className="text-[10px] text-slate-500">Have total • Need {formatCurrency(retirementPlan.bucket1Need)} ({(retirementPlan.bucket1Need/retirementPlan.projectedPortfolioAtStart*100).toFixed(1)}% at retirement)</div>
+                <div className="text-[10px] text-slate-500 mt-1">Brokerage (taxable) {formatCurrency(accountBreakdown.cashTaxable)} • Retirement {formatCurrency(accountBreakdown.cashRetirement)} {retirementPlan.bridgeToPenFree>0 ? `• Until 59.5 only ${formatCurrency(accountBreakdown.cashTaxable)} counts` : ""}</div>
+                <div className="mt-2 h-2 bg-slate-100 rounded-full overflow-hidden"><div className="h-full bg-emerald-500" style={{width:`${Math.min(100, (retirementPlan.bridgeToPenFree>0 ? accountBreakdown.cashTaxable : retirementPlan.actualBucket1)/retirementPlan.bucket1Need*100)}%`}} /></div>
+                <div className="text-[10px] mt-1 font-bold" style={{color: (retirementPlan.bridgeToPenFree>0 ? accountBreakdown.cashTaxable : retirementPlan.actualBucket1) >= retirementPlan.bucket1Need ? "#059669" : "#dc2626"}}>{(retirementPlan.bridgeToPenFree>0 ? accountBreakdown.cashTaxable : retirementPlan.actualBucket1) >= retirementPlan.bucket1Need ? "✓ Funded" : `Short ${formatCurrency(retirementPlan.bucket1Need - (retirementPlan.bridgeToPenFree>0 ? accountBreakdown.cashTaxable : retirementPlan.actualBucket1))} brokerage`}</div>
+                {retirementPlan.bridgeToPenFree>0 && accountBreakdown.cashRetirement>0 && <div className="text-[10px] mt-1 text-amber-600">Retirement cash {formatCurrency(accountBreakdown.cashRetirement)} locked until 59.5 — not counted for bridge • Consider moving to brokerage or Roth ladder</div>}
               </CardContent>
             </Card>
             <Card className="border-l-4 border-l-blue-500">

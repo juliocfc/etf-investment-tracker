@@ -145,7 +145,9 @@ export default function IncomeTab({
         date: quarterKey, 
         amount: parseFloat(amount.toFixed(2)),
         displayDate: quarterKey,
-        changePercent: null as number | null
+        changePercent: null as number | null,
+        yoyChangePercent: null as number | null,
+        yoyAmount: null as number | null
       }))
       .sort((a, b) => a.date.localeCompare(b.date));
 
@@ -154,6 +156,19 @@ export default function IncomeTab({
       const currAmount = sortedEntries[i].amount;
       if (prevAmount > 0) {
         sortedEntries[i].changePercent = ((currAmount - prevAmount) / prevAmount) * 100;
+      }
+    }
+    // YoY: same quarter previous year (year-1 Qn)
+    for (const entry of sortedEntries) {
+      const m = entry.date.match(/^(\d{4})\s+Q([1-4])$/);
+      if (!m) continue;
+      const year = parseInt(m[1], 10);
+      const q = m[2];
+      const yoyKey = `${year - 1} Q${q}`;
+      const yoyAmt = (grouped as any)[yoyKey];
+      if (yoyAmt != null && yoyAmt > 0) {
+        (entry as any).yoyAmount = parseFloat((yoyAmt as number).toFixed(2));
+        (entry as any).yoyChangePercent = ((entry.amount - (yoyAmt as number)) / (yoyAmt as number)) * 100;
       }
     }
 
@@ -502,6 +517,8 @@ export default function IncomeTab({
                       const data = payload[0].payload;
                       const amount = data.amount;
                       const changePercent = data.changePercent;
+                      const yoyChangePercent = (data as any).yoyChangePercent;
+                      const yoyAmount = (data as any).yoyAmount;
 
                       return (
                         <div className="bg-white p-3 border border-slate-200 rounded-lg shadow-lg space-y-1">
@@ -517,6 +534,14 @@ export default function IncomeTab({
                               <span className="text-[10px] font-bold text-slate-500 uppercase">QoQ Change</span>
                               <span className={`font-mono font-bold text-xs ${changePercent >= 0 ? "text-green-600" : "text-red-600"}`}>
                                 {changePercent >= 0 ? "+" : ""}{changePercent.toFixed(1)}%
+                              </span>
+                            </div>
+                          )}
+                          {yoyChangePercent !== null && yoyChangePercent !== undefined && (
+                            <div className="flex justify-between gap-8 items-center">
+                              <span className="text-[10px] font-bold text-slate-500 uppercase">YoY Change</span>
+                              <span className={`font-mono font-bold text-xs ${yoyChangePercent >= 0 ? "text-emerald-600" : "text-red-600"}`}>
+                                {yoyChangePercent >= 0 ? "+" : ""}{yoyChangePercent.toFixed(1)}% <span className="text-[9px] font-normal text-slate-400">({formatCurrency(yoyAmount)} Q-4)</span>
                               </span>
                             </div>
                           )}
