@@ -591,6 +591,44 @@ export const etfRouter = router({
       });
     }),
 
+  transferCash: protectedProcedure
+    .input(z.object({
+      portfolioId: z.number(),
+      sourceAccountId: z.number(),
+      targetAccountId: z.number(),
+      amount: z.string(),
+      description: z.string().optional(),
+      date: z.date().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      if (input.sourceAccountId === input.targetAccountId) throw new Error("Source and target must be different");
+      const amt = parseFloat(input.amount);
+      if (!Number.isFinite(amt) || amt <= 0) throw new Error("Amount must be > 0");
+      const db = await (await import("./db")).getDb();
+      const { accounts } = await import("../drizzle/schema");
+      const { eq, and } = await import("drizzle-orm");
+      const srcAcc = await db.select().from(accounts).where(and(eq(accounts.id, input.sourceAccountId), eq(accounts.userId, ctx.user.id))).then((r:any)=>r[0]);
+      const tgtAcc = await db.select().from(accounts).where(and(eq(accounts.id, input.targetAccountId), eq(accounts.userId, ctx.user.id))).then((r:any)=>r[0]);
+      if (!srcAcc || !tgtAcc) throw new Error("Account not found");
+      if (srcAcc.portfolioId !== input.portfolioId || tgtAcc.portfolioId !== input.portfolioId) throw new Error("Both accounts must be in the same portfolio");
+      const srcBal = await getCashBalance(ctx.user.id, input.portfolioId, input.sourceAccountId);
+      const srcAmt = srcBal ? parseFloat(srcBal.amount) : 0;
+      if (srcAmt + 1e-6 < amt) throw new Error(`Insufficient cash in ${srcAcc.name}: ${srcAmt.toFixed(2)} available`);
+      const date = input.date || new Date();
+      const descBase = input.description?.trim() || "Cash transfer";
+      await updateCashBalance(ctx.user.id, input.portfolioId, "0", input.sourceAccountId, date, {
+        type: "withdrawal",
+        transactionAmount: input.amount,
+        description: `${descBase} → ${tgtAcc.name}`,
+      });
+      await updateCashBalance(ctx.user.id, input.portfolioId, "0", input.targetAccountId, date, {
+        type: "deposit",
+        transactionAmount: input.amount,
+        description: `${descBase} ← ${srcAcc.name}`,
+      });
+      return { success: true };
+    }),
+
   getBalanceHistory: protectedProcedure
     .input(z.object({ portfolioId: z.number(), days: z.number().default(365) }))
     .query(async ({ ctx, input }) => {

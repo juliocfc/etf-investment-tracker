@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   DropdownMenu,
@@ -110,6 +110,8 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
   const [isAccountsDialogOpen, setIsAccountsDialogOpen] = useState(false);
   const [isAdjustCashDialogOpen, setIsAdjustCashDialogOpen] = useState(false);
   const [isHistoricalCashDialogOpen, setIsHistoricalCashDialogOpen] = useState(false);
+  const [isTransferCashDialogOpen, setIsTransferCashDialogOpen] = useState(false);
+  const [transferCashData, setTransferCashData] = useState({ sourceAccountId: "", targetAccountId: "", amount: "", description: "", date: formatDate(new Date()) });
   const [adjustCashData, setAdjustCashData] = useState({
     accountId: "",
     amount: "",
@@ -643,6 +645,17 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
     onError: (error) => {
       toast.error(error.message || "Failed to record transaction");
     },
+  });
+
+  const transferCashMutation = trpc.etf.transferCash.useMutation({
+    onSuccess: () => {
+      toast.success("Cash transferred!");
+      refetchSummary();
+      utils.portfolio.getConsolidatedSummary.invalidate();
+      setIsTransferCashDialogOpen(false);
+      setTransferCashData({ sourceAccountId: "", targetAccountId: "", amount: "", description: "", date: formatDate(new Date()) });
+    },
+    onError: (error) => toast.error(error.message || "Transfer failed"),
   });
 
   const deletePurchaseMutation = trpc.etf.deletePurchase.useMutation({
@@ -1507,6 +1520,13 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                                     }}>
                                       <ArrowDownCircle className="mr-2 h-4 w-4 text-red-600" />
                                       <span>Withdraw Cash</span>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => {
+                                      setTransferCashData({ sourceAccountId: account.id.toString(), targetAccountId: "", amount: "", description: "", date: formatDate(new Date()) });
+                                      setIsTransferCashDialogOpen(true);
+                                    }}>
+                                      <ArrowLeftRight className="mr-2 h-4 w-4 text-blue-600" />
+                                      <span>Transfer Cash</span>
                                     </DropdownMenuItem>
                                     <DropdownMenuSeparator />
                                     <DropdownMenuItem onClick={() => setCashHistoryOpen({ id: account.id, name: account.name })}>
@@ -2747,6 +2767,54 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                   disabled={recordCashTransactionMutation.isPending || !adjustCashData.accountId}
                 >
                   {adjustCashData.type === "deposit" ? "Confirm Deposit" : "Confirm Withdrawal"}
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog open={isTransferCashDialogOpen} onOpenChange={setIsTransferCashDialogOpen}>
+            <DialogContent className="sm:max-w-[425px]">
+              <DialogHeader>
+                <DialogTitle>Transfer Cash (Same Portfolio)</DialogTitle>
+                <DialogDescription className="text-xs">Move cash between accounts — creates a withdrawal + deposit pair.</DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 pt-4">
+                <div className="grid gap-2">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">From Account</label>
+                  <div className="bg-slate-50 border border-slate-200 rounded px-3 py-2 text-sm font-bold text-slate-700">
+                    {accounts?.find((a:any)=> a.id.toString()===transferCashData.sourceAccountId)?.name || "Source"}
+                  </div>
+                </div>
+                <div className="grid gap-2">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">To Account</label>
+                  <select className="bg-white border border-slate-200 rounded px-3 py-2 text-sm h-10" value={transferCashData.targetAccountId} onChange={(e)=> setTransferCashData(prev=> ({...prev, targetAccountId: e.target.value}))}>
+                    <option value="">Select destination</option>
+                    {accounts?.filter((a:any)=> a.id.toString()!==transferCashData.sourceAccountId).map((a:any)=> <option key={a.id} value={a.id}>{a.name} {a.number?`(${a.number})`:''}</option>)}
+                  </select>
+                </div>
+                <div className="grid gap-2">
+                  <label className="text-xs font-bold text-slate-500 uppercase">Amount</label>
+                  <Input type="text" inputMode="decimal" placeholder="0.00" value={transferCashData.amount} onFocus={(e)=>e.target.select()} onChange={(e)=> handlePriceInputChange(e.target.value, (val)=> setTransferCashData(prev=> ({...prev, amount: val})))} />
+                </div>
+                <div className="grid gap-2">
+                  <label className="text-xs font-bold text-slate-500 uppercase">Date</label>
+                  <Input type="date" value={transferCashData.date} onChange={(e)=> setTransferCashData(prev=> ({...prev, date: e.target.value}))} />
+                </div>
+                <div className="grid gap-2">
+                  <label className="text-xs font-bold text-slate-500 uppercase">Description (Optional)</label>
+                  <Input type="text" placeholder="e.g. Rebalance to brokerage" value={transferCashData.description} onChange={(e)=> setTransferCashData(prev=> ({...prev, description: e.target.value}))} />
+                </div>
+                <Button className="w-full" disabled={transferCashMutation.isPending || !transferCashData.sourceAccountId || !transferCashData.targetAccountId || !transferCashData.amount || transferCashData.sourceAccountId===transferCashData.targetAccountId} onClick={()=>{
+                  transferCashMutation.mutate({
+                    portfolioId: selectedPortfolioId,
+                    sourceAccountId: Number(transferCashData.sourceAccountId),
+                    targetAccountId: Number(transferCashData.targetAccountId),
+                    amount: transferCashData.amount,
+                    description: transferCashData.description,
+                    date: mergeDateWithCurrentTime(transferCashData.date),
+                  });
+                }}>
+                  {transferCashMutation.isPending ? "Transferring..." : "Confirm Transfer"}
                 </Button>
               </div>
             </DialogContent>
