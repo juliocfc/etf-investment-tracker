@@ -365,171 +365,118 @@ const Retirement: React.FC = () => {
       chartData.push(row);
     }
 
-    // Guardrails: for each failing scenario compute actionable fixes to survive to lifeExpectancy — bucket-aware for crash (5y shield)
-    function simulateWithInitialAndExtras(customInitial: number, extraAtStart: number, partTimeAnnual: number, partTimeYears: number, opts: any) {
+    // Guardrails: Guyton–Klinger (2006) — rules 3 + 4 implemented as dynamic withdrawal guardrails
+    // Initial rate = effectiveRate (projectedExpensesAtStart / projectedPortfolioAtStart), upper=120%, lower=80%
+    const initialRate = effectiveRate;
+    const gkUpper = initialRate * 1.2;
+    const gkLower = initialRate * 0.8;
+    function simulateGuytonKlinger(opts: any) {
       let bal = currentPortfolioValue;
-      if (extraAtStart !== 0) {
-        const extraToday = fractionYearsToRet > 0 ? extraAtStart / Math.pow(1+returnRate, fractionYearsToRet) : extraAtStart;
-        bal = currentPortfolioValue + extraToday;
-      }
       const useB = opts.crashPct>0;
-      let gb1 = (accountBreakdown as any).cashBrokerage ?? accountBreakdown.cashTaxable;
-      let gb2Bonds = accountBreakdown.fixedIncome;
-      let gb2Income = etfBucketSplit.income;
-      let gb2 = gb2Bonds + gb2Income;
-      let gb3 = etfBucketSplit.growth + (accountBreakdown.cashRetirement || 0);
-      if (fractionYearsToRet>0 && totalPortfolioValue>0) { const sc = projectedPortfolioAtStart / totalPortfolioValue; gb1*=sc; gb2Bonds*=sc; gb2Income*=sc; gb2=gb2Bonds+gb2Income; gb3*=sc; }
-      // Guardrail: cap growth at 50% at retirement, shift excess to Bucket 2 (bonds) — income also suffers drawdown
+      let gkB1 = (accountBreakdown as any).cashBrokerage ?? accountBreakdown.cashTaxable;
+      let gkB2Bonds = accountBreakdown.fixedIncome;
+      let gkB2Income = etfBucketSplit.income;
+      let gkB2 = gkB2Bonds + gkB2Income;
+      let gkB3 = etfBucketSplit.growth + (accountBreakdown.cashRetirement || 0);
+      if (fractionYearsToRet>0 && totalPortfolioValue>0) { const sc = projectedPortfolioAtStart / totalPortfolioValue; gkB1*=sc; gkB2Bonds*=sc; gkB2Income*=sc; gkB2=gkB2Bonds+gkB2Income; gkB3*=sc; }
       if (useB) {
         const capGrowth = projectedPortfolioAtStart * 0.5;
-        if (gb3 > capGrowth) {
-          const excess = gb3 - capGrowth;
-          gb3 = capGrowth;
-          gb2Bonds += excess;
-          gb2 = gb2Bonds + gb2Income;
-        }
+        if (gkB3 > capGrowth) { const ex = gkB3 - capGrowth; gkB3 = capGrowth; gkB2Bonds += ex; gkB2 = gkB2Bonds + gkB2Income; }
       }
-      // adjust for extraAtStart already added to bal, need to add to buckets proportionally if crash>0
-      if (useB && extraAtStart!==0) {
-        const totB = gb1+gb2+gb3 || 1;
-        const addGb1 = extraAtStart * (gb1/totB); const addGb2 = extraAtStart * (gb2/totB); const addGb3 = extraAtStart * (gb3/totB);
-        // split addGb2 into bonds/income proportionally
-        const totGb2 = gb2 || 1; const addBonds = addGb2 * (gb2Bonds/totGb2); const addInc = addGb2 * (gb2Income/totGb2);
-        gb1+=addGb1; gb2Bonds+=addBonds; gb2Income+=addInc; gb2=gb2Bonds+gb2Income; gb3+=addGb3;
-      } else if (extraAtStart!==0) {
-        // for non-crash extra, already in bal, no bucket split needed
-      }
-      let withdrawalForYear = annualExpenses;
-      let initialWithdrawalForRun = customInitial;
+      let withdrawalForYear = projectedExpensesAtStart; // gross before SS, rule 2 base
+      let prevReturnNegative = false;
+      let cuts=0, raises=0, inflSkips=0;
+      const evolution: any[] = [];
       for (let y=0; y<=yearsToSimulate; y++) {
         const simYear = currentYear + y;
         const curAge = ageToday + y;
         const isRetired = simYear >= retirementYear;
         const isFirst = simYear === retirementYear;
         let yearSS = 0;
-        if (isRetired && curAge >= ssStartAge) {
-          yearSS = baseSS * Math.pow(1+inflationRate, y);
-          if (isFirst) yearSS *= remainingMonthsFactor;
-        }
+        if (isRetired && curAge >= ssStartAge) { yearSS = baseSS * Math.pow(1+inflationRate, y); if (isFirst) yearSS *= remainingMonthsFactor; }
         let yrReturn = returnRate;
         let yrInflation = inflationRate;
         if (isRetired) {
           if (opts.highInflationYears>0 && y - yearsUntilRetirement < opts.highInflationYears && y>=yearsUntilRetirement) yrInflation = opts.highInflationRate;
           if (opts.lowReturnYears>0 && y - yearsUntilRetirement < opts.lowReturnYears && y>=yearsUntilRetirement) yrReturn = opts.lowReturnRate;
         }
-        let crashApplied = 0;
         if (isFirst && opts.crashPct>0) {
-          const crashLoss = bal * equityPct * opts.crashPct;
-          bal = Math.max(0, bal - crashLoss);
-          gb2Income = Math.max(0, gb2Income * (1 - opts.crashPct));
-          gb2 = gb2Bonds + gb2Income;
-          gb3 = Math.max(0, gb3 * (1 - opts.crashPct));
-          crashApplied = crashLoss;
+          const loss = bal * equityPct * opts.crashPct;
+          bal = Math.max(0, bal - loss);
+          gkB2Income = Math.max(0, gkB2Income * (1 - opts.crashPct));
+          gkB2 = gkB2Bonds + gkB2Income;
+          gkB3 = Math.max(0, gkB3 * (1 - opts.crashPct));
         }
         let netWithdrawal = 0;
+        let grossWithdrawal = 0;
+        let rate = 0;
+        let action: string | null = null;
         if (isRetired) {
-          const target = isFirst ? initialWithdrawalForRun : withdrawalForYear;
-          let gross = target - yearSS;
-          const bridgeIdx = y - yearsUntilRetirement;
-          if (bridgeIdx >=0 && bridgeIdx < partTimeYears) gross -= partTimeAnnual * Math.pow(1+inflationRate, bridgeIdx);
-          if (gross<0) gross=0;
-          if (isFirst) gross *= remainingMonthsFactor;
-          netWithdrawal = Math.min(bal, gross);
-          if (useB && bridgeIdx >=0 && bridgeIdx < 5) {
-            let rem = netWithdrawal;
-            const t1 = Math.min(gb1, rem); gb1 -= t1; rem -= t1;
-            const t2 = Math.min(gb2, rem); gb2 -= t2; rem -= t2;
-            const t3 = Math.min(gb3, rem); gb3 -= t3; rem -= t3;
+          if (isFirst) {
+            grossWithdrawal = withdrawalForYear;
+          } else {
+            // Inflation rule: skip raise if prior year return negative
+            if (prevReturnNegative) { grossWithdrawal = withdrawalForYear; inflSkips++; }
+            else { grossWithdrawal = withdrawalForYear * (1 + yrInflation); }
+          }
+          // Rebalance note: withdrawal taken proportionally (portfolio management rule 1)
+          // Guardrails 3 & 4: compare current withdrawal rate vs initial
+          const startBalForRate = bal; // portfolio before withdrawal
+          const tentativeRate = startBalForRate>0 ? (grossWithdrawal - yearSS) / startBalForRate : 0; // net rate; use net after SS for guardrail
+          // Clamp to not negative after SS
+          let adjusted = grossWithdrawal;
+          if (tentativeRate > gkUpper + 1e-9) { adjusted = adjusted * 0.9; cuts++; action = "-10% cap-preservation"; }
+          else if (tentativeRate < gkLower - 1e-9 && tentativeRate>0) { adjusted = adjusted * 1.1; raises++; action = "+10% prosperity"; }
+          grossWithdrawal = adjusted;
+          // Carry for next year's inflation base
+          withdrawalForYear = grossWithdrawal;
+          rate = startBalForRate>0 ? Math.max(0, grossWithdrawal - yearSS)/startBalForRate : 0;
+          let grossNet = grossWithdrawal - yearSS; if (grossNet<0) grossNet=0;
+          if (isFirst) grossNet *= remainingMonthsFactor;
+          netWithdrawal = Math.min(bal, grossNet);
+          if (useB && y - yearsUntilRetirement >=0 && y - yearsUntilRetirement < 5) {
+            let rem = netWithdrawal; const t1=Math.min(gkB1,rem); gkB1-=t1; rem-=t1; const t2=Math.min(gkB2,rem); gkB2-=t2; rem-=t2; const t3=Math.min(gkB3,rem); gkB3-=t3; rem-=t3;
           }
         }
-        const isCurrentYear = y === 0;
-        let earnings = 0, endBal = 0;
-        if (isCurrentYear) {
-          earnings = 0; endBal = bal - netWithdrawal;
-          if (useB && isRetired) {
-            // buckets already reduced above, keep bal consistent
-            endBal = gb1+gb2+gb3;
-          }
-        } else if (useB && y - yearsUntilRetirement >=0 && y - yearsUntilRetirement < 5) {
-          const e1 = gb1*0.015, e2B = gb2Bonds*0.03, e2I = gb2Income*(yrReturn+0.015), e3 = gb3*(yrReturn+0.02);
-          gb1 *= 1.015; gb2Bonds *= 1.03; gb2Income *= (1+yrReturn+0.015); gb2 = gb2Bonds+gb2Income; gb3 *= (1+yrReturn+0.02);
-          earnings = e1+e2B+e2I+e3;
-          endBal = gb1+gb2+gb3;
+        const isCurrentYear = y===0;
+        let earnings=0, endBal=0;
+        if (isCurrentYear) { earnings=0; endBal=bal-netWithdrawal; if (useB && isRetired) endBal=gkB1+gkB2+gkB3; }
+        else if (useB && y - yearsUntilRetirement >=0 && y - yearsUntilRetirement < 5) {
+          const e1=gkB1*0.015, e2B=gkB2Bonds*0.03, e2I=gkB2Income*(yrReturn+0.015), e3=gkB3*(yrReturn+0.02);
+          gkB1*=1.015; gkB2Bonds*=1.03; gkB2Income*=(1+yrReturn+0.015); gkB2=gkB2Bonds+gkB2Income; gkB3*=(1+yrReturn+0.02);
+          earnings=e1+e2B+e2I+e3; endBal=gkB1+gkB2+gkB3;
         } else {
-          const afterWithdrawal = bal - netWithdrawal;
-          earnings = afterWithdrawal * yrReturn;
-          endBal = afterWithdrawal + earnings;
-          if (useB) {
-            const totB = gb1+gb2+gb3;
-            const scaleB = totB>0 ? endBal / totB : 1;
-            gb1*=scaleB;
-            const gb2TotBefore = gb2Bonds+gb2Income || 1;
-            gb2Bonds*=scaleB; gb2Income*=scaleB; gb2=gb2Bonds+gb2Income;
-            gb3*=scaleB;
-          }
+          const after = bal - netWithdrawal; earnings = after * yrReturn; endBal = after + earnings;
+          if (useB) { const tot=gkB1+gkB2+gkB3; const sc=tot>0? endBal/tot:1; gkB1*=sc; gkB2Bonds*=sc; gkB2Income*=sc; gkB2=gkB2Bonds+gkB2Income; gkB3*=sc; }
         }
+        evolution.push({ year: simYear, age: curAge, isRetired, startBalance: bal, netWithdrawal, grossWithdrawal, rate, yrReturn, action, endBalance: endBal });
+        // Track prior return for inflation skip next year: negative market return OR crash year OR negative earnings
+        const hadCrashThisYear = isFirst && opts.crashPct>0;
+        prevReturnNegative = yrReturn < 0 || hadCrashThisYear || earnings < 0;
         bal = endBal;
-        if (isRetired) {
-          if (isFirst) withdrawalForYear = initialWithdrawalForRun * (1+yrInflation);
-          else withdrawalForYear = withdrawalForYear * (1+yrInflation);
-        }
-        if (bal <=0 && isRetired) {
-          return { success: false, depletionAge: curAge };
-        }
+        if (bal <=0 && isRetired) return { success:false, depletionAge:curAge, cuts, raises, inflSkips, evolution, upper:gkUpper, lower:gkLower, initialRate };
       }
-      return { success: true, depletionAge: null as any };
+      return { success:true, depletionAge:null as any, cuts, raises, inflSkips, evolution, upper:gkUpper, lower:gkLower, initialRate };
     }
 
     const targetLE = parseInt(lifeExpectancy)||85;
     const guardrails = scenarios.map(s => {
-      if (s.result.success) return { key: s.key, label: s.label, success: true };
-      // Binary search max sustainable initial withdrawal (at retirement) that still succeeds
-      let low = 0, high = projectedExpensesAtStart;
-      // if already failing at very low withdrawal (~20%), still search
-      for (let iter=0; iter<20; iter++) {
-        const mid = (low+high)/2;
-        const r = simulateWithInitialAndExtras(mid, 0, 0, 0, s.opts);
-        if (r.success) low = mid; else high = mid;
+      const gk = simulateGuytonKlinger(s.opts);
+      // low/high withdrawal range during retirement (net portfolio withdrawal and gross spending)
+      let minGross = Infinity, maxGross = -Infinity, minNet = Infinity, maxNet = -Infinity;
+      for (const e of gk.evolution as any[]) if (e.isRetired) {
+        if (e.grossWithdrawal < minGross) minGross = e.grossWithdrawal;
+        if (e.grossWithdrawal > maxGross) maxGross = e.grossWithdrawal;
+        if (e.netWithdrawal < minNet) minNet = e.netWithdrawal;
+        if (e.netWithdrawal > maxNet) maxNet = e.netWithdrawal;
       }
-      const maxSustainableAtRet = low;
-      const suggestedTodayAt4Pct = (()=>{ const infl = inflationRate; const f = fractionYearsToRet; return maxSustainableAtRet / Math.pow(1+infl, f); })();
-      const currentToday = annualExpenses;
-      const reductionAtRet = projectedExpensesAtStart - maxSustainableAtRet;
-      const reductionToday = currentToday - suggestedTodayAt4Pct;
-      // Part-time: 5y, capped at realistic $60k/yr
-      const partTimeYears = 5;
-      const PART_TIME_CAP = 60000;
-      let ptLow=0, ptHigh=projectedExpensesAtStart;
-      for (let iter=0; iter<18; iter++) {
-        const mid=(ptLow+ptHigh)/2;
-        const r= simulateWithInitialAndExtras(projectedExpensesAtStart, 0, mid, partTimeYears, s.opts);
-        if (r.success) ptHigh=mid; else ptLow=mid;
-      }
-      const partTimeNeededRaw = ptHigh;
-      const partTimeViable = partTimeNeededRaw <= PART_TIME_CAP + 1e-6;
-      const partTimeNeeded = partTimeViable ? partTimeNeededRaw : PART_TIME_CAP;
-      // If 60k for 5y is insufficient, find minimum years at 60k needed (0..30)
-      let partTimeYearsNeeded = partTimeYears;
-      if (!partTimeViable) {
-        // check if even 30y at cap fails -> cap at 30+
-        const at30 = simulateWithInitialAndExtras(projectedExpensesAtStart, 0, PART_TIME_CAP, 30, s.opts);
-        if (!at30.success) {
-          partTimeYearsNeeded = 30;
-        } else {
-          let yLow = 5, yHigh = 30;
-          for (let iter = 0; iter < 16; iter++) {
-            const mid = (yLow + yHigh) / 2;
-            const r = simulateWithInitialAndExtras(projectedExpensesAtStart, 0, PART_TIME_CAP, mid, s.opts);
-            if (r.success) yHigh = mid; else yLow = mid;
-          }
-          // round up to 1 decimal, minimum 5
-          partTimeYearsNeeded = Math.ceil(yHigh * 10) / 10;
-        }
-      }
+      if (!isFinite(minGross)) { minGross = 0; maxGross = 0; minNet = 0; maxNet = 0; }
       return {
-        key: s.key, label: s.label, success: false,
-        maxSustainableAtRet, suggestedTodayAt4Pct, reductionAtRet, reductionToday,
-        partTimeNeeded, partTimeNeededRaw, partTimeViable, partTimeYears, partTimeYearsNeeded, PART_TIME_CAP,
+        key: s.key, label: s.label, success: s.result.success,
+        gkSuccess: gk.success, gkDepletionAge: gk.depletionAge, gkCuts: gk.cuts, gkRaises: gk.raises, gkInflSkips: gk.inflSkips, gkEvolution: gk.evolution,
+        gkMinGross: minGross, gkMaxGross: maxGross, gkMinNet: minNet, gkMaxNet: maxNet,
+        initialRate, gkUpper, gkLower,
+        baseDepletionAge: s.result.depletionAge,
       };
     });
 
@@ -840,59 +787,51 @@ const Retirement: React.FC = () => {
             </CardContent>
           </Card>
 
-          {/* Guardrails – actionable fixes to survive stress */}
-          {(retirementPlan.guardrails.filter((g:any)=> !g.success).length > 0) && (
-            <Card className="border-emerald-200 bg-emerald-50/20">
-              <CardHeader>
-                <CardTitle className="text-xs font-black uppercase tracking-widest flex items-center gap-2"><PiggyBank className="w-4 h-4 text-emerald-700" /> Guardrails — Pick ONE to Stay on Track</CardTitle>
-                <CardDescription className="text-xs">Each stress below shows 2 <span className="font-bold">alternative</span> fixes — choose <span className="font-bold">any one</span> to survive to {lifeExpectancy} (not all three). Part-time capped at {formatCurrency(60000)}/y realistic.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {retirementPlan.guardrails.filter((g:any)=> !g.success).map((g:any)=> {
-                  const s = retirementPlan.scenarios.find((x:any)=> x.key===g.key);
-                  const failAge = s?.result.depletionAge || parseInt(lifeExpectancy)||85;
-                  return (
-                    <div key={g.key} className="p-4 rounded-xl border bg-white shadow-sm">
-                      <div className="flex items-center justify-between">
-                        <div className="text-[11px] font-black uppercase tracking-widest">{g.label} <span className="font-normal normal-case text-slate-500">— {s?.desc} • depletes at {failAge}y</span></div>
-                        <span className="text-[10px] font-bold px-2 py-1 rounded bg-amber-100 text-amber-800 border border-amber-200">Guardrail needed</span>
+          {/* Guyton–Klinger Guardrails (2006) — rules 3 & 4 */}
+          <Card className="border-emerald-200 bg-emerald-50/20">
+            <CardHeader>
+              <CardTitle className="text-xs font-black uppercase tracking-widest flex items-center gap-2"><PiggyBank className="w-4 h-4 text-emerald-700" /> Guyton–Klinger Guardrails — Rules 3 & 4</CardTitle>
+              <CardDescription className="text-xs leading-relaxed">
+                <span className="font-bold">1. Portfolio mgmt</span> — withdrawal taken proportionally to rebalance to target ({(equityPct*100).toFixed(0)}% equity). <span className="font-bold">2. Withdrawal</span> — y1: {(retirementPlan.guardrails[0]?.initialRate*100||0).toFixed(2)}% × portfolio; then prior × (1+inflation). <span className="font-bold">3. Capital preservation</span> — if withdrawal rate &gt; {(retirementPlan.guardrails[0]?.gkUpper*100||0).toFixed(2)}% (120% of initial) → cut 10%. <span className="font-bold">4. Prosperity</span> — if &lt; {(retirementPlan.guardrails[0]?.gkLower*100||0).toFixed(2)}% (80%) → raise 10%. <span className="font-bold">5. Inflation</span> — skip inflation raise after any negative-return year.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div className="p-2 rounded bg-white border"><div className="text-[10px] font-bold uppercase text-slate-400">Initial rate</div><div className="text-sm font-black">{(retirementPlan.guardrails[0]?.initialRate*100||0).toFixed(2)}%</div><div className="text-[10px] text-slate-500">{formatCurrency(retirementPlan.projectedExpensesAtStart)}/y ÷ {formatCurrency(retirementPlan.projectedPortfolioAtStart)}</div></div>
+                <div className="p-2 rounded bg-amber-50 border border-amber-200"><div className="text-[10px] font-bold uppercase text-amber-700">Upper guardrail</div><div className="text-sm font-black text-amber-700">{(retirementPlan.guardrails[0]?.gkUpper*100||0).toFixed(2)}% — cut 10%</div><div className="text-[10px] text-slate-500">120% of initial</div></div>
+                <div className="p-2 rounded bg-emerald-50 border border-emerald-200"><div className="text-[10px] font-bold uppercase text-emerald-700">Lower guardrail</div><div className="text-sm font-black text-emerald-700">{(retirementPlan.guardrails[0]?.gkLower*100||0).toFixed(2)}% — raise 10%</div><div className="text-[10px] text-slate-500">80% of initial</div></div>
+              </div>
+              {retirementPlan.guardrails.map((g:any)=> {
+                const s = retirementPlan.scenarios.find((x:any)=> x.key===g.key);
+                const baseOk = g.success;
+                const gkOk = g.gkSuccess;
+                return (
+                  <div key={g.key} className={`p-3 rounded-xl border ${gkOk ? "bg-white border-emerald-200" : baseOk ? "bg-white" : "bg-red-50 border-red-200"}`}>
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <div className="text-[11px] font-black uppercase tracking-widest">{g.label} <span className="font-normal normal-case text-slate-500">— {s?.desc}</span></div>
+                      <div className="flex gap-1">
+                        <span className={`text-[10px] font-bold px-2 py-1 rounded border ${baseOk ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-red-100 text-red-700 border-red-200"}`}>Base: {baseOk ? "✓ Survives" : `✗ Depletes @${g.baseDepletionAge}y`}</span>
+                        <span className={`text-[10px] font-bold px-2 py-1 rounded border ${gkOk ? "bg-emerald-600 text-white border-emerald-600" : "bg-amber-100 text-amber-800 border-amber-200"}`}>GK: {gkOk ? "✓ Survives" : `✗ Depletes @${g.gkDepletionAge}y`}</span>
                       </div>
-                      <div className="grid md:grid-cols-[1fr_auto_1fr] gap-2 mt-3 items-center">
-                        <div className="p-3 rounded-lg bg-slate-50 border">
-                          <div className="text-[10px] font-bold uppercase text-slate-500">A — Cut Spending <span className="text-[9px] font-normal normal-case text-slate-400">(permanent)</span></div>
-                          <div className="text-sm font-black">→ {formatCurrency(g.maxSustainableAtRet)}/y <span className="text-[10px] font-normal text-slate-500">at retirement</span></div>
-                          <div className="text-[11px] text-slate-600">≈ {formatCurrency(g.suggestedTodayAt4Pct)}/y today • save {formatCurrency(g.reductionAtRet)}/y ({(g.reductionAtRet/retirementPlan.projectedExpensesAtStart*100).toFixed(1)}% cut)</div>
-                          <div className="text-[10px] text-slate-400 mt-1">Permanent — lowers withdrawal every year thereafter. From {formatCurrency(retirementPlan.projectedExpensesAtStart)}/y → {formatCurrency(g.maxSustainableAtRet)}/y — {formatCurrency(g.reductionToday)}/y today ({(g.reductionToday/(totals.amount*12)*100).toFixed(1)}%)</div>
-                        </div>
-                        <div className="text-[10px] font-black text-slate-400 text-center">OR</div>
-                        <div className={`p-3 rounded-lg border ${g.partTimeViable ? "bg-blue-50 border-blue-100" : "bg-amber-50 border-amber-100"}`}>
-                          <div className={`text-[10px] font-bold uppercase ${g.partTimeViable ? "text-blue-700" : "text-amber-700"}`}>B — Part-Time ({g.partTimeViable ? `${g.partTimeYears}y` : `${g.partTimeYearsNeeded}y`})</div>
-                          {g.partTimeViable ? (
-                            <>
-                              <div className="text-sm font-black text-blue-800">+{formatCurrency(g.partTimeNeeded)}/y</div>
-                              <div className="text-[11px] text-slate-600">for {g.partTimeYears}y after retirement • total ~{formatCurrency(g.partTimeNeeded * g.partTimeYears)}</div>
-                              <div className="text-[10px] text-slate-400 mt-1">Temporary — 5y only, then back to base spend • capped at {formatCurrency(g.PART_TIME_CAP)}/y</div>
-                            </>
-                          ) : (
-                            <>
-                              <div className="text-sm font-black text-amber-800">+{formatCurrency(g.PART_TIME_CAP)}/y</div>
-                              <div className="text-[11px] text-slate-600">for {g.partTimeYearsNeeded}y after retirement • total ~{formatCurrency(g.PART_TIME_CAP * g.partTimeYearsNeeded)}{g.partTimeYearsNeeded>=30 ? " (30y+ — still short)" : ""}</div>
-                              <div className="text-[10px] text-slate-500 mt-1">Temporary — at {formatCurrency(g.PART_TIME_CAP)}/y, need {g.partTimeYearsNeeded}y (not {g.partTimeYears}y) to survive</div>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                      <div className="text-[10px] text-slate-500 mt-2 bg-emerald-50 border border-emerald-100 rounded p-2">↳ Pick <span className="font-bold">one</span>: keep {formatCurrency(totals.amount*12)}/y today and if {g.label} hits, <span className="font-bold">either</span> lower to {formatCurrency(g.suggestedTodayAt4Pct)}/y<span className="font-bold"> or</span> earn {formatCurrency(g.PART_TIME_CAP)}≤/y part-time for {g.partTimeViable ? `${g.partTimeYears}y at ${formatCurrency(g.partTimeNeeded)}/y` : `${g.partTimeYearsNeeded}y at ${formatCurrency(g.PART_TIME_CAP)}/y`}.</div>
                     </div>
-                  );
-                })}
-                {retirementPlan.guardrails.filter((g:any)=> !g.success).length===0 && (
-                  <div className="text-xs text-emerald-700 font-bold">✓ All stress scenarios survive to {lifeExpectancy} — no guardrail needed. Keep buckets rebalanced.</div>
-                )}
-                <div className="text-[10px] text-slate-500 border-t pt-2">Guardrails are deterministic at {(parseFloat(retirementReturnRate)||0).toFixed(1)}%/{(parseFloat(retirementInflationRate)||0).toFixed(1)}% and current equity {(equityPct*100).toFixed(0)}% (Income ETFs in Bucket 2). Re-run after changing expenses or portfolio.</div>
-              </CardContent>
-            </Card>
-          )}
+                    <div className="grid grid-cols-3 gap-2 mt-2 text-center">
+                      <div className="p-2 rounded bg-slate-50 border"><div className="text-[10px] uppercase font-bold text-slate-500">Cuts (−10%)</div><div className="text-lg font-black">{g.gkCuts}</div><div className="text-[10px] text-slate-500">preservation</div></div>
+                      <div className="p-2 rounded bg-slate-50 border"><div className="text-[10px] uppercase font-bold text-slate-500">Raises (+10%)</div><div className="text-lg font-black">{g.gkRaises}</div><div className="text-[10px] text-slate-500">prosperity</div></div>
+                      <div className="p-2 rounded bg-slate-50 border"><div className="text-[10px] uppercase font-bold text-slate-500">Infl. skips</div><div className="text-lg font-black">{g.gkInflSkips}</div><div className="text-[10px] text-slate-500">after loss</div></div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 mt-2">
+                      <div className="p-2 rounded bg-white border"><div className="text-[10px] font-bold uppercase text-slate-500">Normal spending</div><div className="text-sm font-black font-mono">{formatCurrency(retirementPlan.projectedExpensesAtStart)}/y</div><div className="text-[10px] text-slate-500">Without GK — inflated base</div></div>
+                      <div className="p-2 rounded bg-slate-900 text-white border border-slate-700"><div className="text-[10px] font-bold uppercase text-slate-400">Recommended (GK)</div><div className="text-sm font-black font-mono">{formatCurrency(g.gkMinGross)}/y <span className="text-[10px] font-normal text-slate-300">low</span> → {formatCurrency(g.gkMaxGross)}/y <span className="text-[10px] font-normal text-slate-300">high</span></div><div className="text-[10px] text-slate-300">{g.gkCuts>0 || g.gkRaises>0 ? `After ${g.gkCuts}× −10% / ${g.gkRaises}× +10% cuts • saves ${formatCurrency(retirementPlan.projectedExpensesAtStart - g.gkMinGross)}/y at low` : "No guardrail trigger — same as normal"}</div></div>
+                    </div>
+                    {!baseOk && gkOk && <div className="text-[11px] mt-2 p-2 rounded bg-emerald-50 border border-emerald-200 text-emerald-800">↳ GK saves this stress — base depletes at {g.baseDepletionAge}y but guardrails (cuts/raises + inflation skip) keep it to {lifeExpectancy}y.</div>}
+                    {baseOk && gkOk && <div className="text-[10px] mt-2 text-slate-500">Base already survives; GK would add {g.gkCuts} cuts / {g.gkRaises} raises as volatility buffer.</div>}
+                    {!gkOk && <div className="text-[11px] mt-2 p-2 rounded bg-amber-50 border border-amber-200 text-amber-800">GK still depletes — consider lower initial rate ({(g.initialRate*100).toFixed(2)}% → {(g.gkLower*100).toFixed(2)}% target) or extra buffer/delay.</div>}
+                  </div>
+                );
+              })}
+              <div className="text-[10px] text-slate-500 border-t pt-2">Deterministic at {(parseFloat(retirementReturnRate)||0).toFixed(1)}%/{(parseFloat(retirementInflationRate)||0).toFixed(1)}% and equity {(equityPct*100).toFixed(0)}% (buckets + 50% growth cap where crash). Inflation skip triggers on yrReturn &lt; 0; rebalancing proportional.</div>
+            </CardContent>
+          </Card>
 
           {/* Year-by-year */}
           <Card>

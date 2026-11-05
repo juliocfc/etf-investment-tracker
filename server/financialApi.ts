@@ -244,8 +244,46 @@ export async function fetchHistoricalPrices(
   return [];
 }
 
+async function fetchDividendsFromNasdaq(symbol: string): Promise<DividendData[]> {
+  const sym = symbol.toUpperCase();
+  // Nasdaq requires assetclass stocks|etf — try both
+  for (const assetclass of ["etf", "stocks"]) {
+    try {
+      const url = `https://api.nasdaq.com/api/quote/${sym}/dividends?assetclass=${assetclass}`;
+      const resp = await axios.get(url, {
+        headers: {
+          "User-Agent": "Mozilla/5.0",
+          "Accept": "application/json",
+        },
+        timeout: 12000,
+      });
+      const rows = resp.data?.data?.dividends?.rows;
+      if (!rows || !Array.isArray(rows) || rows.length === 0) continue;
+      const data: DividendData[] = rows
+        .filter((r: any) => r.amount && r.exOrEffDate)
+        .map((r: any) => {
+          const amt = parseFloat(String(r.amount).replace(/[$,]/g, ""));
+          const ex = new Date(r.exOrEffDate);
+          const pay = r.paymentDate ? new Date(r.paymentDate) : undefined;
+          if (isNaN(amt) || isNaN(ex.getTime())) return null;
+          return { symbol: sym, dividendPerShare: amt, exDate: ex, paymentDate: pay };
+        })
+        .filter(Boolean) as DividendData[];
+      if (data.length) {
+        data.sort((a, b) => b.exDate.getTime() - a.exDate.getTime());
+        console.log(`[FinancialApi] Nasdaq dividends for ${sym} (${assetclass}): ${data.length} rows, last ${data[0]?.exDate.toISOString().slice(0,10)} $${data[0]?.dividendPerShare}`);
+        return data;
+      }
+    } catch (e: any) {
+      console.warn(`[FinancialApi] Nasdaq dividend fetch failed for ${sym} ${assetclass}:`, e.message);
+    }
+  }
+  return [];
+}
+
 /**
  * Fetch dividend information for an ETF
+ * Primary: Yahoo Finance; fallback D: Nasdaq (covers GPIX Oct/Nov gaps where Yahoo is stale)
  */
 export async function fetchDividendData(symbol: string): Promise<DividendData[]> {
   const symBase = symbol.toUpperCase();
@@ -258,30 +296,50 @@ export async function fetchDividendData(symbol: string): Promise<DividendData[]>
     return cached.data;
   }
 
+  let yahooData: DividendData[] = [];
   try {
     const endDate = new Date();
     const startDate = new Date('1970-01-01');
-
     const results = await yahooFinance.historical(sym, {
       period1: startDate,
       period2: endDate,
       events: 'dividends',
     });
-
     if (results && results.length > 0) {
-      const data = results.map(d => ({
+      yahooData = results.map(d => ({
         symbol: symBase,
-        dividendPerShare: d.dividends,
-        exDate: new Date(d.date),
+        dividendPerShare: (d as any).dividends,
+        exDate: new Date((d as any).date),
       })).sort((a, b) => b.exDate.getTime() - a.exDate.getTime());
-      
-      dividendCache.set(sym, { data, timestamp: Date.now() });
-      dividendCache.set(symBase, { data, timestamp: Date.now() });
-      return data;
     }
   } catch (error: any) {
-    console.error(`[FinancialApi] Dividend fetch failed for ${sym}:`, error.message);
-    continue;
+    console.warn(`[FinancialApi] Yahoo dividend fetch failed for ${sym}:`, error.message);
+  }
+
+  // Fallback D: Nasdaq — fetch regardless to fill Yahoo gaps (Yahoo missing Oct 2026 for GPIX)
+  const nasdaqData = await fetchDividendsFromNasdaq(sym);
+
+  // Merge, de-duplicate by exDate (keep higher-precision source; Nasdaq often fresher for current month)
+  const merged = new Map<string, DividendData>();
+  for (const d of yahooData) merged.set(d.exDate.toISOString().slice(0,10), d);
+  for (const d of nasdaqData) {
+    const key = d.exDate.toISOString().slice(0,10);
+    if (!merged.has(key)) merged.set(key, { ...d, symbol: symBase });
+    else {
+      // if both have same exDate, prefer Nasdaq amount if Yahoo is stale (Nasdaq is the official exDate)
+      const existing = merged.get(key)!;
+      if (Math.abs(existing.dividendPerShare - d.dividendPerShare) > 0.0001) {
+        merged.set(key, { ...d, symbol: symBase });
+      }
+    }
+  }
+  const data = Array.from(merged.values()).sort((a, b) => b.exDate.getTime() - a.exDate.getTime());
+  if (data.length > 0) {
+    dividendCache.set(sym, { data, timestamp: Date.now() });
+    dividendCache.set(symBase, { data, timestamp: Date.now() });
+    if (yahooData.length && nasdaqData.length) console.log(`[FinancialApi] Merged dividends for ${symBase}: Yahoo ${yahooData.length} + Nasdaq ${nasdaqData.length} → ${data.length}`);
+    else if (nasdaqData.length) console.log(`[FinancialApi] Using Nasdaq dividends for ${symBase}: ${data.length}`);
+    return data;
   }
   }
   return [];
