@@ -1477,6 +1477,14 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
         </div>
       </Card>
 
+      <GroupAllocationSection
+        portfolios={portfolios}
+        consolidatedHoldings={consolidatedHoldings}
+        portfolioFilter={portfolioFilter}
+        currencyFilter={currencyFilter}
+        totals={totals}
+      />
+
       {/* Rename Dialog */}
       <Dialog open={!!editingPortfolio} onOpenChange={() => setEditingPortfolio(null)}>
         <DialogContent>
@@ -1539,5 +1547,240 @@ const Portfolios: React.FC<PortfoliosProps> = ({ onPortfolioSelect }) => {
     </div>
   );
 };
+
+function GroupAllocationSection({ portfolios, consolidatedHoldings, portfolioFilter, currencyFilter, totals }: any) {
+  const utils = trpc.useUtils();
+  const { data: groups } = trpc.group.getGroups.useQuery();
+  const [expandedGroups, setExpandedGroups] = useState<Set<number>>(new Set());
+  const [isAddGroupOpen, setIsAddGroupOpen] = useState(false);
+  const [newGroupName, setNewGroupName] = useState("");
+  const [newGroupTarget, setNewGroupTarget] = useState("");
+  const [editingGroup, setEditingGroup] = useState<{ id:number, name:string, target:string }|null>(null);
+  const [isAssignOpen, setIsAssignOpen] = useState(false);
+  const toggleGroup = (id:number) => { const s=new Set(expandedGroups); if(s.has(id)) s.delete(id); else s.add(id); setExpandedGroups(s); };
+
+  const createMut = trpc.group.createGroup.useMutation({ onSuccess:()=>{ toast.success("Group created"); utils.group.getGroups.invalidate(); setIsAddGroupOpen(false); setNewGroupName(""); setNewGroupTarget(""); }, onError:(e)=>toast.error(e.message)});
+  const updateMut = trpc.group.updateGroup.useMutation({ onSuccess:()=>{ toast.success("Group updated"); utils.group.getGroups.invalidate(); setEditingGroup(null); }, onError:(e)=>toast.error(e.message)});
+  const deleteMut = trpc.group.deleteGroup.useMutation({ onSuccess:()=>{ toast.success("Group deleted"); utils.group.getGroups.invalidate(); }, onError:(e)=>toast.error(e.message)});
+  const assignMut = trpc.group.assignAsset.useMutation({ onSuccess:()=>{ toast.success("Assigned"); utils.group.getGroups.invalidate(); setIsAssignOpen(false); }, onError:(e)=>toast.error(e.message)});
+  const unassignMut = trpc.group.unassignAsset.useMutation({ onSuccess:()=>{ toast.success("Unassigned"); utils.group.getGroups.invalidate(); }, onError:(e)=>toast.error(e.message)});
+
+  // Build asset universe: aggregated cash (all accounts) + holdings (etf/bond/crypto)
+  const cashAssets = useMemo(()=> {
+    if (!portfolios) return [];
+    const isAll = portfolioFilter?.includes("all");
+    const totalCash = (portfolios as any[]).filter((p:any)=> {
+      const curOk = currencyFilter==="all" || (p as any).baseCurrency===currencyFilter;
+      const pfOk = isAll || portfolioFilter.includes(String(p.id));
+      return curOk && pfOk;
+    }).flatMap((p:any)=> p.accounts||[]).reduce((s:number,a:any)=> s + parseFloat(a.cashValue||"0"), 0);
+    if (totalCash < 0.01) return [];
+    return [{
+      assetType: "cash" as const,
+      assetKey: "CASH",
+      symbol: "CASH",
+      name: "Cash (All Accounts)",
+      quantity: 1,
+      currentValue: totalCash,
+      displayQty: "-",
+      accountName: "All Accounts",
+    }];
+  }, [portfolios, portfolioFilter, currencyFilter]);
+
+  const holdingAssets = useMemo(()=> {
+    return (consolidatedHoldings||[]).map((h:any)=> {
+      const sym = (h.symbol||"").toUpperCase();
+      let type: "etf"|"bond"|"crypto" = "etf";
+      if (h.assetType==="bond" || sym==="BONDS") type="bond";
+      else if (["BTC","ETH","BTC-USD","ETH-USD"].includes(sym)) type="crypto";
+      return {
+        assetType: type,
+        assetKey: sym,
+        symbol: h.symbol,
+        name: h.name,
+        quantity: h.quantity,
+        currentValue: h.mktValue,
+        displayQty: h.quantity?.toFixed(3),
+      };
+    });
+  }, [consolidatedHoldings]);
+
+  const allAssets = useMemo(()=> [...cashAssets, ...holdingAssets], [cashAssets, holdingAssets]);
+  const assetMap = useMemo(()=> {
+    const m=new Map<string, any>();
+    for (const a of allAssets) m.set(`${a.assetType}:${a.assetKey}`, a);
+    return m;
+  }, [allAssets]);
+
+  const overallValue = totals?.overall || allAssets.reduce((s,a)=>s+a.currentValue,0) || 1;
+  const assignedKeys = new Set((groups||[]).flatMap((g:any)=> (g.assets||[]).map((a:any)=> `${a.assetType}:${a.assetKey}`)));
+  const unassigned = allAssets.filter((a)=> !assignedKeys.has(`${a.assetType}:${a.assetKey}`));
+
+  const groupRows = useMemo(()=> {
+    return (groups||[]).map((g:any)=> {
+      const assets = (g.assets||[]).map((ga:any)=> assetMap.get(`${ga.assetType}:${ga.assetKey}`)).filter(Boolean);
+      const groupValue = assets.reduce((s:number,a:any)=> s+(a?.currentValue||0),0);
+      const alloc = overallValue>0 ? (groupValue/overallValue*100) : 0;
+      const target = parseFloat(g.targetAllocation||"0");
+      const delta = alloc - target;
+      const buyNeeded = target>alloc ? (target/100*overallValue - groupValue) : 0;
+      return { group: g, assets, groupValue, alloc, target, delta, buyNeeded };
+    });
+  }, [groups, assetMap, overallValue]);
+
+  const unassignedValue = unassigned.reduce((s,a)=>s+a.currentValue,0);
+  const groupsTotal = groupRows.reduce((s,r)=>s+r.groupValue,0);
+
+  return (
+    <Card className="bg-white shadow-sm border border-border overflow-hidden">
+      <div className="px-6 py-4 border-b border-border bg-slate-50/50 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <PieChart className="w-5 h-5 text-primary" />
+          <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Group Allocation</h3>
+          <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">{groups?.length || 0} groups • {formatCurrency(overallValue)} total</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <Dialog open={isAddGroupOpen} onOpenChange={setIsAddGroupOpen}>
+            <DialogTrigger asChild><Button size="sm" className="h-8 text-xs font-bold uppercase"><Plus className="w-3.5 h-3.5 mr-1" />Add Group</Button></DialogTrigger>
+            <DialogContent className="sm:max-w-[380px]"><DialogHeader><DialogTitle>New Group</DialogTitle></DialogHeader>
+              <div className="space-y-3 pt-2">
+                <div className="grid gap-1"><label className="text-[10px] font-bold uppercase text-slate-500">Group name</label><Input value={newGroupName} onChange={(e)=>setNewGroupName(e.target.value)} placeholder="e.g. Growth, Income, Cash Reserve" /></div>
+                <div className="grid gap-1"><label className="text-[10px] font-bold uppercase text-slate-500">Target % (0-100)</label><Input type="number" min={0} max={100} step="0.1" value={newGroupTarget} onChange={(e)=>setNewGroupTarget(e.target.value)} placeholder="e.g. 40" /></div>
+                <Button className="w-full" disabled={!newGroupName || createMut.isPending} onClick={()=> createMut.mutate({ name: newGroupName, targetAllocation: (newGroupTarget||"0") })}>Create</Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+          <Dialog open={isAssignOpen} onOpenChange={setIsAssignOpen}>
+            <DialogTrigger asChild><Button variant="outline" size="sm" className="h-8 text-xs font-bold uppercase" disabled={unassigned.length===0}><ArrowRightLeft className="w-3.5 h-3.5 mr-1" />Assign Investment</Button></DialogTrigger>
+            <DialogContent className="sm:max-w-[720px]"><DialogHeader><DialogTitle>Assign Investment to Group</DialogTitle></DialogHeader>
+              <AssignForm groups={groups} unassigned={unassigned} onAssign={(gid, atype, akey)=> assignMut.mutate({ groupId: gid, assetType: atype, assetKey: akey })} isPending={assignMut.isPending} />
+            </DialogContent>
+          </Dialog>
+        </div>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead><tr className="bg-slate-50 border-b">
+            <th className="w-8"></th>
+            <th className="text-left py-3 px-3 text-[10px] font-bold uppercase text-slate-500">Group</th>
+            <th className="text-right py-3 px-3 text-[10px] font-bold uppercase text-slate-500">Current Value</th>
+            <th className="text-right py-3 px-3 text-[10px] font-bold uppercase text-slate-500">Allocation</th>
+            <th className="text-right py-3 px-3 text-[10px] font-bold uppercase text-slate-500">Target</th>
+            <th className="text-left py-3 px-3 text-[10px] font-bold uppercase text-slate-500">Recommendation</th>
+            <th className="text-right py-3 px-3 text-[10px] font-bold uppercase text-slate-500">Actions</th>
+          </tr></thead>
+          <tbody>
+            {groupRows.length===0 && (
+              <tr><td colSpan={7} className="py-10 text-center text-slate-400 text-sm italic">No groups yet — create one and assign cash / ETF / bond / crypto holdings.</td></tr>
+            )}
+            {groupRows.map((row)=> {
+              const isExp = expandedGroups.has(row.group.id);
+              const under = row.alloc < row.target - 0.01;
+              const over = row.alloc > row.target + 0.01;
+              return (
+                <React.Fragment key={row.group.id}>
+                  <tr className="border-b hover:bg-slate-50/50">
+                    <td className="py-3 px-2 text-center"><button onClick={()=>toggleGroup(row.group.id)} className="p-1 hover:bg-slate-100 rounded">{isExp ? <ChevronDown className="w-4 h-4 text-slate-400" /> : <ChevronRight className="w-4 h-4 text-slate-400" />}</button></td>
+                    <td className="py-3 px-3 font-bold text-slate-800">{row.group.name}</td>
+                    <td className="py-3 px-3 text-right font-mono font-bold">{formatCurrency(row.groupValue)}</td>
+                    <td className="py-3 px-3 text-right font-mono text-xs font-bold">{row.alloc.toFixed(2)}%</td>
+                    <td className="py-3 px-3 text-right font-mono text-xs">{row.target.toFixed(2)}%</td>
+                    <td className="py-3 px-3 text-xs">
+                      {under ? <span className="px-2 py-1 rounded bg-amber-100 text-amber-800 font-bold">Buy {formatCurrency(row.buyNeeded)} to reach {row.target.toFixed(1)}%</span> : over ? <span className="px-2 py-1 rounded bg-blue-50 text-blue-700 font-bold">Over by {(row.alloc-row.target).toFixed(2)}% — consider trimming</span> : <span className="px-2 py-1 rounded bg-emerald-50 text-emerald-700 font-bold">✓ On target</span>}
+                    </td>
+                    <td className="py-3 px-3 text-right">
+                      <div className="flex justify-end gap-1">
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={()=> setEditingGroup({ id: row.group.id, name: row.group.name, target: row.group.targetAllocation })}><Edit2 className="w-3.5 h-3.5" /></Button>
+                        <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500" onClick={()=> { if(confirm(`Delete group "${row.group.name}"? Assets become unassigned.`)) deleteMut.mutate({ id: row.group.id })}}><Trash2 className="w-3.5 h-3.5" /></Button>
+                      </div>
+                    </td>
+                  </tr>
+                  {isExp && (
+                    <tr className="bg-slate-50/30"><td colSpan={7} className="p-0">
+                      <div className="px-8 py-3">
+                        <table className="w-full text-xs">
+                          <thead><tr className="border-b text-[10px] font-bold uppercase text-slate-400"><th className="text-left py-2 px-2">Investment</th><th className="text-right py-2 px-2">Qty</th><th className="text-right py-2 px-2">Current Value</th><th className="text-right py-2 px-2">Overall %</th><th className="text-right py-2 px-2">Within Group %</th><th className="text-right py-2 px-2">Type</th><th className="text-right py-2 px-2">Action</th></tr></thead>
+                          <tbody>
+                            {row.assets.length===0 && <tr><td colSpan={7} className="py-4 text-center italic text-slate-400">No investments in this group — use Assign Investment.</td></tr>}
+                            {row.assets.map((a:any)=> {
+                              const overallPct = overallValue>0 ? (a.currentValue/overallValue*100) : 0;
+                              const withinPct = row.groupValue>0 ? (a.currentValue/row.groupValue*100) : 0;
+                              return (
+                                <tr key={`${a.assetType}:${a.assetKey}`} className="border-b last:border-0 hover:bg-white">
+                                  <td className="py-2 px-2"><div className="font-bold text-slate-700">{a.symbol}</div><div className="text-[10px] text-slate-400 truncate max-w-[160px]">{a.name}</div></td>
+                                  <td className="py-2 px-2 text-right font-mono">{a.assetType==="cash" ? "—" : a.displayQty}</td>
+                                  <td className="py-2 px-2 text-right font-mono font-bold">{formatCurrency(a.currentValue)}</td>
+                                  <td className="py-2 px-2 text-right font-mono">{overallPct.toFixed(2)}%</td>
+                                  <td className="py-2 px-2 text-right font-mono font-bold text-primary">{withinPct.toFixed(2)}%</td>
+                                  <td className="py-2 px-2 text-right"><span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-slate-100">{a.assetType}</span></td>
+                                  <td className="py-2 px-2 text-right"><button className="text-[11px] font-bold text-red-600 hover:underline" onClick={()=> unassignMut.mutate({ assetType: a.assetType, assetKey: a.assetKey })}>Unassign</button></td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </td></tr>
+                  )}
+                </React.Fragment>
+              );
+            })}
+          </tbody>
+          <tfoot className="bg-slate-900 text-white font-bold">
+            <tr><td colSpan={2} className="py-3 px-3 text-[11px] uppercase tracking-widest">Overall Value</td><td className="py-3 px-3 text-right font-mono">{formatCurrency(overallValue)}</td><td className="py-3 px-3 text-right">100.00%</td><td className="py-3 px-3 text-right">{groupRows.reduce((s,r)=>s+r.target,0).toFixed(2)}% target</td><td className="py-3 px-3 text-left text-[11px] font-normal">{groupsTotal < overallValue - 0.01 ? <span className="text-amber-300">{formatCurrency(overallValue - groupsTotal)} unassigned — assign to reach targets</span> : <span className="text-emerald-300">Fully assigned</span>}</td><td></td></tr>
+          </tfoot>
+        </table>
+      </div>
+      {unassigned.length>0 && (
+        <div className="px-6 py-3 bg-amber-50/50 border-t text-xs">
+          <div className="font-bold text-slate-600 mb-1">{unassigned.length} unassigned investment(s) — {formatCurrency(unassignedValue)} ({(unassignedValue/overallValue*100).toFixed(2)}%)</div>
+          <div className="flex flex-wrap gap-1.5">{unassigned.slice(0,12).map((a:any)=> <span key={`${a.assetType}:${a.assetKey}`} className="px-2 py-1 rounded bg-white border text-[11px] font-mono">{a.symbol} {formatCurrency(a.currentValue)}</span>)}{unassigned.length>12 && <span className="text-slate-500">+{unassigned.length-12} more — use Assign Investment</span>}</div>
+        </div>
+      )}
+
+      {editingGroup && (
+        <Dialog open={!!editingGroup} onOpenChange={(o)=> !o && setEditingGroup(null)}>
+          <DialogContent className="sm:max-w-[380px]"><DialogHeader><DialogTitle>Edit Group</DialogTitle></DialogHeader>
+            <div className="space-y-3 pt-2">
+              <div className="grid gap-1"><label className="text-[10px] font-bold uppercase text-slate-500">Name</label><Input value={editingGroup.name} onChange={(e)=> setEditingGroup(prev=> prev?{...prev, name:e.target.value}:null)} /></div>
+              <div className="grid gap-1"><label className="text-[10px] font-bold uppercase text-slate-500">Target %</label><Input type="number" value={editingGroup.target} onChange={(e)=> setEditingGroup(prev=> prev?{...prev, target:e.target.value}:null)} /></div>
+              <div className="flex gap-2"><Button variant="outline" className="flex-1" onClick={()=> setEditingGroup(null)}>Cancel</Button><Button className="flex-1" disabled={updateMut.isPending} onClick={()=> editingGroup && updateMut.mutate({ id: editingGroup.id, name: editingGroup.name, targetAllocation: editingGroup.target||"0" })}>Save</Button></div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+    </Card>
+  );
+}
+
+function AssignForm({ groups, unassigned, onAssign, isPending }: any) {
+  const [selectedAsset, setSelectedAsset] = useState<string>("");
+  const [targetGroupId, setTargetGroupId] = useState<string>("");
+  const asset = unassigned.find((a:any)=> `${a.assetType}:${a.assetKey}`===selectedAsset);
+  return (
+    <div className="space-y-3 pt-2">
+      <div className="grid gap-1"><label className="text-[10px] font-bold uppercase text-slate-500">Investment (cash, bond, etf, stock, crypto)</label>
+        <select className="border rounded px-3 py-2 text-sm h-10 bg-white" value={selectedAsset} onChange={(e)=> setSelectedAsset(e.target.value)}>
+          <option value="">Select investment</option>
+          {unassigned.map((a:any)=> <option key={`${a.assetType}:${a.assetKey}`} value={`${a.assetType}:${a.assetKey}`}>{a.assetType.toUpperCase()} — {a.symbol} — {a.name} — {a.assetType!=="cash" ? `${a.displayQty} • ${a.currentValue.toFixed(2)}` : `${a.currentValue.toFixed(2)}`}</option>)}
+        </select>
+      </div>
+      <div className="grid gap-1"><label className="text-[10px] font-bold uppercase text-slate-500">Target Group</label>
+        <select className="border rounded px-3 py-2 text-sm h-10 bg-white" value={targetGroupId} onChange={(e)=> setTargetGroupId(e.target.value)}>
+          <option value="">Select group</option>
+          {(groups||[]).map((g:any)=> <option key={g.id} value={g.id}>{g.name} — target {parseFloat(g.targetAllocation).toFixed(1)}%</option>)}
+        </select>
+      </div>
+      <Button className="w-full" disabled={!selectedAsset || !targetGroupId || isPending} onClick={()=> {
+        if (!selectedAsset || !targetGroupId) return;
+        const [atype, ...rest] = selectedAsset.split(":");
+        const akey = rest.join(":");
+        onAssign(Number(targetGroupId), atype, akey);
+      }}>{isPending ? "Assigning..." : `Assign ${asset ? asset.symbol : ""}`}</Button>
+      {unassigned.length===0 && <div className="text-xs text-slate-500 italic">All investments assigned.</div>}
+    </div>
+  );
+}
 
 export default Portfolios;

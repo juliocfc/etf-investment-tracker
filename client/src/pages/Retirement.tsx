@@ -230,7 +230,7 @@ const Retirement: React.FC = () => {
     const medicareAge = 65;
     const penaltyFreeAge = 59.5;
 
-    // Helper to simulate one scenario — crash cases are bucket-aware (5y cash/bonds shield equities for 3-5y recovery)
+    // Helper to simulate one scenario — market drops are modeled as a big year-1 fall with 2-3y recovery (bucket shield for 3y)
     function simulateScenario(opts: { crashPct: number, highInflationYears: number, highInflationRate: number, lowReturnYears: number, lowReturnRate: number }) {
       let balance = currentPortfolioValue;
       let withdrawal = annualExpenses;
@@ -278,7 +278,7 @@ const Retirement: React.FC = () => {
           b2 = b2Bonds + b2Income;
           b3 = Math.max(0, b3 * (1 - opts.crashPct));
         }
-        const startBal = useBuckets && y - yearsUntilRetirement >=0 && y - yearsUntilRetirement < 5 && isRetired ? (b1 + b2 + b3 + (isFirst ? crashApplied : 0)) : balance;
+        const startBal = useBuckets && y - yearsUntilRetirement >=0 && y - yearsUntilRetirement < 3 && isRetired ? (b1 + b2 + b3 + (isFirst ? crashApplied : 0)) : balance;
         // for crash recovery window, startBal should be bucket sum before withdrawal
         const effectiveStart = useBuckets && isFirst && opts.crashPct>0 ? b1 + b2 + b3 + crashApplied : startBal;
         let netWithdrawal = 0;
@@ -288,7 +288,7 @@ const Retirement: React.FC = () => {
           if (gross<0) gross=0;
           if (isFirst) gross *= remainingMonthsFactor;
           netWithdrawal = Math.min(balance, gross);
-          if (useBuckets && y - yearsUntilRetirement >=0 && y - yearsUntilRetirement < 5) {
+          if (useBuckets && y - yearsUntilRetirement >=0 && y - yearsUntilRetirement < 3) {
             let remaining = netWithdrawal;
             const takeB1 = Math.min(b1, remaining); b1 -= takeB1; remaining -= takeB1;
             const takeB2 = Math.min(b2, remaining); b2 -= takeB2; remaining -= takeB2;
@@ -300,8 +300,13 @@ const Retirement: React.FC = () => {
         let earnings = 0;
         const afterWithdrawalBal = balance - netWithdrawal;
         if (!isCurrentYear) {
-          if (useBuckets && y - yearsUntilRetirement >=0 && y - yearsUntilRetirement < 5) {
-            const b1Ret = 0.015, b2BondsRet = 0.03, b2IncomeRet = yrReturn + 0.015, b3Ret = yrReturn + 0.02;
+          if (useBuckets && y - yearsUntilRetirement >=0 && y - yearsUntilRetirement < 3) {
+            const yearsAfterCrash = y - yearsUntilRetirement;
+            // 2-3y recovery: strong rebound in yr1-2 after the year-1 drop, then normalize
+            let b3RetBase = yrReturn + 0.02;
+            if (yearsAfterCrash === 1) b3RetBase = 0.18 + yrReturn * 0.3; // ~18-20% bounce yr1
+            else if (yearsAfterCrash === 2) b3RetBase = 0.12 + yrReturn * 0.3; // ~12-14% yr2
+            const b1Ret = 0.015, b2BondsRet = 0.03, b2IncomeRet = yrReturn + 0.015, b3Ret = b3RetBase;
             const bucketEarnings = b1*b1Ret + b2Bonds*b2BondsRet + b2Income*b2IncomeRet + b3*b3Ret;
             b1 = b1 * (1 + b1Ret);
             b2Bonds = b2Bonds * (1 + b2BondsRet);
@@ -322,10 +327,10 @@ const Retirement: React.FC = () => {
         } else {
           earnings = 0;
         }
-        const endBal = useBuckets && y - yearsUntilRetirement >=0 && y - yearsUntilRetirement < 5 && !isCurrentYear
+        const endBal = useBuckets && y - yearsUntilRetirement >=0 && y - yearsUntilRetirement < 3 && !isCurrentYear
           ? b1 + b2 + b3
           : afterWithdrawalBal + earnings;
-        const effectiveStartBal = useBuckets && y - yearsUntilRetirement >=0 && y - yearsUntilRetirement < 5 ? effectiveStart : startBal;
+        const effectiveStartBal = useBuckets && y - yearsUntilRetirement >=0 && y - yearsUntilRetirement < 3 ? effectiveStart : startBal;
         const isPenalty = isRetired && curAge < penaltyFreeAge;
         const isMedicare = curAge >= medicareAge;
         const isSS = curAge >= ssStartAge && isRetired;
@@ -345,10 +350,10 @@ const Retirement: React.FC = () => {
 
     const scenarios = [
       { key: "base", label: "Base", desc: `${(returnRate*100).toFixed(0)}% return, ${(inflationRate*100).toFixed(0)}% inflation`, opts: { crashPct:0, highInflationYears:0, highInflationRate:0.06, lowReturnYears:0, lowReturnRate:0.02 } },
-      { key: "crash30", label: "Crash -30%", desc: "30% equity drop — 5y bucket shield + recovery", opts: { crashPct:0.30, highInflationYears:0, highInflationRate:0.06, lowReturnYears:0, lowReturnRate:0.02 } },
-      { key: "crash40", label: "Crash -40%", desc: "40% equity drop — 5y bucket shield + recovery", opts: { crashPct:0.40, highInflationYears:0, highInflationRate:0.06, lowReturnYears:0, lowReturnRate:0.02 } },
+      { key: "crash30", label: "Crash -30%", desc: "30% equity drop in y1 — 3y bucket shield, 2-3y recovery", opts: { crashPct:0.30, highInflationYears:0, highInflationRate:0.06, lowReturnYears:0, lowReturnRate:0.02 } },
+      { key: "crash40", label: "Crash -40%", desc: "40% equity drop in y1 — 3y bucket shield, 2-3y recovery", opts: { crashPct:0.40, highInflationYears:0, highInflationRate:0.06, lowReturnYears:0, lowReturnRate:0.02 } },
       { key: "highInfl", label: "High inflation", desc: "6% inflation 10y post-retire", opts: { crashPct:0, highInflationYears:10, highInflationRate:0.06, lowReturnYears:0, lowReturnRate:0.02 } },
-      { key: "stag", label: "Stagflation", desc: "-30% + 5% inflation 7y — bucket shield", opts: { crashPct:0.30, highInflationYears:7, highInflationRate:0.05, lowReturnYears:0, lowReturnRate:0.02 } },
+      { key: "stag", label: "Stagflation", desc: "-30% y1 + 5% inflation 7y — 3y shield, 2-3y recovery", opts: { crashPct:0.30, highInflationYears:7, highInflationRate:0.05, lowReturnYears:0, lowReturnRate:0.02 } },
       { key: "lowRet", label: "Low returns", desc: "2% return 10y post-retire", opts: { crashPct:0, highInflationYears:0, highInflationRate:0.06, lowReturnYears:10, lowReturnRate:0.02 } },
     ].map(s => ({ ...s, result: simulateScenario(s.opts) }));
 
@@ -434,16 +439,20 @@ const Retirement: React.FC = () => {
           let grossNet = grossWithdrawal - yearSS; if (grossNet<0) grossNet=0;
           if (isFirst) grossNet *= remainingMonthsFactor;
           netWithdrawal = Math.min(bal, grossNet);
-          if (useB && y - yearsUntilRetirement >=0 && y - yearsUntilRetirement < 5) {
+          if (useB && y - yearsUntilRetirement >=0 && y - yearsUntilRetirement < 3) {
             let rem = netWithdrawal; const t1=Math.min(gkB1,rem); gkB1-=t1; rem-=t1; const t2=Math.min(gkB2,rem); gkB2-=t2; rem-=t2; const t3=Math.min(gkB3,rem); gkB3-=t3; rem-=t3;
           }
         }
         const isCurrentYear = y===0;
         let earnings=0, endBal=0;
         if (isCurrentYear) { earnings=0; endBal=bal-netWithdrawal; if (useB && isRetired) endBal=gkB1+gkB2+gkB3; }
-        else if (useB && y - yearsUntilRetirement >=0 && y - yearsUntilRetirement < 5) {
-          const e1=gkB1*0.015, e2B=gkB2Bonds*0.03, e2I=gkB2Income*(yrReturn+0.015), e3=gkB3*(yrReturn+0.02);
-          gkB1*=1.015; gkB2Bonds*=1.03; gkB2Income*=(1+yrReturn+0.015); gkB2=gkB2Bonds+gkB2Income; gkB3*=(1+yrReturn+0.02);
+        else if (useB && y - yearsUntilRetirement >=0 && y - yearsUntilRetirement < 3) {
+          const yearsAfterCrash = y - yearsUntilRetirement;
+          let b3Ret = yrReturn + 0.02;
+          if (yearsAfterCrash === 1) b3Ret = 0.18 + yrReturn * 0.3;
+          else if (yearsAfterCrash === 2) b3Ret = 0.12 + yrReturn * 0.3;
+          const e1=gkB1*0.015, e2B=gkB2Bonds*0.03, e2I=gkB2Income*(yrReturn+0.015), e3=gkB3*b3Ret;
+          gkB1*=1.015; gkB2Bonds*=1.03; gkB2Income*=(1+yrReturn+0.015); gkB2=gkB2Bonds+gkB2Income; gkB3*=(1+b3Ret);
           earnings=e1+e2B+e2I+e3; endBal=gkB1+gkB2+gkB3;
         } else {
           const after = bal - netWithdrawal; earnings = after * yrReturn; endBal = after + earnings;
@@ -819,9 +828,36 @@ const Retirement: React.FC = () => {
                       <div className="p-2 rounded bg-slate-50 border"><div className="text-[10px] uppercase font-bold text-slate-500">Raises (+10%)</div><div className="text-lg font-black">{g.gkRaises}</div><div className="text-[10px] text-slate-500">prosperity</div></div>
                       <div className="p-2 rounded bg-slate-50 border"><div className="text-[10px] uppercase font-bold text-slate-500">Infl. skips</div><div className="text-lg font-black">{g.gkInflSkips}</div><div className="text-[10px] text-slate-500">after loss</div></div>
                     </div>
-                    <div className="grid grid-cols-2 gap-2 mt-2">
-                      <div className="p-2 rounded bg-white border"><div className="text-[10px] font-bold uppercase text-slate-500">Normal spending</div><div className="text-sm font-black font-mono">{formatCurrency(retirementPlan.projectedExpensesAtStart)}/y</div><div className="text-[10px] text-slate-500">Without GK — inflated base</div></div>
-                      <div className="p-2 rounded bg-slate-900 text-white border border-slate-700"><div className="text-[10px] font-bold uppercase text-slate-400">Recommended (GK)</div><div className="text-sm font-black font-mono">{formatCurrency(g.gkMinGross)}/y <span className="text-[10px] font-normal text-slate-300">low</span> → {formatCurrency(g.gkMaxGross)}/y <span className="text-[10px] font-normal text-slate-300">high</span></div><div className="text-[10px] text-slate-300">{g.gkCuts>0 || g.gkRaises>0 ? `After ${g.gkCuts}× −10% / ${g.gkRaises}× +10% cuts • saves ${formatCurrency(retirementPlan.projectedExpensesAtStart - g.gkMinGross)}/y at low` : "No guardrail trigger — same as normal"}</div></div>
+                    <div className="mt-3 rounded-lg border overflow-hidden">
+                      <div className="px-3 py-2 bg-slate-50 border-b flex items-center justify-between">
+                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-600">Year-by-year GK spending (gross before SS)</span>
+                        <span className="text-[10px] font-bold text-slate-500">Base {formatCurrency(retirementPlan.projectedExpensesAtStart)}/y → GK as below</span>
+                      </div>
+                      <div className="max-h-[220px] overflow-auto">
+                        <table className="w-full text-[11px]">
+                          <thead className="sticky top-0 bg-white border-b"><tr className="text-[10px] font-bold uppercase text-slate-500"><th className="text-left px-3 py-1.5">Year</th><th className="text-left px-3 py-1.5">Age</th><th className="text-right px-3 py-1.5">GK gross</th><th className="text-right px-3 py-1.5">Base gross</th><th className="text-left px-3 py-1.5">Action</th></tr></thead>
+                          <tbody>
+                            {(() => {
+                              const baseInfl = parseFloat(retirementInflationRate)/100 || 0;
+                              return g.gkEvolution.filter((e:any)=> e.isRetired).slice(0, 35).map((e:any, idx:number)=> {
+                                const baseGross = retirementPlan.projectedExpensesAtStart * Math.pow(1+baseInfl, idx);
+                                const isCut = e.action?.includes("-10%");
+                                const isRaise = e.action?.includes("+10%");
+                                return (
+                                  <tr key={e.year} className={`border-b last:border-0 ${isCut ? "bg-amber-50/60" : isRaise ? "bg-emerald-50/60" : ""}`}>
+                                    <td className="px-3 py-1 font-mono">{e.year}</td>
+                                    <td className="px-3 py-1">{e.age}</td>
+                                    <td className={`px-3 py-1 text-right font-mono font-bold ${isCut ? "text-amber-700" : isRaise ? "text-emerald-700" : "text-slate-700"}`}>{formatCurrency(e.grossWithdrawal)}</td>
+                                    <td className="px-3 py-1 text-right font-mono text-slate-400">{formatCurrency(baseGross)}</td>
+                                    <td className="px-3 py-1 text-[10px]">{e.action ? <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${isCut ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-700"}`}>{e.action}</span> : <span className="text-slate-400">—</span>}</td>
+                                  </tr>
+                                );
+                              });
+                            })()}
+                          </tbody>
+                        </table>
+                      </div>
+                      <div className="px-3 py-1.5 bg-slate-50 border-t text-[10px] text-slate-500">Negative years are portfolio-rate &gt;120% cuts; prosperity &lt;80% raises. Blank = just inflated base.</div>
                     </div>
                     {!baseOk && gkOk && <div className="text-[11px] mt-2 p-2 rounded bg-emerald-50 border border-emerald-200 text-emerald-800">↳ GK saves this stress — base depletes at {g.baseDepletionAge}y but guardrails (cuts/raises + inflation skip) keep it to {lifeExpectancy}y.</div>}
                     {baseOk && gkOk && <div className="text-[10px] mt-2 text-slate-500">Base already survives; GK would add {g.gkCuts} cuts / {g.gkRaises} raises as volatility buffer.</div>}

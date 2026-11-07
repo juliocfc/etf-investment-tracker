@@ -8,6 +8,7 @@ import { portfolioRouter } from "./portfolioRouter";
 import { accountRouter } from "./accountRouter";
 import { brokerageRouter } from "./brokerageRouter";
 import { fiRouter } from "./fiRouter";
+import { groupRouter } from "./groupRouter";
 
 export const appRouter = router({
   system: systemRouter,
@@ -27,6 +28,7 @@ export const appRouter = router({
   bond: bondRouter,
   brokerage: brokerageRouter,
   fi: fiRouter,
+  group: groupRouter,
 });
 
 export type AppRouter = typeof appRouter;

@@ -322,6 +322,28 @@ export const cryptoPurchases = sqliteTable("cryptopurchases", {
   createdAt: integer("createdAt", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
+export const allocationGroups = sqliteTable("allocationGroups", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userId: integer("userId").notNull(),
+  name: text("name").notNull(),
+  targetAllocation: text("targetAllocation").default("0").notNull(), // 0-100
+  sortOrder: integer("sortOrder").default(0).notNull(),
+  createdAt: integer("createdAt", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+  updatedAt: integer("updatedAt", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+export const allocationGroupAssets = sqliteTable("allocationGroupAssets", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  groupId: integer("groupId").notNull(),
+  userId: integer("userId").notNull(),
+  assetType: text("assetType").notNull(), // cash | etf | bond | crypto
+  assetKey: text("assetKey").notNull(), // cash: accountId, others: symbol upper (unique per user+type+key)
+  createdAt: integer("createdAt", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+}, (t) => [
+  uniqueIndex("group_asset_unique_idx").on(t.groupId, t.assetType, t.assetKey),
+  uniqueIndex("user_asset_unique_idx").on(t.userId, t.assetType, t.assetKey),
+]);
+
 export type Expense = typeof expenses.$inferSelect;
 export type InsertExpense = typeof expenses.$inferInsert;
 export type FiSimulationAsset = typeof fiSimulationAssets.$inferSelect;
