@@ -302,11 +302,11 @@ const Retirement: React.FC = () => {
         if (!isCurrentYear) {
           if (useBuckets && y - yearsUntilRetirement >=0 && y - yearsUntilRetirement < 3) {
             const yearsAfterCrash = y - yearsUntilRetirement;
-            // 2-3y recovery: strong rebound in yr1-2 after the year-1 drop, then normalize
-            let b3RetBase = yrReturn + 0.02;
+            // 2-3y recovery: only the crash rebound years get a boost; otherwise use your base return
+            let b3RetBase = yrReturn;
             if (yearsAfterCrash === 1) b3RetBase = 0.18 + yrReturn * 0.3; // ~18-20% bounce yr1
             else if (yearsAfterCrash === 2) b3RetBase = 0.12 + yrReturn * 0.3; // ~12-14% yr2
-            const b1Ret = 0.015, b2BondsRet = 0.03, b2IncomeRet = yrReturn + 0.015, b3Ret = b3RetBase;
+            const b1Ret = 0.01, b2BondsRet = 0.025, b2IncomeRet = yrReturn, b3Ret = b3RetBase;
             const bucketEarnings = b1*b1Ret + b2Bonds*b2BondsRet + b2Income*b2IncomeRet + b3*b3Ret;
             b1 = b1 * (1 + b1Ret);
             b2Bonds = b2Bonds * (1 + b2BondsRet);
@@ -334,7 +334,7 @@ const Retirement: React.FC = () => {
         const isPenalty = isRetired && curAge < penaltyFreeAge;
         const isMedicare = curAge >= medicareAge;
         const isSS = curAge >= ssStartAge && isRetired;
-        evolution.push({ year: simYear, age: curAge, startBalance: startBal, netWithdrawal, yearSS, earnings, endBalance: endBal, isRetired, crashApplied, yrReturn, yrInflation, isPenalty, isMedicare, isSS, expenses: isRetired ? (isFirst? initialWithdrawal*remainingMonthsFactor : withdrawal) : annualExpenses * Math.pow(1+inflationRate, y) });
+        evolution.push({ year: simYear, age: curAge, startBalance: startBal, netWithdrawal, yearSS, earnings, endBalance: endBal, isRetired, crashApplied, yrReturn, yrInflation, isPenalty, isMedicare, isSS, expenses: isRetired ? (isFirst? initialWithdrawal*remainingMonthsFactor : withdrawal) : annualExpenses * Math.pow(1+inflationRate, y), b1: useBuckets ? b1 : null, b2: useBuckets ? b2 : null, b3: useBuckets ? b3 : null, bucketTotal: useBuckets ? (b1+b2+b3) : null });
         balance = endBal;
         if (isRetired) {
           if (isFirst) withdrawal = initialWithdrawal * (1+yrInflation);
@@ -448,11 +448,11 @@ const Retirement: React.FC = () => {
         if (isCurrentYear) { earnings=0; endBal=bal-netWithdrawal; if (useB && isRetired) endBal=gkB1+gkB2+gkB3; }
         else if (useB && y - yearsUntilRetirement >=0 && y - yearsUntilRetirement < 3) {
           const yearsAfterCrash = y - yearsUntilRetirement;
-          let b3Ret = yrReturn + 0.02;
+          let b3Ret = yrReturn;
           if (yearsAfterCrash === 1) b3Ret = 0.18 + yrReturn * 0.3;
           else if (yearsAfterCrash === 2) b3Ret = 0.12 + yrReturn * 0.3;
-          const e1=gkB1*0.015, e2B=gkB2Bonds*0.03, e2I=gkB2Income*(yrReturn+0.015), e3=gkB3*b3Ret;
-          gkB1*=1.015; gkB2Bonds*=1.03; gkB2Income*=(1+yrReturn+0.015); gkB2=gkB2Bonds+gkB2Income; gkB3*=(1+b3Ret);
+          const e1=gkB1*0.01, e2B=gkB2Bonds*0.025, e2I=gkB2Income*yrReturn, e3=gkB3*b3Ret;
+          gkB1*=1.01; gkB2Bonds*=1.025; gkB2Income*=(1+yrReturn); gkB2=gkB2Bonds+gkB2Income; gkB3*=(1+b3Ret);
           earnings=e1+e2B+e2I+e3; endBal=gkB1+gkB2+gkB3;
         } else {
           const after = bal - netWithdrawal; earnings = after * yrReturn; endBal = after + earnings;
@@ -559,8 +559,10 @@ const Retirement: React.FC = () => {
 
     return {
       annualExpenses, projectedPortfolioAtStart, projectedExpensesAtStart, effectiveRate, initialWithdrawal,
-      ageToday, ageAtRetirement, yearsUntilRetirement, fractionYearsToRet, penaltyFreeAge, medicareAge, ssStartAge, bridgeToPenFree, bridgeToSS, bridgeToMedicare,
+      ageToday, ageAtRetirement, yearsUntilRetirement, fractionYearsToRet, remainingMonthsFactor, baseSS, currentYear, retirementYear,
+      penaltyFreeAge, medicareAge, ssStartAge, bridgeToPenFree, bridgeToSS, bridgeToMedicare,
       bucket1Need, bucket2Need, bucket3Need, actualBucket1, actualBucket2, actualBucket3, etfIncomeUSD, etfGrowthUSD, bridgeCoverageYears, bridgeYearsCoveredGrowth, bridgeShortfallAtRet, bridgeSuccessWithGrowth, taxableAtStart, needBridge, taxableBridge,
+      bucket1Years, bucket2Years,
       scenarios, chartData, baseEvolution: base.result.evolution, equityPct, guardrails
     };
   }, [totals.amount, totalPortfolioValue, retirementReturnRate, retirementInflationRate, retirementStartDate, userBirthDate, ssAmount, ssAge, lifeExpectancy, accountBreakdown, equityPct, etfBucketSplit]);
@@ -698,6 +700,58 @@ const Retirement: React.FC = () => {
               </CardContent>
             </Card>
           </div>
+
+          {/* Bucket Paycheck Schedule — annual */}
+          <Card className="overflow-hidden">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-xs font-black uppercase tracking-widest flex items-center gap-2"><Wallet className="w-4 h-4 text-slate-700" /> Bucket Paycheck Schedule — Once a Year</CardTitle>
+              <CardDescription className="text-[11px]">Paycheck taken from Bucket 1 (cash) → 2 (bonds+Income) → 3 (growth). Bucket 1 holds {retirementPlan.bucket1Years}y, Bucket 2 holds {retirementPlan.bucket2Years}y. At year-end Bucket 1 refilled from Bucket 2, Bucket 2 from Bucket 3 in up years.</CardDescription>
+            </CardHeader>
+            <CardContent className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-slate-50">
+                    <TableHead className="text-[10px]">Year</TableHead>
+                    <TableHead className="text-[10px]">Age</TableHead>
+                    <TableHead className="text-right text-[10px]">Paycheck<br/><span className="text-[9px] font-normal">-SS</span></TableHead>
+                    <TableHead className="text-right text-[10px]">Growth<br/><span className="text-[9px] font-normal">year-end</span></TableHead>
+                    <TableHead className="text-right text-[10px]">Δ Total<br/><span className="text-[9px] font-normal">growth - paycheck</span></TableHead>
+                    <TableHead className="text-right text-[10px]">B1 cash<br/><span className="text-[9px] font-normal">after paycheck</span></TableHead>
+                    <TableHead className="text-right text-[10px]">B2 income<br/><span className="text-[9px] font-normal">after paycheck</span></TableHead>
+                    <TableHead className="text-right text-[10px]">B3 growth<br/><span className="text-[9px] font-normal">after paycheck</span></TableHead>
+                    <TableHead className="text-right text-[10px]">Total<br/><span className="text-[9px] font-normal">after paycheck</span></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {(() => {
+                    // Use the same base simulation that drives the Stress Test so 2059 ≈ 1.7M (base exhausts 2072), not the duplicate that grew to 6.5M
+                    const rows = (retirementPlan.baseEvolution as any[]).filter((e:any)=> e.isRetired).slice(0, 35);
+                    return rows.map((e:any)=> {
+                      const delta = (e.earnings||0) - (e.netWithdrawal||0);
+                      // buckets after growth (end of year) — same as Stress Test; total = endBalance
+                      const b1 = e.b1 ?? 0, b2 = e.b2 ?? 0, b3 = e.b3 ?? 0;
+                      const total = e.bucketTotal ?? e.endBalance;
+                      const depletes = total <= 0.01;
+                      return (
+                        <TableRow key={e.year} className={depletes ? "bg-red-50" : ""}>
+                          <TableCell className="text-xs font-bold">{e.year}</TableCell>
+                          <TableCell className="text-xs">{e.age}</TableCell>
+                          <TableCell className="text-right font-mono text-[11px] font-bold text-red-600">-{formatCurrency(e.netWithdrawal||0)}</TableCell>
+                          <TableCell className={`text-right font-mono text-[11px] ${(e.earnings||0)>=(e.netWithdrawal||0) ? "text-emerald-600" : "text-slate-500"}`}>+{formatCurrency(e.earnings||0)}</TableCell>
+                          <TableCell className={`text-right font-mono text-[11px] font-bold ${delta>=0 ? "text-emerald-600" : "text-red-600"}`}>{delta>=0 ? "+" : ""}{formatCurrency(delta)}</TableCell>
+                          <TableCell className="text-right font-mono text-[11px]">{b1!=null ? formatCurrency(b1) : "—"}</TableCell>
+                          <TableCell className="text-right font-mono text-[11px]">{b2!=null ? formatCurrency(b2) : "—"}</TableCell>
+                          <TableCell className="text-right font-mono text-[11px]">{b3!=null ? formatCurrency(b3) : "—"}</TableCell>
+                          <TableCell className="text-right font-mono text-[11px] font-bold">{formatCurrency(total)}</TableCell>
+                        </TableRow>
+                      );
+                    });
+                  })()}
+                </TableBody>
+              </Table>
+              <div className="text-[10px] text-slate-500 mt-2">Once-a-year paycheck: `gross` inflated from {formatCurrency(retirementPlan.projectedExpensesAtStart)}/y, minus SS (from {retirementPlan.ssStartAge}y), remainder taken from buckets. Refill runs at year-end in up years. Values projected at {((parseFloat(retirementReturnRate)||0).toFixed(1))}%/{((parseFloat(retirementInflationRate)||0).toFixed(1))}%.</div>
+            </CardContent>
+          </Card>
 
           {/* Recommendations */}
           <Card className="border-amber-200 bg-amber-50/50">

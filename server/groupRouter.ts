@@ -4,7 +4,109 @@ import { allocationGroups, allocationGroupAssets } from "../drizzle/schema";
 import { eq, and, asc } from "drizzle-orm";
 import { getDb } from "./db";
 
+let _cashYieldCache: { value:number, ts:number } | null = null;
 export const groupRouter = router({
+  getYields: protectedProcedure.input(z.object({ assets: z.array(z.object({ assetType: z.enum(["cash","etf","bond","crypto"]), assetKey: z.string(), currentValue: z.number(), quantity: z.number().optional(), currentPrice: z.number().optional() })) })).query(async ({ ctx, input }) => {
+    const db = await getDb();
+    const { fetchDividendData } = await import("./financialApi");
+    const { bondHoldings } = await import("../drizzle/schema");
+    const results: any[] = [];
+    // Dynamic cash yield: BIL (1-3M T-Bill ETF) dividendYield ~ SPAXX/SPRXX 7-day (Fidelity ~3.57%); refresh hourly
+    let cashYield = 0.0357;
+    try {
+      if (_cashYieldCache && Date.now() - _cashYieldCache.ts < 60*60*1000) cashYield = _cashYieldCache.value;
+      else {
+        const YahooFinance = (await import("yahoo-finance2")).default;
+        const yf: any = new (YahooFinance as any)({ suppressNotices: ['yahooSurvey','ripHistorical'] });
+        const q = await yf.quote("BIL");
+        const dy = (q as any).dividendYield ?? (q as any).trailingAnnualDividendYield;
+        if (typeof dy === "number" && dy > 0.1) { // Yahoo returns 3.66 for 3.66%
+          cashYield = dy > 1 ? dy/100 : dy;
+          _cashYieldCache = { value: cashYield, ts: Date.now() };
+        } else {
+          const divs = await fetchDividendData("BIL");
+          if (divs.length) {
+            const last = [...divs].sort((a,b)=> b.exDate.getTime()-a.exDate.getTime())[0];
+            // BIL monthly ~0.27, price ~91.5 => ~3.5%
+            const priceQ = await yf.quote("BIL");
+            const price = (priceQ as any).regularMarketPrice || 91.5;
+            const annual = last.dividendPerShare * 12;
+            cashYield = price>0 ? annual/price : cashYield;
+            _cashYieldCache = { value: cashYield, ts: Date.now() };
+          }
+        }
+      }
+    } catch {}
+    for (const a of input.assets) {
+      const type = a.assetType;
+      const key = type==="cash" ? a.assetKey : a.assetKey.toUpperCase();
+      if (type==="cash") {
+        const y = cashYield;
+        results.push({ assetType: type, assetKey: key, yield: y, next12: a.currentValue * y, lastDividend: 0, frequency: "monthly", note: `BIL ${(y*100).toFixed(2)}% ~ SPAXX/SPRXX MMF (live)` });
+        continue;
+      }
+      if (type==="bond") {
+        // "BONDS" is the aggregated row from consolidatedHoldings — average across all active bonds
+        let rows: any[] = [];
+        if (key === "BONDS") {
+          const all = await db.select().from(bondHoldings).where(eq(bondHoldings.userId, ctx.user.id));
+          rows = (all as any[]).filter((r:any)=> parseFloat(r.quantity||"0") > 0.001);
+        } else {
+          rows = await db.select().from(bondHoldings).where(and(eq(bondHoldings.userId, ctx.user.id), eq(bondHoldings.symbol, key)));
+          if (rows.length===0) {
+            // fallback: consolidated "BONDS" may hold a single CUSIP's value — still use all bonds average
+            const all = await db.select().from(bondHoldings).where(eq(bondHoldings.userId, ctx.user.id));
+            rows = (all as any[]).filter((r:any)=> parseFloat(r.quantity||"0") > 0.001);
+          }
+        }
+        let avgCoupon = 0;
+        if (rows.length) {
+          let totQty=0, wCoupon=0;
+          for (const r of rows as any[]) { const q=parseFloat(r.quantity||"0"); const c=parseFloat(r.couponRate||"0"); totQty+=q; wCoupon+= q*c; }
+          avgCoupon = totQty>0 ? wCoupon/totQty : parseFloat((rows[0] as any).couponRate||"0");
+        }
+        // couponRate stored as e.g. "4.5" => 4.5% — avg coupon (not YTM)
+        const y = avgCoupon/100;
+        results.push({ assetType: type, assetKey: key, yield: y, next12: a.currentValue * y, lastDividend: 0, frequency: "coupon", couponRate: avgCoupon });
+        continue;
+      }
+      // etf/crypto/stock: last dividend * frequency / price
+      try {
+        const divs = await fetchDividendData(key);
+        if (!divs || divs.length===0) { results.push({ assetType: type, assetKey: key, yield: 0, next12: 0, lastDividend: 0, frequency: "none" }); continue; }
+        const sorted = [...divs].sort((a,b)=> b.exDate.getTime()-a.exDate.getTime());
+        const last = sorted[0];
+        const lastAmt = last.dividendPerShare;
+        // frequency by count in last 365d
+        const oneYearAgo = Date.now() - 365*24*60*60*1000;
+        const lastYearCount = sorted.filter(d=> d.exDate.getTime() >= oneYearAgo).length;
+        let freq = 1, freqLabel="annual";
+        if (lastYearCount >= 10) { freq=12; freqLabel="monthly"; }
+        else if (lastYearCount >= 4) { freq=4; freqLabel="quarterly"; }
+        else if (lastYearCount === 2) { freq=2; freqLabel="semi"; }
+        else if (lastYearCount === 1) { freq=1; freqLabel="annual"; }
+        else if (lastYearCount === 0) {
+          // fallback: infer from spacing of last two dividends
+          if (sorted.length>=2) {
+            const gap = (sorted[0].exDate.getTime()-sorted[1].exDate.getTime())/(1000*60*60*24);
+            if (gap <= 35) { freq=12; freqLabel="monthly"; }
+            else if (gap <= 95) { freq=4; freqLabel="quarterly"; }
+          }
+        }
+        const price = a.currentPrice && a.currentPrice>0 ? a.currentPrice : (a.quantity && a.quantity>0 ? a.currentValue / a.quantity : 0);
+        const annualPerShare = lastAmt * freq;
+        const y = price>0 ? annualPerShare / price : 0;
+        const next12 = annualPerShare * (a.quantity||0);
+        // fallback: if next12 0 but we have currentValue and y, use y*currentValue (covers price drift)
+        const next12Alt = y * a.currentValue;
+        results.push({ assetType: type, assetKey: key, yield: y, next12: next12>0 ? next12 : next12Alt, lastDividend: lastAmt, frequency: freqLabel, paymentsPerYear: freq });
+      } catch (e) {
+        results.push({ assetType: type, assetKey: key, yield: 0, next12: 0, lastDividend: 0, frequency: "error" });
+      }
+    }
+    return results;
+  }),
+
   getGroups: protectedProcedure.query(async ({ ctx }) => {
     const db = await getDb();
     const groups = await db.select().from(allocationGroups).where(eq(allocationGroups.userId, ctx.user.id)).orderBy(asc(allocationGroups.sortOrder), asc(allocationGroups.id));
