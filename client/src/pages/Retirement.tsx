@@ -6,13 +6,14 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, Trash2, Edit, Calculator, Wallet, ReceiptText, Target, TrendingUp, Shield, PiggyBank, HeartPulse, Landmark, AlertTriangle, CheckCircle2, Calendar as CalendarIcon, Briefcase } from "lucide-react";
+import { Plus, Trash2, Edit, Calculator, Wallet, ReceiptText, Target, TrendingUp, Shield, PiggyBank, HeartPulse, Landmark, AlertTriangle, CheckCircle2, Calendar as CalendarIcon, Briefcase, ChevronRight } from "lucide-react";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as ChartTooltip, ResponsiveContainer, Legend, ReferenceLine } from "recharts";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
 const Retirement: React.FC = () => {
   const utils = trpc.useUtils();
@@ -724,13 +725,24 @@ const Retirement: React.FC = () => {
                 </TableHeader>
                 <TableBody>
                   {(() => {
-                    // Use the same base simulation that drives the Stress Test so 2059 ≈ 1.7M (base exhausts 2072), not the duplicate that grew to 6.5M
-                    const rows = (retirementPlan.baseEvolution as any[]).filter((e:any)=> e.isRetired).slice(0, 35);
-                    return rows.map((e:any)=> {
+                    // Derive buckets from the same base total that drives Stress Tests so 2059 matches ~1.7M and buckets sum to total
+                    const base = (retirementPlan.baseEvolution as any[]).filter((e:any)=> e.isRetired).slice(0, 35);
+                    const baseInfl = parseFloat(retirementInflationRate)/100 || 0;
+                    return base.map((e:any, idx:number)=> {
                       const delta = (e.earnings||0) - (e.netWithdrawal||0);
-                      // buckets after growth (end of year) — same as Stress Test; total = endBalance
-                      const b1 = e.b1 ?? 0, b2 = e.b2 ?? 0, b3 = e.b3 ?? 0;
-                      const total = e.bucketTotal ?? e.endBalance;
+                      const total = e.endBalance;
+                      // target buckets for this year (after paycheck, before refill) — 2y / 3y / rest
+                      const exp = retirementPlan.projectedExpensesAtStart * Math.pow(1+baseInfl, idx);
+                      const t1 = exp * retirementPlan.bucket1Years;
+                      const t2 = exp * retirementPlan.bucket2Years;
+                      // allocate total (end of year) to buckets in order B1→B2→B3 for display
+                      let b1 = Math.min(total, t1);
+                      let rem = total - b1;
+                      let b2 = Math.min(rem, t2);
+                      rem -= b2;
+                      let b3 = Math.max(0, rem);
+                      // if total is 0, keep 0
+                      if (total <= 0.01) { b1=0; b2=0; b3=0; }
                       const depletes = total <= 0.01;
                       return (
                         <TableRow key={e.year} className={depletes ? "bg-red-50" : ""}>
@@ -739,9 +751,9 @@ const Retirement: React.FC = () => {
                           <TableCell className="text-right font-mono text-[11px] font-bold text-red-600">-{formatCurrency(e.netWithdrawal||0)}</TableCell>
                           <TableCell className={`text-right font-mono text-[11px] ${(e.earnings||0)>=(e.netWithdrawal||0) ? "text-emerald-600" : "text-slate-500"}`}>+{formatCurrency(e.earnings||0)}</TableCell>
                           <TableCell className={`text-right font-mono text-[11px] font-bold ${delta>=0 ? "text-emerald-600" : "text-red-600"}`}>{delta>=0 ? "+" : ""}{formatCurrency(delta)}</TableCell>
-                          <TableCell className="text-right font-mono text-[11px]">{b1!=null ? formatCurrency(b1) : "—"}</TableCell>
-                          <TableCell className="text-right font-mono text-[11px]">{b2!=null ? formatCurrency(b2) : "—"}</TableCell>
-                          <TableCell className="text-right font-mono text-[11px]">{b3!=null ? formatCurrency(b3) : "—"}</TableCell>
+                          <TableCell className="text-right font-mono text-[11px]">{formatCurrency(b1)}</TableCell>
+                          <TableCell className="text-right font-mono text-[11px]">{formatCurrency(b2)}</TableCell>
+                          <TableCell className="text-right font-mono text-[11px]">{formatCurrency(b3)}</TableCell>
                           <TableCell className="text-right font-mono text-[11px] font-bold">{formatCurrency(total)}</TableCell>
                         </TableRow>
                       );
@@ -882,11 +894,12 @@ const Retirement: React.FC = () => {
                       <div className="p-2 rounded bg-slate-50 border"><div className="text-[10px] uppercase font-bold text-slate-500">Raises (+10%)</div><div className="text-lg font-black">{g.gkRaises}</div><div className="text-[10px] text-slate-500">prosperity</div></div>
                       <div className="p-2 rounded bg-slate-50 border"><div className="text-[10px] uppercase font-bold text-slate-500">Infl. skips</div><div className="text-lg font-black">{g.gkInflSkips}</div><div className="text-[10px] text-slate-500">after loss</div></div>
                     </div>
-                    <div className="mt-3 rounded-lg border overflow-hidden">
-                      <div className="px-3 py-2 bg-slate-50 border-b flex items-center justify-between">
-                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-600">Year-by-year GK spending (gross before SS)</span>
+                    <Collapsible defaultOpen={false} className="mt-3 rounded-lg border overflow-hidden">
+                      <CollapsibleTrigger className="w-full px-3 py-2 bg-slate-50 border-b flex items-center justify-between hover:bg-slate-100 transition-colors">
+                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-600 flex items-center gap-1"><ChevronRight className="w-3.5 h-3.5 transition-transform data-[state=open]:rotate-90" /> Year-by-year GK spending (gross before SS)</span>
                         <span className="text-[10px] font-bold text-slate-500">Base {formatCurrency(retirementPlan.projectedExpensesAtStart)}/y → GK as below</span>
-                      </div>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent>
                       <div className="max-h-[220px] overflow-auto">
                         <table className="w-full text-[11px]">
                           <thead className="sticky top-0 bg-white border-b"><tr className="text-[10px] font-bold uppercase text-slate-500"><th className="text-left px-3 py-1.5">Year</th><th className="text-left px-3 py-1.5">Age</th><th className="text-right px-3 py-1.5">GK gross</th><th className="text-right px-3 py-1.5">Base gross</th><th className="text-left px-3 py-1.5">Action</th></tr></thead>
@@ -912,7 +925,8 @@ const Retirement: React.FC = () => {
                         </table>
                       </div>
                       <div className="px-3 py-1.5 bg-slate-50 border-t text-[10px] text-slate-500">Negative years are portfolio-rate &gt;120% cuts; prosperity &lt;80% raises. Blank = just inflated base.</div>
-                    </div>
+                      </CollapsibleContent>
+                    </Collapsible>
                     {!baseOk && gkOk && <div className="text-[11px] mt-2 p-2 rounded bg-emerald-50 border border-emerald-200 text-emerald-800">↳ GK saves this stress — base depletes at {g.baseDepletionAge}y but guardrails (cuts/raises + inflation skip) keep it to {lifeExpectancy}y.</div>}
                     {baseOk && gkOk && <div className="text-[10px] mt-2 text-slate-500">Base already survives; GK would add {g.gkCuts} cuts / {g.gkRaises} raises as volatility buffer.</div>}
                     {!gkOk && <div className="text-[11px] mt-2 p-2 rounded bg-amber-50 border border-amber-200 text-amber-800">GK still depletes — consider lower initial rate ({(g.initialRate*100).toFixed(2)}% → {(g.gkLower*100).toFixed(2)}% target) or extra buffer/delay.</div>}

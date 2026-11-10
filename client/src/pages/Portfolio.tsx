@@ -3053,7 +3053,15 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                 />
               </DialogContent>
             </Dialog>
-          )}        </div>
+          )}
+          <PortfolioGroupAllocation
+            summary={summary}
+            holdings={holdings}
+            bondHoldings={bondHoldings}
+            accounts={accounts}
+            selectedPortfolioId={selectedPortfolioId}
+          />
+        </div>
       ) : activeSubTab === "activities" ? (
         <ErrorBoundary fallback={<div className="p-6 text-center text-slate-400">Failed to load Activities</div>}>
           <Activities selectedPortfolioId={selectedPortfolioId} selectedAccountType={selectedAccountType} />
@@ -3160,6 +3168,14 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
               ))}
             </div>
           )}
+
+          <PortfolioGroupAllocation
+            summary={summary}
+            holdings={holdings}
+            bondHoldings={bondHoldings}
+            accounts={accounts}
+            selectedPortfolioId={selectedPortfolioId}
+          />
 
           {/* Rebalance Plan — drift vs target */}
           {summary && (summary as any).holdingsAllocation && (
@@ -4682,5 +4698,157 @@ function CashHistoryTable({
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+function PortfolioGroupAllocation({ summary, holdings, bondHoldings, accounts, selectedPortfolioId }: any) {
+  const { data: groups } = trpc.group.getGroups.useQuery();
+  const [expandedGroups, setExpandedGroups] = useState<Set<number>>(new Set());
+  const toggleGroup = (id:number) => { const s=new Set(expandedGroups); if(s.has(id)) s.delete(id); else s.add(id); setExpandedGroups(s); };
+  const portfolioTotal = parseFloat(summary?.totalValue||"0") || 1;
+
+  // Build asset universe for this portfolio: aggregated cash + holdings + bonds
+  const cashValue = (accounts||[]).reduce((s:number,a:any)=> s+parseFloat(a.cashValue||"0"), 0);
+  const cashAssets = cashValue>0.01 ? [{ assetType:"cash" as const, assetKey:"CASH", symbol:"CASH", name:"Cash", quantity:1, currentValue: cashValue, displayQty:"—" }] : [];
+  const holdingAssets = (holdings||[]).map((h:any)=> {
+    const sym=(h.symbol||"").toUpperCase();
+    const qty=parseFloat(h.quantity||"0");
+    const price=parseFloat(h.currentPrice||"0");
+    return { assetType: (["BTC","ETH","BTC-USD","ETH-USD"].includes(sym) ? "crypto" : "etf") as const, assetKey: sym, symbol:h.symbol, name:h.name||h.symbol, quantity:qty, currentValue: qty*price, displayQty: qty.toFixed(3) };
+  });
+  const bondAssets = (bondHoldings||[]).map((b:any)=> {
+    const sym=(b.symbol||"").toUpperCase();
+    const qty=parseFloat(b.quantity||"0");
+    const price=parseFloat(b.currentPrice||"0");
+    // price per 100 par, so value = qty * price *10 (1000/100)
+    const val = qty * price * 10;
+    return { assetType:"bond" as const, assetKey:sym, symbol:b.symbol, name:b.name||b.symbol, quantity:qty, currentValue: val, displayQty: qty.toString() };
+  });
+  const allAssets = [...cashAssets, ...holdingAssets, ...bondAssets];
+  const assetMap = useMemo(()=>{ const m=new Map<string,any>(); for(const a of allAssets) m.set(`${a.assetType}:${a.assetKey}`,a); // also map BONDS aggregated key if needed
+    // for BONDS aggregated display, map BONDS to sum of bonds
+    const bondsTotal = bondAssets.reduce((s,a)=>s+a.currentValue,0);
+    if (bondsTotal>0.01 && !m.has("bond:BONDS")) m.set("bond:BONDS", { assetType:"bond", assetKey:"BONDS", symbol:"BONDS", name:"Bonds", quantity: bondAssets.reduce((s,a)=>s+a.quantity,0), currentValue: bondsTotal, displayQty: "-" });
+    return m; }, [allAssets]);
+
+  const yieldAssets = useMemo(()=> allAssets.map(a=> ({
+    assetType:a.assetType, assetKey:a.assetKey, currentValue:a.currentValue, quantity:a.assetType==="cash"?1:a.quantity, currentPrice:a.assetType==="cash"?1: (a.currentValue/(a.quantity||1))
+  })), [allAssets]);
+  const { data: yields } = trpc.group.getYields.useQuery({ assets: yieldAssets }, { enabled: yieldAssets.length>0 });
+  const yieldMap = useMemo(()=>{ const m=new Map<string,any>(); for(const y of (yields||[]) as any[]) m.set(`${y.assetType}:${y.assetKey}`,y); return m; }, [yields]);
+
+  const overallValue = portfolioTotal;
+  const groupRows = useMemo(()=> {
+    return (groups||[]).map((g:any)=> {
+      const assets = (g.assets||[]).map((ga:any)=> {
+        // for cash CASH maps to portfolio cash; for BONDS maps to aggregated bonds
+        if (ga.assetType==="cash" && ga.assetKey==="CASH") return assetMap.get("cash:CASH");
+        if (ga.assetType==="bond" && ga.assetKey==="BONDS") {
+          const tot=bondAssets.reduce((s,a)=>s+a.currentValue,0);
+          if (tot<=0.01) return null;
+          return { assetType:"bond", assetKey:"BONDS", symbol:"BONDS", name:"Bonds", quantity: bondAssets.reduce((s,a)=>s+a.quantity,0), currentValue: tot, displayQty:"-" };
+        }
+        return assetMap.get(`${ga.assetType}:${ga.assetKey}`);
+      }).filter(Boolean);
+      const groupValue = assets.reduce((s:number,a:any)=> s+(a?.currentValue||0),0);
+      const alloc = overallValue>0 ? (groupValue/overallValue*100) : 0;
+      const groupNext12 = assets.reduce((s:number,a:any)=> { const y=yieldMap.get(`${a.assetType}:${a.assetKey}`); // for BONDS aggregated, yieldMap key BONDS
+        // fallback to per-CUSIP yields if BONDS not in map
+        if (!y && a.assetType==="bond" && a.assetKey==="BONDS") {
+          let sum=0; for(const b of bondAssets){ const yy=yieldMap.get(`bond:${b.assetKey}`); sum+= yy?.next12||0; } return s+sum;
+        }
+        return s + (y?.next12||0); },0);
+      const groupYield = groupValue>0 ? groupNext12/groupValue : 0;
+      return { group:g, assets, groupValue, alloc, groupNext12, groupYield };
+    }).filter((r:any)=> r.groupValue>0.01);
+  }, [groups, assetMap, overallValue, yieldMap]);
+
+  const totalNext12 = useMemo(()=> {
+    let s=0; for(const a of allAssets){ const y=yieldMap.get(`${a.assetType}:${a.assetKey}`); if(y) s+= y.next12;
+      else if(a.assetType==="bond"){ // BONDS aggregated fallback
+        for(const b of bondAssets){ const yy=yieldMap.get(`bond:${b.assetKey}`); if(yy) s+=0; } // already counted via allAssets individual
+      }
+    }
+    // for portfolio, allAssets already includes individual bonds, so totalNext12 from yields covers all
+    return groupRows.reduce((sum,r)=> sum + r.groupNext12, 0) // only assigned groups, but for avg we want assigned only? Show assigned avg
+      || (()=>{
+        let t=0; for(const a of allAssets){ const y=yieldMap.get(`${a.assetType}:${a.assetKey}`); t+= y?.next12||0; } return t;
+      })();
+  }, [allAssets, yieldMap, groupRows]);
+  const assignedTotal = groupRows.reduce((s,r)=>s+r.groupValue,0);
+
+  // Always render so user sees the table even with 0 groups (dashboard creates groups)
+  const hasGroups = groups && groups.length>0;
+
+  return (
+    <Card className="bg-white shadow-sm border border-border overflow-hidden">
+      <div className="px-6 py-4 border-b border-border bg-slate-50/50 flex items-center gap-2">
+        <PieChart className="w-5 h-5 text-primary" />
+        <h3 className="text-sm font-bold text-slate-800 uppercase tracking-widest">Group Allocation — This Portfolio</h3>
+        <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">{hasGroups ? `${groupRows.length} groups • ` : ""}{formatCurrency(overallValue)} total</span>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead><tr className="bg-slate-50 border-b">
+            <th className="w-8"></th>
+            <th className="text-left py-3 px-3 text-[10px] font-bold uppercase text-slate-500">Group</th>
+            <th className="text-right py-3 px-3 text-[10px] font-bold uppercase text-slate-500">Current Value</th>
+            <th className="text-right py-3 px-3 text-[10px] font-bold uppercase text-slate-500">Allocation</th>
+            <th className="text-right py-3 px-3 text-[10px] font-bold uppercase text-slate-500">Yield</th>
+            <th className="text-right py-3 px-3 text-[10px] font-bold uppercase text-slate-500">Next 12M</th>
+          </tr></thead>
+          <tbody>
+            {!hasGroups && <tr><td colSpan={6} className="py-8 text-center text-slate-400 italic text-sm">No groups yet — create groups in the dashboard's Group Allocation table.</td></tr>}
+            {hasGroups && groupRows.length===0 && <tr><td colSpan={6} className="py-8 text-center text-slate-400 italic text-sm">No allocations for this portfolio — assign holdings to groups from the dashboard.</td></tr>}
+            {groupRows.map((row:any)=> {
+              const isExp = expandedGroups.has(row.group.id);
+              return (
+                <React.Fragment key={row.group.id}>
+                  <tr className="border-b hover:bg-slate-50/50">
+                    <td className="py-3 px-2 text-center"><button onClick={()=>toggleGroup(row.group.id)} className="p-1 hover:bg-slate-100 rounded">{isExp ? <ChevronDown className="w-4 h-4 text-slate-400" /> : <ChevronRight className="w-4 h-4 text-slate-400" />}</button></td>
+                    <td className="py-3 px-3 font-bold text-slate-800">{row.group.name}</td>
+                    <td className="py-3 px-3 text-right font-mono font-bold">{formatCurrency(row.groupValue)}</td>
+                    <td className="py-3 px-3 text-right font-mono text-xs font-bold">{row.alloc.toFixed(2)}%</td>
+                    <td className="py-3 px-3 text-right font-mono text-xs font-bold text-emerald-700">{(row.groupYield*100).toFixed(2)}%</td>
+                    <td className="py-3 px-3 text-right font-mono text-xs font-bold">{formatCurrency(row.groupNext12)}</td>
+                  </tr>
+                  {isExp && (
+                    <tr className="bg-slate-50/30"><td colSpan={6} className="p-0">
+                      <div className="px-6 py-3">
+                        <table className="w-full text-xs">
+                          <thead><tr className="border-b text-[10px] font-bold uppercase text-slate-400"><th className="text-left py-2 px-2">Investment</th><th className="text-right py-2 px-2">Qty</th><th className="text-right py-2 px-2">Current Value</th><th className="text-right py-2 px-2">Overall %</th><th className="text-right py-2 px-2">Within Group %</th><th className="text-right py-2 px-2 text-emerald-600">Yield</th><th className="text-right py-2 px-2 text-emerald-600">Next 12M</th></tr></thead>
+                          <tbody>
+                            {row.assets.map((a:any)=> {
+                              const overallPct = overallValue>0 ? (a.currentValue/overallValue*100) : 0;
+                              const withinPct = row.groupValue>0 ? (a.currentValue/row.groupValue*100) : 0;
+                              const y=yieldMap.get(`${a.assetType}:${a.assetKey}`);
+                              // for BONDS aggregated, y is already correct; for individual bonds, use per-asset
+                              return (
+                                <tr key={`${a.assetType}:${a.assetKey}`} className="border-b last:border-0 hover:bg-white">
+                                  <td className="py-2 px-2"><div className="font-bold text-slate-700">{a.symbol}</div><div className="text-[10px] text-slate-400 truncate max-w-[160px]">{a.name}</div></td>
+                                  <td className="py-2 px-2 text-right font-mono">{a.assetType==="cash"?"—":a.displayQty}</td>
+                                  <td className="py-2 px-2 text-right font-mono font-bold">{formatCurrency(a.currentValue)}</td>
+                                  <td className="py-2 px-2 text-right font-mono">{overallPct.toFixed(2)}%</td>
+                                  <td className="py-2 px-2 text-right font-mono font-bold text-primary">{withinPct.toFixed(2)}%</td>
+                                  <td className="py-2 px-2 text-right font-mono text-emerald-700">{y ? (y.yield*100).toFixed(2)+"%" : "—"}</td>
+                                  <td className="py-2 px-2 text-right font-mono font-bold text-emerald-700">{y ? formatCurrency(y.next12) : "—"}</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </td></tr>
+                  )}
+                </React.Fragment>
+              );
+            })}
+          </tbody>
+          <tfoot className="bg-slate-900 text-white font-bold">
+            <tr><td colSpan={2} className="py-3 px-3 text-[11px] uppercase tracking-widest">Portfolio Total</td><td className="py-3 px-3 text-right font-mono">{formatCurrency(overallValue)}</td><td className="py-3 px-3 text-right">100.00%</td><td className="py-3 px-3 text-right font-mono text-emerald-300">{(assignedTotal>0 && totalNext12>0 ? (totalNext12/assignedTotal*100).toFixed(2) : (overallValue>0 ? (totalNext12/overallValue*100).toFixed(2) : "0.00"))}%</td><td className="py-3 px-3 text-right font-mono text-emerald-300">{formatCurrency(totalNext12)}</td></tr>
+          </tfoot>
+        </table>
+      </div>
+    </Card>
   );
 }
