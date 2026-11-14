@@ -1696,12 +1696,13 @@ function GroupAllocationSection({ portfolios, consolidatedHoldings, portfolioFil
             <th className="text-right py-3 px-3 text-[10px] font-bold uppercase text-slate-500">Target</th>
             <th className="text-right py-3 px-3 text-[10px] font-bold uppercase text-slate-500">Yield</th>
             <th className="text-right py-3 px-3 text-[10px] font-bold uppercase text-slate-500">Next 12M</th>
+            <th className="text-right py-3 px-3 text-[10px] font-bold uppercase text-slate-500">Avg Monthly</th>
             <th className="text-left py-3 px-3 text-[10px] font-bold uppercase text-slate-500">Recommendation</th>
             <th className="text-right py-3 px-3 text-[10px] font-bold uppercase text-slate-500">Actions</th>
           </tr></thead>
           <tbody>
             {groupRows.length===0 && (
-              <tr><td colSpan={9} className="py-10 text-center text-slate-400 text-sm italic">No groups yet — create one and assign cash / ETF / bond / crypto holdings.</td></tr>
+              <tr><td colSpan={10} className="py-10 text-center text-slate-400 text-sm italic">No groups yet — create one and assign cash / ETF / bond / crypto holdings.</td></tr>
             )}
             {groupRows.map((row)=> {
               const isExp = expandedGroups.has(row.group.id);
@@ -1717,6 +1718,7 @@ function GroupAllocationSection({ portfolios, consolidatedHoldings, portfolioFil
                     <td className="py-3 px-3 text-right font-mono text-xs">{row.target.toFixed(2)}%</td>
                     <td className="py-3 px-3 text-right font-mono text-xs font-bold text-emerald-700">{(row.groupYield*100).toFixed(2)}%<div className="text-[9px] text-slate-400 font-normal">{row.groupNext12>0 ? `${formatCurrency(row.groupNext12)}/y` : "0"}</div></td>
                     <td className="py-3 px-3 text-right font-mono text-xs font-bold">{formatCurrency(row.groupNext12)}</td>
+                    <td className="py-3 px-3 text-right font-mono text-xs font-bold text-slate-600">{formatCurrency(row.groupNext12/12)}</td>
                     <td className="py-3 px-3 text-xs">
                       {under ? <span className="px-2 py-1 rounded bg-amber-100 text-amber-800 font-bold">Buy {formatCurrency(row.buyNeeded)} to reach {row.target.toFixed(1)}%</span> : over ? <span className="px-2 py-1 rounded bg-blue-50 text-blue-700 font-bold">Over by {(row.alloc-row.target).toFixed(2)}% — consider trimming</span> : <span className="px-2 py-1 rounded bg-emerald-50 text-emerald-700 font-bold">✓ On target</span>}
                     </td>
@@ -1728,12 +1730,12 @@ function GroupAllocationSection({ portfolios, consolidatedHoldings, portfolioFil
                     </td>
                   </tr>
                   {isExp && (
-                    <tr className="bg-slate-50/30"><td colSpan={9} className="p-0">
+                    <tr className="bg-slate-50/30"><td colSpan={10} className="p-0">
                       <div className="px-8 py-3">
                         <table className="w-full text-xs">
-                          <thead><tr className="border-b text-[10px] font-bold uppercase text-slate-400"><th className="text-left py-2 px-2">Investment</th><th className="text-right py-2 px-2">Qty</th><th className="text-right py-2 px-2">Current Value</th><th className="text-right py-2 px-2">Overall %</th><th className="text-right py-2 px-2">Within Group %</th><th className="text-right py-2 px-2 text-emerald-600">Yield</th><th className="text-right py-2 px-2 text-emerald-600">Next 12M</th><th className="text-right py-2 px-2">Type</th><th className="text-right py-2 px-2">Action</th></tr></thead>
+                          <thead><tr className="border-b text-[10px] font-bold uppercase text-slate-400"><th className="text-left py-2 px-2">Investment</th><th className="text-right py-2 px-2">Qty</th><th className="text-right py-2 px-2">Current Value</th><th className="text-right py-2 px-2">Overall %</th><th className="text-right py-2 px-2">Within Group %</th><th className="text-right py-2 px-2 text-emerald-600">Yield</th><th className="text-right py-2 px-2 text-emerald-600">Next 12M</th><th className="text-right py-2 px-2 text-emerald-600">Avg Monthly</th><th className="text-right py-2 px-2">Type</th><th className="text-right py-2 px-2">Action</th></tr></thead>
                           <tbody>
-                            {row.assets.length===0 && <tr><td colSpan={9} className="py-4 text-center italic text-slate-400">No investments in this group — use Assign Investment.</td></tr>}
+                            {row.assets.length===0 && <tr><td colSpan={10} className="py-4 text-center italic text-slate-400">No investments in this group — use Assign Investment.</td></tr>}
                             {row.assets.map((a:any)=> {
                               const overallPct = overallValue>0 ? (a.currentValue/overallValue*100) : 0;
                               const withinPct = row.groupValue>0 ? (a.currentValue/row.groupValue*100) : 0;
@@ -1747,6 +1749,7 @@ function GroupAllocationSection({ portfolios, consolidatedHoldings, portfolioFil
                                   <td className="py-2 px-2 text-right font-mono font-bold text-primary">{withinPct.toFixed(2)}%</td>
                                   <td className="py-2 px-2 text-right font-mono text-emerald-700">{y ? (y.yield*100).toFixed(2)+"%" : "—"}</td>
                                   <td className="py-2 px-2 text-right font-mono font-bold text-emerald-700">{y ? formatCurrency(y.next12) : "—"}</td>
+                                  <td className="py-2 px-2 text-right font-mono text-slate-600">{y ? formatCurrency(y.next12/12) : "—"}</td>
                                   <td className="py-2 px-2 text-right"><span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-slate-100">{a.assetType}</span></td>
                                   <td className="py-2 px-2 text-right"><button className="text-[11px] font-bold text-red-600 hover:underline" onClick={()=> unassignMut.mutate({ assetType: a.assetType, assetKey: a.assetKey })}>Unassign</button></td>
                                 </tr>
@@ -1762,7 +1765,7 @@ function GroupAllocationSection({ portfolios, consolidatedHoldings, portfolioFil
             })}
           </tbody>
           <tfoot className="bg-slate-900 text-white font-bold">
-            <tr><td colSpan={2} className="py-3 px-3 text-[11px] uppercase tracking-widest">Overall Value</td><td className="py-3 px-3 text-right font-mono">{formatCurrency(overallValue)}</td><td className="py-3 px-3 text-right">100.00%</td><td className="py-3 px-3 text-right">{groupRows.reduce((s,r)=>s+r.target,0).toFixed(2)}% target</td><td className="py-3 px-3 text-right font-mono text-emerald-300">{(avgYield*100).toFixed(2)}%<div className="text-[9px] font-normal text-emerald-200">{formatCurrency(totalNext12)}/y</div></td><td className="py-3 px-3 text-right font-mono text-emerald-300">{formatCurrency(totalNext12)}</td><td className="py-3 px-3 text-left text-[11px] font-normal">{groupsTotal < overallValue - 0.01 ? <span className="text-amber-300">{formatCurrency(overallValue - groupsTotal)} unassigned</span> : <span className="text-emerald-300">Fully assigned</span>}</td><td></td></tr>
+            <tr><td colSpan={2} className="py-3 px-3 text-[11px] uppercase tracking-widest">Overall Value</td><td className="py-3 px-3 text-right font-mono">{formatCurrency(overallValue)}</td><td className="py-3 px-3 text-right">100.00%</td><td className="py-3 px-3 text-right">{groupRows.reduce((s,r)=>s+r.target,0).toFixed(2)}% target</td><td className="py-3 px-3 text-right font-mono text-emerald-300">{(avgYield*100).toFixed(2)}%<div className="text-[9px] font-normal text-emerald-200">{formatCurrency(totalNext12)}/y</div></td><td className="py-3 px-3 text-right font-mono text-emerald-300">{formatCurrency(totalNext12)}<div className="text-[9px] font-normal text-emerald-200">{formatCurrency(totalNext12/12)}/mo</div></td><td className="py-3 px-3 text-right font-mono text-emerald-300">{formatCurrency(totalNext12/12)}</td><td className="py-3 px-3 text-left text-[11px] font-normal">{groupsTotal < overallValue - 0.01 ? <span className="text-amber-300">{formatCurrency(overallValue - groupsTotal)} unassigned</span> : <span className="text-emerald-300">Fully assigned</span>}</td><td></td></tr>
           </tfoot>
         </table>
       </div>

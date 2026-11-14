@@ -4823,10 +4823,11 @@ function PortfolioGroupAllocation({ summary, holdings, bondHoldings, accounts, s
             <th className="text-right py-3 px-3 text-[10px] font-bold uppercase text-slate-500">Allocation</th>
             <th className="text-right py-3 px-3 text-[10px] font-bold uppercase text-slate-500">Yield</th>
             <th className="text-right py-3 px-3 text-[10px] font-bold uppercase text-slate-500">Next 12M</th>
+            <th className="text-right py-3 px-3 text-[10px] font-bold uppercase text-slate-500">Avg Monthly</th>
           </tr></thead>
           <tbody>
-            {!hasGroups && <tr><td colSpan={6} className="py-8 text-center text-slate-400 italic text-sm">No groups yet — create groups in the dashboard's Group Allocation table.</td></tr>}
-            {hasGroups && groupRows.length===0 && <tr><td colSpan={6} className="py-8 text-center text-slate-400 italic text-sm">No allocations for this portfolio — assign holdings to groups from the dashboard.</td></tr>}
+            {!hasGroups && <tr><td colSpan={7} className="py-8 text-center text-slate-400 italic text-sm">No groups yet — create groups in the dashboard's Group Allocation table.</td></tr>}
+            {hasGroups && groupRows.length===0 && <tr><td colSpan={7} className="py-8 text-center text-slate-400 italic text-sm">No allocations for this portfolio — assign holdings to groups from the dashboard.</td></tr>}
             {groupRows.map((row:any)=> {
               const isExp = expandedGroups.has(row.group.id);
               return (
@@ -4838,12 +4839,13 @@ function PortfolioGroupAllocation({ summary, holdings, bondHoldings, accounts, s
                     <td className="py-3 px-3 text-right font-mono text-xs font-bold">{row.alloc.toFixed(2)}%</td>
                     <td className="py-3 px-3 text-right font-mono text-xs font-bold text-emerald-700">{(row.groupYield*100).toFixed(2)}%</td>
                     <td className="py-3 px-3 text-right font-mono text-xs font-bold">{formatCurrency(row.groupNext12)}</td>
+                    <td className="py-3 px-3 text-right font-mono text-xs font-bold text-slate-600">{formatCurrency(row.groupNext12/12)}</td>
                   </tr>
                   {isExp && (
-                    <tr className="bg-slate-50/30"><td colSpan={6} className="p-0">
+                    <tr className="bg-slate-50/30"><td colSpan={7} className="p-0">
                       <div className="px-6 py-3">
                         <table className="w-full text-xs">
-                          <thead><tr className="border-b text-[10px] font-bold uppercase text-slate-400"><th className="text-left py-2 px-2">Investment</th><th className="text-right py-2 px-2">Qty</th><th className="text-right py-2 px-2">Current Value</th><th className="text-right py-2 px-2">Overall %</th><th className="text-right py-2 px-2">Within Group %</th><th className="text-right py-2 px-2 text-emerald-600">Yield</th><th className="text-right py-2 px-2 text-emerald-600">Next 12M</th></tr></thead>
+                          <thead><tr className="border-b text-[10px] font-bold uppercase text-slate-400"><th className="text-left py-2 px-2">Investment</th><th className="text-right py-2 px-2">Qty</th><th className="text-right py-2 px-2">Current Value</th><th className="text-right py-2 px-2">Overall %</th><th className="text-right py-2 px-2">Within Group %</th><th className="text-right py-2 px-2 text-emerald-600">Yield</th><th className="text-right py-2 px-2 text-emerald-600">Next 12M</th><th className="text-right py-2 px-2 text-emerald-600">Avg Monthly</th></tr></thead>
                           <tbody>
                             {row.assets.map((a:any)=> {
                               const overallPct = overallValue>0 ? (a.currentValue/overallValue*100) : 0;
@@ -4859,6 +4861,7 @@ function PortfolioGroupAllocation({ summary, holdings, bondHoldings, accounts, s
                                   <td className="py-2 px-2 text-right font-mono font-bold text-primary">{withinPct.toFixed(2)}%</td>
                                   <td className="py-2 px-2 text-right font-mono text-emerald-700">{y ? (y.yield*100).toFixed(2)+"%" : "—"}</td>
                                   <td className="py-2 px-2 text-right font-mono font-bold text-emerald-700">{y ? formatCurrency(y.next12) : "—"}</td>
+                                  <td className="py-2 px-2 text-right font-mono text-slate-600">{y ? formatCurrency(y.next12/12) : "—"}</td>
                                 </tr>
                               );
                             })}
@@ -4878,11 +4881,12 @@ function PortfolioGroupAllocation({ summary, holdings, bondHoldings, accounts, s
                 <td className="py-3 px-3 text-right font-mono text-xs font-bold text-amber-800">{overallValue>0?(unassignedValue/overallValue*100).toFixed(2):"0.00"}%</td>
                 <td className="py-3 px-3 text-right font-mono text-xs font-bold text-emerald-700">{(unassignedYield*100).toFixed(2)}%</td>
                 <td className="py-3 px-3 text-right font-mono text-xs font-bold text-slate-700">{formatCurrency(unassignedNext12)}</td>
+                <td className="py-3 px-3 text-right font-mono text-xs font-bold text-slate-600">{formatCurrency(unassignedNext12/12)}</td>
               </tr>
             )}
           </tbody>
           <tfoot className="bg-slate-900 text-white font-bold">
-            <tr><td colSpan={2} className="py-3 px-3 text-[11px] uppercase tracking-widest">Portfolio Total</td><td className="py-3 px-3 text-right font-mono">{formatCurrency(overallValue)}</td><td className="py-3 px-3 text-right">100.00%</td><td className="py-3 px-3 text-right font-mono text-emerald-300">{overallValue>0 ? (totalNext12/overallValue*100).toFixed(2) : "0.00"}%</td><td className="py-3 px-3 text-right font-mono text-emerald-300">{formatCurrency(totalNext12)}</td></tr>
+            <tr><td colSpan={2} className="py-3 px-3 text-[11px] uppercase tracking-widest">Portfolio Total</td><td className="py-3 px-3 text-right font-mono">{formatCurrency(overallValue)}</td><td className="py-3 px-3 text-right">100.00%</td><td className="py-3 px-3 text-right font-mono text-emerald-300">{overallValue>0 ? (totalNext12/overallValue*100).toFixed(2) : "0.00"}%</td><td className="py-3 px-3 text-right font-mono text-emerald-300">{formatCurrency(totalNext12)}<div className="text-[9px] font-normal text-emerald-200">{formatCurrency(totalNext12/12)}/mo</div></td><td className="py-3 px-3 text-right font-mono text-emerald-300">{formatCurrency(totalNext12/12)}</td></tr>
           </tfoot>
         </table>
       </div>
