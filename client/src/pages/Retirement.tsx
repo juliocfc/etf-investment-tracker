@@ -283,8 +283,12 @@ const Retirement: React.FC = () => {
         // for crash recovery window, startBal should be bucket sum before withdrawal
         const effectiveStart = useBuckets && isFirst && opts.crashPct>0 ? b1 + b2 + b3 + crashApplied : startBal;
         let netWithdrawal = 0;
+        let effWithdrawalForExpenses = 0;
         if (isRetired) {
-          const target = isFirst ? initialWithdrawal : withdrawal;
+          const baseTarget = isFirst ? initialWithdrawal : withdrawal;
+          const medicareFactor = curAge >= medicareAge ? 0.95 : 1;
+          const target = baseTarget * medicareFactor;
+          effWithdrawalForExpenses = target;
           let gross = target - yearSS;
           if (gross<0) gross=0;
           if (isFirst) gross *= remainingMonthsFactor;
@@ -335,7 +339,8 @@ const Retirement: React.FC = () => {
         const isPenalty = isRetired && curAge < penaltyFreeAge;
         const isMedicare = curAge >= medicareAge;
         const isSS = curAge >= ssStartAge && isRetired;
-        evolution.push({ year: simYear, age: curAge, startBalance: startBal, netWithdrawal, yearSS, earnings, endBalance: endBal, isRetired, crashApplied, yrReturn, yrInflation, isPenalty, isMedicare, isSS, expenses: isRetired ? (isFirst? initialWithdrawal*remainingMonthsFactor : withdrawal) : annualExpenses * Math.pow(1+inflationRate, y), b1: useBuckets ? b1 : null, b2: useBuckets ? b2 : null, b3: useBuckets ? b3 : null, bucketTotal: useBuckets ? (b1+b2+b3) : null });
+        const expGross = isRetired ? (isFirst? effWithdrawalForExpenses*remainingMonthsFactor : effWithdrawalForExpenses) : annualExpenses * Math.pow(1+inflationRate, y) * (curAge >= medicareAge ? 0.95 : 1);
+        evolution.push({ year: simYear, age: curAge, startBalance: startBal, netWithdrawal, yearSS, earnings, endBalance: endBal, isRetired, crashApplied, yrReturn, yrInflation, isPenalty, isMedicare, isSS, expenses: expGross, b1: useBuckets ? b1 : null, b2: useBuckets ? b2 : null, b3: useBuckets ? b3 : null, bucketTotal: useBuckets ? (b1+b2+b3) : null });
         balance = endBal;
         if (isRetired) {
           if (isFirst) withdrawal = initialWithdrawal * (1+yrInflation);
@@ -347,6 +352,110 @@ const Retirement: React.FC = () => {
       const targetLE = parseInt(lifeExpectancy)||85;
       const success = depletionYear==null || (depletionAge!=null && depletionAge >= targetLE);
       return { evolution, depletionYear, depletionAge, success, endingBalance: evolution[evolution.length-1]?.endBalance || 0 };
+    }
+
+    // Helper for adjusted Base: simulate with custom initial withdrawal (for target duration)
+    function simulateWithInitial(customInitial: number, opts: any) {
+      // clone of simulateScenario but with custom initialWithdrawal = customInitial
+      let balance = currentPortfolioValue;
+      let b1 = accountBreakdown.cashTaxable * (projectedPortfolioAtStart / Math.max(1, totalPortfolioValue)) * 0 + ((accountBreakdown as any).cashBrokerage ?? accountBreakdown.cashTaxable) * (projectedPortfolioAtStart / Math.max(1, totalPortfolioValue));
+      // actually reuse same bucket init as simulateScenario
+      b1 = ((accountBreakdown as any).cashBrokerage ?? accountBreakdown.cashTaxable) * (projectedPortfolioAtStart / Math.max(1, totalPortfolioValue));
+      let b2Bonds = accountBreakdown.fixedIncome * (projectedPortfolioAtStart / Math.max(1, totalPortfolioValue));
+      let b2Income = etfBucketSplit.income * (projectedPortfolioAtStart / Math.max(1, totalPortfolioValue));
+      let b2 = b2Bonds + b2Income;
+      let b3 = (etfBucketSplit.growth + accountBreakdown.cashRetirement) * (projectedPortfolioAtStart / Math.max(1, totalPortfolioValue));
+      if (b3 > projectedPortfolioAtStart * 0.5) { const ex = b3 - projectedPortfolioAtStart * 0.5; b3 = projectedPortfolioAtStart * 0.5; b2Bonds += ex; b2 = b2Bonds + b2Income; }
+      const useBuckets = opts.crashPct>0;
+      let withdrawal = customInitial;
+      let depletionYear: any=null, depletionAge: any=null;
+      const evolution:any[]=[];
+      for (let y=0; y<=yearsToSimulate; y++) {
+        const simYear = currentYear + y;
+        const curAge = ageToday + y;
+        const isRetired = simYear >= retirementYear;
+        const isFirst = simYear === retirementYear;
+        let yearSS = 0;
+        if (isRetired && curAge >= ssStartAge) { yearSS = baseSS * Math.pow(1+inflationRate, y); if (isFirst) yearSS *= remainingMonthsFactor; }
+        let yrReturn = returnRate;
+        let yrInflation = inflationRate;
+        if (isRetired) {
+          if (opts.highInflationYears>0 && y - yearsUntilRetirement < opts.highInflationYears && y>=yearsUntilRetirement) yrInflation = opts.highInflationRate;
+          if (opts.lowReturnYears>0 && y - yearsUntilRetirement < opts.lowReturnYears && y>=yearsUntilRetirement) yrReturn = opts.lowReturnRate;
+        }
+        let crashApplied = 0;
+        if (isFirst && opts.crashPct>0) {
+          const crashLoss = balance * equityPct * opts.crashPct;
+          balance = Math.max(0, balance - crashLoss);
+          b2Income = Math.max(0, b2Income * (1 - opts.crashPct));
+          b2 = b2Bonds + b2Income;
+          b3 = Math.max(0, b3 * (1 - opts.crashPct));
+          crashApplied = crashLoss;
+        }
+        const startBal = useBuckets && y - yearsUntilRetirement >=0 && y - yearsUntilRetirement < 3 && isRetired ? (b1 + b2 + b3 + (isFirst ? crashApplied : 0)) : balance;
+        const effectiveStart = useBuckets && isFirst && opts.crashPct>0 ? b1 + b2 + b3 + crashApplied : startBal;
+        let netWithdrawal = 0;
+        let effCustomForExpenses = 0;
+        if (isRetired) {
+          const baseTarget = isFirst ? customInitial : withdrawal;
+          const medicareFactor = curAge >= medicareAge ? 0.95 : 1;
+          const target = baseTarget * medicareFactor;
+          effCustomForExpenses = target;
+          let gross = target - yearSS;
+          if (gross<0) gross=0;
+          if (isFirst) gross *= remainingMonthsFactor;
+          netWithdrawal = Math.min(balance, gross);
+          if (useBuckets && y - yearsUntilRetirement >=0 && y - yearsUntilRetirement < 3) {
+            let remaining = netWithdrawal;
+            const takeB1 = Math.min(b1, remaining); b1 -= takeB1; remaining -= takeB1;
+            const takeB2 = Math.min(b2, remaining); b2 -= takeB2; remaining -= takeB2;
+            const takeB3 = Math.min(b3, remaining); b3 -= takeB3; remaining -= takeB3;
+          }
+        }
+        const isCurrentYear = y === 0;
+        let earnings = 0;
+        const afterWithdrawalBal = balance - netWithdrawal;
+        if (!isCurrentYear) {
+          if (useBuckets && y - yearsUntilRetirement >=0 && y - yearsUntilRetirement < 3) {
+            const yearsAfterCrash = y - yearsUntilRetirement;
+            let b3RetBase = yrReturn;
+            if (yearsAfterCrash === 1) b3RetBase = 0.18 + yrReturn * 0.3;
+            else if (yearsAfterCrash === 2) b3RetBase = 0.12 + yrReturn * 0.3;
+            const b1Ret = 0.01, b2BondsRet = 0.025, b2IncomeRet = yrReturn, b3Ret = b3RetBase;
+            const bucketEarnings = b1*b1Ret + b2Bonds*b2BondsRet + b2Income*b2IncomeRet + b3*b3Ret;
+            b1 = b1 * (1 + b1Ret);
+            b2Bonds = b2Bonds * (1 + b2BondsRet);
+            b2Income = b2Income * (1 + b2IncomeRet);
+            b2 = b2Bonds + b2Income;
+            b3 = b3 * (1 + b3Ret);
+            earnings = bucketEarnings;
+          } else {
+            earnings = afterWithdrawalBal * yrReturn;
+            if (useBuckets && b1+b2+b3>0) {
+              const totalB = b1+b2+b3;
+              const totalAfter = afterWithdrawalBal + earnings;
+              const scaleB = totalB>0 ? totalAfter / totalB : 1;
+              b1 *= scaleB; b2 *= scaleB; b3 *= scaleB;
+            }
+          }
+        } else { earnings = 0; }
+        const endBal = useBuckets && y - yearsUntilRetirement >=0 && y - yearsUntilRetirement < 3 && !isCurrentYear ? b1 + b2 + b3 : afterWithdrawalBal + earnings;
+        const effectiveStartBal = useBuckets && y - yearsUntilRetirement >=0 && y - yearsUntilRetirement < 3 ? effectiveStart : startBal;
+        const isPenalty = isRetired && curAge < penaltyFreeAge;
+        const isMedicare = curAge >= medicareAge;
+        const isSS = curAge >= ssStartAge && isRetired;
+        const expGross2 = isRetired ? (isFirst? effCustomForExpenses*remainingMonthsFactor : effCustomForExpenses) : annualExpenses * Math.pow(1+inflationRate, y) * (curAge >= medicareAge ? 0.95 : 1);
+        evolution.push({ year: simYear, age: curAge, startBalance: effectiveStartBal, netWithdrawal, yearSS, earnings, endBalance: endBal, isRetired, crashApplied, yrReturn, yrInflation, isPenalty, isMedicare, isSS, expenses: expGross2, b1: useBuckets ? b1 : null, b2: useBuckets ? b2 : null, b3: useBuckets ? b3 : null, bucketTotal: useBuckets ? (b1+b2+b3) : null });
+        balance = endBal;
+        if (isRetired) {
+          if (isFirst) withdrawal = customInitial * (1+yrInflation);
+          else withdrawal = withdrawal * (1+yrInflation);
+        }
+        if (balance <=0 && isRetired && depletionYear==null) { depletionYear = simYear; depletionAge = curAge; }
+        if (balance<=0 && isRetired) break;
+      }
+      const success = depletionYear==null || (depletionAge||0) >= (parseInt(lifeExpectancy)||85);
+      return { success, depletionYear, depletionAge, evolution };
     }
 
     const scenarios = [
@@ -389,8 +498,10 @@ const Retirement: React.FC = () => {
         const capGrowth = projectedPortfolioAtStart * 0.5;
         if (gkB3 > capGrowth) { const ex = gkB3 - capGrowth; gkB3 = capGrowth; gkB2Bonds += ex; gkB2 = gkB2Bonds + gkB2Income; }
       }
-      let withdrawalForYear = projectedExpensesAtStart; // gross before SS, rule 2 base
+      // Medicare 5% expense reduction from 65 onward — apply 0.95 at or after retirement start if age>=65
+      let withdrawalForYear = projectedExpensesAtStart * (ageAtRetirement >= medicareAge ? 0.95 : 1); // gross before SS, rule 2 base
       let prevReturnNegative = false;
+      let medicareCutDone = ageAtRetirement >= medicareAge;
       let cuts=0, raises=0, inflSkips=0;
       const evolution: any[] = [];
       for (let y=0; y<=yearsToSimulate; y++) {
@@ -425,6 +536,8 @@ const Retirement: React.FC = () => {
             if (prevReturnNegative) { grossWithdrawal = withdrawalForYear; inflSkips++; }
             else { grossWithdrawal = withdrawalForYear * (1 + yrInflation); }
           }
+          // Medicare 5% step-down at 65 (once)
+          if (!medicareCutDone && curAge >= medicareAge) { grossWithdrawal *= 0.95; medicareCutDone = true; if (!prevReturnNegative) { /* count as adjustment not infl skip */ } }
           // Rebalance note: withdrawal taken proportionally (portfolio management rule 1)
           // Guardrails 3 & 4: compare current withdrawal rate vs initial
           const startBalForRate = bal; // portfolio before withdrawal
@@ -434,7 +547,7 @@ const Retirement: React.FC = () => {
           if (tentativeRate > gkUpper + 1e-9) { adjusted = adjusted * 0.9; cuts++; action = "-10% cap-preservation"; }
           else if (tentativeRate < gkLower - 1e-9 && tentativeRate>0) { adjusted = adjusted * 1.1; raises++; action = "+10% prosperity"; }
           grossWithdrawal = adjusted;
-          // Carry for next year's inflation base
+          // Carry for next year's inflation base (already includes Medicare cut)
           withdrawalForYear = grossWithdrawal;
           rate = startBalForRate>0 ? Math.max(0, grossWithdrawal - yearSS)/startBalForRate : 0;
           let grossNet = grossWithdrawal - yearSS; if (grossNet<0) grossNet=0;
@@ -558,13 +671,36 @@ const Retirement: React.FC = () => {
       }
     }
 
+    // Adjusted Base: max sustainable initial to last exactly to lifeExpectancy
+    const baseScenario = scenarios.find((s:any)=> s.key==="base");
+    const targetLE2 = parseInt(lifeExpectancy)||85;
+    let adjustedInitial = projectedExpensesAtStart;
+    let adjustedBaseResult: any = baseScenario?.result;
+    if (baseScenario) {
+      if (!baseScenario.result.success) {
+        // base depletes early — binary search lower withdrawal to reach target
+        let low=0, high=projectedExpensesAtStart;
+        for (let iter=0; iter<22; iter++) { const mid=(low+high)/2; const r=simulateWithInitial(mid, baseScenario.opts); if (r.success) low=mid; else high=mid; }
+        adjustedInitial = low;
+        adjustedBaseResult = simulateWithInitial(adjustedInitial, baseScenario.opts);
+      } else {
+        // base already survives — find the *maximum* that still survives (raise to use more)
+        let low=projectedExpensesAtStart, high=projectedExpensesAtStart*1.8;
+        for (let iter=0; iter<22; iter++) { const mid=(low+high)/2; const r=simulateWithInitial(mid, baseScenario.opts); if (r.success) low=mid; else high=mid; }
+        adjustedInitial = low;
+        adjustedBaseResult = simulateWithInitial(adjustedInitial, baseScenario.opts);
+      }
+    }
+    const adjustedRate = projectedPortfolioAtStart>0 ? adjustedInitial / projectedPortfolioAtStart : 0;
+
     return {
       annualExpenses, projectedPortfolioAtStart, projectedExpensesAtStart, effectiveRate, initialWithdrawal,
       ageToday, ageAtRetirement, yearsUntilRetirement, fractionYearsToRet, remainingMonthsFactor, baseSS, currentYear, retirementYear,
       penaltyFreeAge, medicareAge, ssStartAge, bridgeToPenFree, bridgeToSS, bridgeToMedicare,
       bucket1Need, bucket2Need, bucket3Need, actualBucket1, actualBucket2, actualBucket3, etfIncomeUSD, etfGrowthUSD, bridgeCoverageYears, bridgeYearsCoveredGrowth, bridgeShortfallAtRet, bridgeSuccessWithGrowth, taxableAtStart, needBridge, taxableBridge,
       bucket1Years, bucket2Years,
-      scenarios, chartData, baseEvolution: base.result.evolution, equityPct, guardrails
+      scenarios, chartData, baseEvolution: base.result.evolution, adjustedBaseEvolution: adjustedBaseResult?.evolution || base.result.evolution, adjustedInitial, adjustedRate,
+      equityPct, guardrails
     };
   }, [totals.amount, totalPortfolioValue, retirementReturnRate, retirementInflationRate, retirementStartDate, userBirthDate, ssAmount, ssAge, lifeExpectancy, accountBreakdown, equityPct, etfBucketSplit]);
 
@@ -641,7 +777,7 @@ const Retirement: React.FC = () => {
             <Card className="p-4"><div className="text-[10px] font-bold uppercase text-slate-400">Today Value</div><div className="text-xl font-black">{formatCurrency(totalPortfolioValue)}</div><div className="text-[10px] text-slate-500">{formatCurrency(accountBreakdown.taxable)} taxable • {formatCurrency(accountBreakdown.retirement)} retirement</div></Card>
             <Card className="p-4"><div className="text-[10px] font-bold uppercase text-slate-400">At Retirement ({retirementPlan.ageAtRetirement}y)</div><div className="text-xl font-black">{formatCurrency(retirementPlan.projectedPortfolioAtStart)}</div><div className="text-[10px] text-slate-500">{retirementPlan.yearsUntilRetirement.toFixed(1)}y • {retirementPlan.effectiveRate*100>6 ? "⚠️" : "✓"} {(retirementPlan.effectiveRate*100).toFixed(2)}% withdrawal</div></Card>
             <Card className="p-4"><div className="text-[10px] font-bold uppercase text-slate-400">Annual Need at Start</div><div className="text-xl font-black">{formatCurrency(retirementPlan.projectedExpensesAtStart)}</div><div className="text-[10px] text-slate-500">{formatCurrency(retirementPlan.projectedExpensesAtStart/12)}/mo inflated</div></Card>
-            <Card className={`p-4 ${retirementPlan.bridgeToPenFree<=0 ? "" : retirementPlan.bridgeSuccessWithGrowth ? "bg-emerald-50 border-emerald-300" : "bg-amber-50 border-amber-300"}`}><div className="flex items-center justify-between"><div className="text-[10px] font-bold uppercase text-slate-400">Bridge Needed</div>{retirementPlan.bridgeToPenFree>0 && (<span className={`text-[10px] font-bold px-2 py-0.5 rounded ${retirementPlan.bridgeSuccessWithGrowth ? "bg-emerald-600 text-white" : "bg-amber-500 text-white"}`}>{retirementPlan.bridgeSuccessWithGrowth ? "✓ Covered" : "⚠ Not covered"}</span>)}</div><div className="text-xl font-black">{retirementPlan.bridgeToPenFree.toFixed(1)}y</div><div className="text-[10px] text-slate-500">to 59.5 • SS {retirementPlan.bridgeToSS.toFixed(1)}y • Medicare {retirementPlan.bridgeToMedicare.toFixed(1)}y</div><div className="text-[10px] mt-1 font-medium" style={{color: retirementPlan.bridgeSuccessWithGrowth ? "#059669" : "#d97706"}}>{retirementPlan.bridgeToPenFree<=0 ? "No bridge — penalty-free" : `${formatCurrency(accountBreakdown.taxable)} brokerage now • ${formatCurrency(retirementPlan.taxableAtStart)} at retirement vs need ${formatCurrency(retirementPlan.needBridge)}`}</div></Card>
+            <Card className={`p-4 ${retirementPlan.bridgeToPenFree<=0 ? "" : retirementPlan.bridgeSuccessWithGrowth ? "bg-emerald-50 border-emerald-300" : "bg-amber-50 border-amber-300"}`}><div className="flex items-center justify-between"><div className="text-[10px] font-bold uppercase text-slate-400">Bridge Needed</div>{retirementPlan.bridgeToPenFree>0 && (<span className={`text-[10px] font-bold px-2 py-0.5 rounded ${retirementPlan.bridgeSuccessWithGrowth ? "bg-emerald-600 text-white" : "bg-amber-500 text-white"}`}>{retirementPlan.bridgeSuccessWithGrowth ? "✓ Covered" : "⚠ Not covered"}</span>)}</div><div className="text-xl font-black">{retirementPlan.bridgeToPenFree.toFixed(1)}y</div><div className="text-[10px] text-slate-500">to 59.5 • SS {retirementPlan.bridgeToSS.toFixed(1)}y • Medicare {retirementPlan.bridgeToMedicare.toFixed(1)}y</div><div className="text-[10px] mt-1 font-medium" style={{color: retirementPlan.bridgeSuccessWithGrowth ? "#059669" : "#d97706"}}>{retirementPlan.bridgeToPenFree<=0 ? "No bridge — penalty-free" : `${formatCurrency(accountBreakdown.taxable)} brokerage now • ${formatCurrency(retirementPlan.taxableAtStart)} at retirement vs need ${formatCurrency(retirementPlan.needBridge)}`}</div>{retirementPlan.bridgeToPenFree>0 && !retirementPlan.bridgeSuccessWithGrowth && (<div className="mt-2 rounded bg-white border border-amber-200 px-2 py-1.5"><div className="text-[10px] font-black uppercase tracking-widest text-amber-700">Gap: {(retirementPlan.bridgeToPenFree - retirementPlan.bridgeYearsCoveredGrowth).toFixed(1)}y missing • {formatCurrency(retirementPlan.bridgeShortfallAtRet)} shortfall at retirement</div><div className="text-[10px] text-slate-600">Covers {retirementPlan.bridgeYearsCoveredGrowth.toFixed(1)}y of {retirementPlan.bridgeToPenFree.toFixed(1)}y with {(parseFloat(retirementReturnRate)||0).toFixed(1)}% return / {(parseFloat(retirementInflationRate)||0).toFixed(1)}% inflation (SS offset included). Need additional {formatCurrency(retirementPlan.bridgeShortfallAtRet)} in taxable at retirement to fully bridge.</div></div>)}</Card>
             <Card className="p-4 bg-slate-900 text-white"><div className="text-[10px] font-bold uppercase text-slate-400">Runway (Base)</div><div className="text-xl font-black text-white">{retirementPlan.scenarios.find(s=>s.key==="base")?.result.depletionAge ? `to ${retirementPlan.scenarios.find(s=>s.key==="base")?.result.depletionAge}y` : `100+ y`}</div><div className="text-[10px] text-slate-400">{retirementPlan.scenarios.find(s=>s.key==="base")?.result.success ? "via base" : "depletes early"} • equity {(equityPct*100).toFixed(0)}%</div></Card>
           </div>
 
@@ -701,69 +837,6 @@ const Retirement: React.FC = () => {
               </CardContent>
             </Card>
           </div>
-
-          {/* Bucket Paycheck Schedule — annual */}
-          <Card className="overflow-hidden">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-xs font-black uppercase tracking-widest flex items-center gap-2"><Wallet className="w-4 h-4 text-slate-700" /> Bucket Paycheck Schedule — Once a Year</CardTitle>
-              <CardDescription className="text-[11px]">Paycheck taken from Bucket 1 (cash) → 2 (bonds+Income) → 3 (growth). Bucket 1 holds {retirementPlan.bucket1Years}y, Bucket 2 holds {retirementPlan.bucket2Years}y. At year-end Bucket 1 refilled from Bucket 2, Bucket 2 from Bucket 3 in up years.</CardDescription>
-            </CardHeader>
-            <CardContent className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-slate-50">
-                    <TableHead className="text-[10px]">Year</TableHead>
-                    <TableHead className="text-[10px]">Age</TableHead>
-                    <TableHead className="text-right text-[10px]">Paycheck<br/><span className="text-[9px] font-normal">-SS</span></TableHead>
-                    <TableHead className="text-right text-[10px]">Growth<br/><span className="text-[9px] font-normal">year-end</span></TableHead>
-                    <TableHead className="text-right text-[10px]">Δ Total<br/><span className="text-[9px] font-normal">growth - paycheck</span></TableHead>
-                    <TableHead className="text-right text-[10px]">B1 cash<br/><span className="text-[9px] font-normal">after paycheck</span></TableHead>
-                    <TableHead className="text-right text-[10px]">B2 income<br/><span className="text-[9px] font-normal">after paycheck</span></TableHead>
-                    <TableHead className="text-right text-[10px]">B3 growth<br/><span className="text-[9px] font-normal">after paycheck</span></TableHead>
-                    <TableHead className="text-right text-[10px]">Total<br/><span className="text-[9px] font-normal">after paycheck</span></TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {(() => {
-                    // Derive buckets from the same base total that drives Stress Tests so 2059 matches ~1.7M and buckets sum to total
-                    const base = (retirementPlan.baseEvolution as any[]).filter((e:any)=> e.isRetired).slice(0, 35);
-                    const baseInfl = parseFloat(retirementInflationRate)/100 || 0;
-                    return base.map((e:any, idx:number)=> {
-                      const delta = (e.earnings||0) - (e.netWithdrawal||0);
-                      const total = e.endBalance;
-                      // target buckets for this year (after paycheck, before refill) — 2y / 3y / rest
-                      const exp = retirementPlan.projectedExpensesAtStart * Math.pow(1+baseInfl, idx);
-                      const t1 = exp * retirementPlan.bucket1Years;
-                      const t2 = exp * retirementPlan.bucket2Years;
-                      // allocate total (end of year) to buckets in order B1→B2→B3 for display
-                      let b1 = Math.min(total, t1);
-                      let rem = total - b1;
-                      let b2 = Math.min(rem, t2);
-                      rem -= b2;
-                      let b3 = Math.max(0, rem);
-                      // if total is 0, keep 0
-                      if (total <= 0.01) { b1=0; b2=0; b3=0; }
-                      const depletes = total <= 0.01;
-                      return (
-                        <TableRow key={e.year} className={depletes ? "bg-red-50" : ""}>
-                          <TableCell className="text-xs font-bold">{e.year}</TableCell>
-                          <TableCell className="text-xs">{e.age}</TableCell>
-                          <TableCell className="text-right font-mono text-[11px] font-bold text-red-600">-{formatCurrency(e.netWithdrawal||0)}</TableCell>
-                          <TableCell className={`text-right font-mono text-[11px] ${(e.earnings||0)>=(e.netWithdrawal||0) ? "text-emerald-600" : "text-slate-500"}`}>+{formatCurrency(e.earnings||0)}</TableCell>
-                          <TableCell className={`text-right font-mono text-[11px] font-bold ${delta>=0 ? "text-emerald-600" : "text-red-600"}`}>{delta>=0 ? "+" : ""}{formatCurrency(delta)}</TableCell>
-                          <TableCell className="text-right font-mono text-[11px]">{formatCurrency(b1)}</TableCell>
-                          <TableCell className="text-right font-mono text-[11px]">{formatCurrency(b2)}</TableCell>
-                          <TableCell className="text-right font-mono text-[11px]">{formatCurrency(b3)}</TableCell>
-                          <TableCell className="text-right font-mono text-[11px] font-bold">{formatCurrency(total)}</TableCell>
-                        </TableRow>
-                      );
-                    });
-                  })()}
-                </TableBody>
-              </Table>
-              <div className="text-[10px] text-slate-500 mt-2">Once-a-year paycheck: `gross` inflated from {formatCurrency(retirementPlan.projectedExpensesAtStart)}/y, minus SS (from {retirementPlan.ssStartAge}y), remainder taken from buckets. Refill runs at year-end in up years. Values projected at {((parseFloat(retirementReturnRate)||0).toFixed(1))}%/{((parseFloat(retirementInflationRate)||0).toFixed(1))}%.</div>
-            </CardContent>
-          </Card>
 
           {/* Recommendations */}
           <Card className="border-amber-200 bg-amber-50/50">
@@ -862,7 +935,90 @@ const Retirement: React.FC = () => {
             </CardContent>
           </Card>
 
-          {/* Guyton–Klinger Guardrails (2006) — rules 3 & 4 */}
+          {/* Year-by-year — uses Stress Test Base simulation */}
+          <Collapsible defaultOpen={false} className="overflow-hidden rounded-xl border bg-card">
+            <CollapsibleTrigger className="w-full flex items-center justify-between px-6 py-4 hover:bg-slate-50 transition-colors">
+              <div className="text-left">
+                <div className="text-xs font-black uppercase tracking-widest">Year-by-Year Plan (Base)</div>
+                <div className="text-xs text-muted-foreground">Base simulation from Stress Test — expenses inflate at {(parseFloat(retirementInflationRate)||0).toFixed(1)}%, portfolio net of SS. Penalty flag before 59.5.</div>
+              </div>
+              <ChevronRight className="w-4 h-4 text-slate-400 transition-transform data-[state=open]:rotate-90" />
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <div className="px-6 pb-4 overflow-x-auto">
+              <Table>
+                <TableHeader><TableRow className="bg-slate-50"><TableHead className="text-[10px]">Year</TableHead><TableHead className="text-[10px]">Age</TableHead><TableHead className="text-right text-[10px]">Start</TableHead><TableHead className="text-right text-[10px]">SS</TableHead><TableHead className="text-right text-[10px]">Net Wd</TableHead><TableHead className="text-right text-[10px]">Return</TableHead><TableHead className="text-right text-[10px]">End</TableHead><TableHead className="text-[10px]">Note</TableHead></TableRow></TableHeader>
+                <TableBody>
+                  {retirementPlan.baseEvolution.slice(0, 60).map((r:any)=> (
+                    <TableRow key={r.year} className={cn(!r.isRetired && "opacity-60", r.isPenalty && "bg-amber-50/50")}>
+                      <TableCell className="text-xs font-bold">{r.year}</TableCell>
+                      <TableCell className="text-xs">{r.age}{r.isPenalty ? " ⚠️" : ""}</TableCell>
+                      <TableCell className="text-right font-mono text-[11px]">{formatCurrency(r.startBalance)}</TableCell>
+                      <TableCell className="text-right font-mono text-[11px] text-emerald-700">{r.yearSS>0 ? formatCurrency(r.yearSS) : "—"}</TableCell>
+                      <TableCell className="text-right font-mono text-[11px] text-red-600">{r.netWithdrawal>0 ? "-"+formatCurrency(r.netWithdrawal) : "—"}</TableCell>
+                      <TableCell className="text-right font-mono text-[11px] text-blue-600">+{formatCurrency(r.earnings)}</TableCell>
+                      <TableCell className="text-right font-mono text-[11px] font-bold">{formatCurrency(r.endBalance)}</TableCell>
+                      <TableCell className="text-[10px] text-slate-500">{r.isPenalty ? "Pre-59.5" : r.isSS && r.year===retirementPlan.scenarios[0].result.evolution.find((e:any)=> e.isSS)?.year ? "SS starts" : r.age===65 ? "Medicare" : ""}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
+
+          {/* Year-by-year — Adjusted to last until target (lifeExpectancy) — right below Base */}
+          <Collapsible defaultOpen={false} className="overflow-hidden rounded-xl border border-amber-200 bg-amber-50/20">
+            <CollapsibleTrigger className="w-full flex items-center justify-between px-6 py-4 hover:bg-amber-50 transition-colors">
+              <div className="text-left">
+                <div className="text-xs font-black uppercase tracking-widest flex items-center gap-2"><Target className="w-4 h-4 text-amber-600" /> Year-by-Year Plan (Adjusted — Lasts to {lifeExpectancy})</div>
+                <div className="text-xs text-muted-foreground">Max sustainable withdrawal to deplete exactly at {lifeExpectancy} — {formatCurrency(retirementPlan.adjustedInitial)}/y at retirement ({(retirementPlan.adjustedRate*100).toFixed(2)}% vs base {(retirementPlan.effectiveRate*100).toFixed(2)}%)</div>
+              </div>
+              <ChevronRight className="w-4 h-4 text-slate-400 transition-transform data-[state=open]:rotate-90" />
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <div className="px-6 pb-4 overflow-x-auto">
+              <Table>
+                <TableHeader><TableRow className="bg-amber-50"><TableHead className="text-[10px]">Year</TableHead><TableHead className="text-[10px]">Age</TableHead><TableHead className="text-right text-[10px]">Start</TableHead><TableHead className="text-right text-[10px]">SS</TableHead><TableHead className="text-right text-[10px]">Planned Exp</TableHead><TableHead className="text-right text-[10px]">Recommended</TableHead><TableHead className="text-right text-[10px]">Gap</TableHead><TableHead className="text-right text-[10px]">Net Wd</TableHead><TableHead className="text-right text-[10px]">Adj %</TableHead><TableHead className="text-right text-[10px]">Return</TableHead><TableHead className="text-right text-[10px]">End</TableHead><TableHead className="text-[10px]">Note</TableHead></TableRow></TableHeader>
+                <TableBody>
+                  {(retirementPlan.adjustedBaseEvolution||[]).slice(0, 60).map((r:any, idx:number)=> {
+                    const baseRow = (retirementPlan.baseEvolution as any[])?.find((e:any)=> e.year===r.year);
+                    const infl = parseFloat(retirementInflationRate)/100 || 0;
+                    let plannedGross: number;
+                    if (baseRow && (baseRow as any).expenses != null) plannedGross = (baseRow as any).expenses;
+                    else if (r.isRetired) {
+                      const yrs = r.year - retirementPlan.retirementYear;
+                      const base = retirementPlan.projectedExpensesAtStart * Math.pow(1+infl, Math.max(0, yrs));
+                      plannedGross = r.year === retirementPlan.retirementYear ? base * retirementPlan.remainingMonthsFactor : base;
+                    } else plannedGross = 0;
+                    const recommendedGross = r.expenses ?? 0;
+                    const gap = plannedGross - recommendedGross;
+                    const pct = plannedGross>0.01 ? (recommendedGross/plannedGross*100) : 100;
+                    const isCut = pct < 99.5;
+                    return (
+                    <TableRow key={r.year} className={cn(!r.isRetired && "opacity-60", r.isPenalty && "bg-amber-50/50")}>
+                      <TableCell className="text-xs font-bold">{r.year}</TableCell>
+                      <TableCell className="text-xs">{r.age}{r.isPenalty ? " ⚠️" : ""}</TableCell>
+                      <TableCell className="text-right font-mono text-[11px]">{formatCurrency(r.startBalance)}</TableCell>
+                      <TableCell className="text-right font-mono text-[11px] text-emerald-700">{r.yearSS>0 ? formatCurrency(r.yearSS) : "—"}</TableCell>
+                      <TableCell className="text-right font-mono text-[11px] text-slate-500">{r.isRetired ? formatCurrency(plannedGross) : "—"}</TableCell>
+                      <TableCell className="text-right font-mono text-[11px] font-bold text-slate-800">{r.isRetired ? formatCurrency(recommendedGross) : "—"}</TableCell>
+                      <TableCell className={`text-right font-mono text-[11px] ${Math.abs(gap)<0.01 ? "text-slate-400" : gap>0 ? "text-amber-600 font-bold" : "text-emerald-600"}`}>{!r.isRetired ? "—" : gap>0.01 ? "-"+formatCurrency(gap) : gap<-0.01 ? "+"+formatCurrency(-gap) : "—"}</TableCell>
+                      <TableCell className="text-right font-mono text-[11px] text-red-600">{r.netWithdrawal>0 ? "-"+formatCurrency(r.netWithdrawal) : "—"}</TableCell>
+                      <TableCell className={`text-right font-mono text-[11px] font-bold ${!r.isRetired ? "text-slate-400" : isCut ? "text-amber-600" : "text-emerald-600"}`}>{!r.isRetired ? "—" : pct.toFixed(1)+"%"}</TableCell>
+                      <TableCell className="text-right font-mono text-[11px] text-blue-600">+{formatCurrency(r.earnings)}</TableCell>
+                      <TableCell className="text-right font-mono text-[11px] font-bold">{formatCurrency(r.endBalance)}</TableCell>
+                      <TableCell className="text-[10px] text-slate-500">{r.isPenalty ? "Pre-59.5" : r.isSS && r.year===retirementPlan.adjustedBaseEvolution.find((e:any)=> e.isSS)?.year ? "SS starts" : r.age===65 ? "Medicare" : r.endBalance<=0.01 ? "Depletes" : ""}</TableCell>
+                    </TableRow>
+                  )})}
+                </TableBody>
+              </Table>
+              <div className="text-[10px] text-slate-500 mt-2">Real projected spending (nominal, grows at {(parseFloat(retirementInflationRate)||0).toFixed(1)}%/y). <b>Planned</b> = your current spending inflated to each year. <b>Recommended</b> = max sustainable to last to {lifeExpectancy} ({formatCurrency(retirementPlan.adjustedInitial)}/y at retirement vs planned {formatCurrency(retirementPlan.projectedExpensesAtStart)}/y). Gap shows yearly cut needed.</div>
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
+
+          {/* Guyton–Klinger Guardrails (2006) — rules 3 & 4 — bottom */}
           <Card className="border-emerald-200 bg-emerald-50/20">
             <CardHeader>
               <CardTitle className="text-xs font-black uppercase tracking-widest flex items-center gap-2"><PiggyBank className="w-4 h-4 text-emerald-700" /> Guyton–Klinger Guardrails — Rules 3 & 4</CardTitle>
@@ -937,29 +1093,70 @@ const Retirement: React.FC = () => {
             </CardContent>
           </Card>
 
-          {/* Year-by-year */}
-          <Card>
-            <CardHeader><CardTitle className="text-xs font-black uppercase tracking-widest">Year-by-Year Plan (Base)</CardTitle><CardDescription className="text-xs">Expenses inflate at {(parseFloat(retirementInflationRate)||0).toFixed(1)}%, portfolio net of SS. Penalty flag before 59.5.</CardDescription></CardHeader>
-            <CardContent className="overflow-x-auto">
+          {/* Bucket Paycheck Schedule — annual — bottom, right above Guardrails */}
+          <Collapsible defaultOpen={false} className="overflow-hidden rounded-xl border bg-card">
+            <CollapsibleTrigger className="w-full flex items-center justify-between px-6 py-4 hover:bg-slate-50 transition-colors">
+              <div className="text-left">
+                <div className="text-xs font-black uppercase tracking-widest flex items-center gap-2"><Wallet className="w-4 h-4 text-slate-700" /> Bucket Paycheck Schedule — Once a Year</div>
+                <div className="text-[11px] text-muted-foreground">Paycheck taken from Bucket 1 (cash) → 2 (bonds+Income) → 3 (growth). Bucket 1 holds {retirementPlan.bucket1Years}y, Bucket 2 holds {retirementPlan.bucket2Years}y. At year-end Bucket 1 refilled from Bucket 2, Bucket 2 from Bucket 3 in up years.</div>
+              </div>
+              <ChevronRight className="w-4 h-4 text-slate-400 transition-transform data-[state=open]:rotate-90" />
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <div className="px-6 pb-4 overflow-x-auto">
               <Table>
-                <TableHeader><TableRow className="bg-slate-50"><TableHead className="text-[10px]">Year</TableHead><TableHead className="text-[10px]">Age</TableHead><TableHead className="text-right text-[10px]">Start</TableHead><TableHead className="text-right text-[10px]">SS</TableHead><TableHead className="text-right text-[10px]">Net Wd</TableHead><TableHead className="text-right text-[10px]">Return</TableHead><TableHead className="text-right text-[10px]">End</TableHead><TableHead className="text-[10px]">Note</TableHead></TableRow></TableHeader>
+                <TableHeader>
+                  <TableRow className="bg-slate-50">
+                    <TableHead className="text-[10px]">Year</TableHead>
+                    <TableHead className="text-[10px]">Age</TableHead>
+                    <TableHead className="text-right text-[10px]">Paycheck<br/><span className="text-[9px] font-normal">-SS</span></TableHead>
+                    <TableHead className="text-right text-[10px]">Growth<br/><span className="text-[9px] font-normal">year-end</span></TableHead>
+                    <TableHead className="text-right text-[10px]">Δ Total<br/><span className="text-[9px] font-normal">growth - paycheck</span></TableHead>
+                    <TableHead className="text-right text-[10px]">B1 cash<br/><span className="text-[9px] font-normal">after paycheck</span></TableHead>
+                    <TableHead className="text-right text-[10px]">B2 income<br/><span className="text-[9px] font-normal">after paycheck</span></TableHead>
+                    <TableHead className="text-right text-[10px]">B3 growth<br/><span className="text-[9px] font-normal">after paycheck</span></TableHead>
+                    <TableHead className="text-right text-[10px]">Total<br/><span className="text-[9px] font-normal">after paycheck</span></TableHead>
+                  </TableRow>
+                </TableHeader>
                 <TableBody>
-                  {retirementPlan.baseEvolution.slice(0, 60).map((r:any)=> (
-                    <TableRow key={r.year} className={cn(!r.isRetired && "opacity-60", r.isPenalty && "bg-amber-50/50")}>
-                      <TableCell className="text-xs font-bold">{r.year}</TableCell>
-                      <TableCell className="text-xs">{r.age}{r.isPenalty ? " ⚠️" : ""}</TableCell>
-                      <TableCell className="text-right font-mono text-[11px]">{formatCurrency(r.startBalance)}</TableCell>
-                      <TableCell className="text-right font-mono text-[11px] text-emerald-700">{r.yearSS>0 ? formatCurrency(r.yearSS) : "—"}</TableCell>
-                      <TableCell className="text-right font-mono text-[11px] text-red-600">{r.netWithdrawal>0 ? "-"+formatCurrency(r.netWithdrawal) : "—"}</TableCell>
-                      <TableCell className="text-right font-mono text-[11px] text-blue-600">+{formatCurrency(r.earnings)}</TableCell>
-                      <TableCell className="text-right font-mono text-[11px] font-bold">{formatCurrency(r.endBalance)}</TableCell>
-                      <TableCell className="text-[10px] text-slate-500">{r.isPenalty ? "Pre-59.5" : r.isSS && r.year===retirementPlan.scenarios[0].result.evolution.find((e:any)=> e.isSS)?.year ? "SS starts" : r.age===65 ? "Medicare" : ""}</TableCell>
-                    </TableRow>
-                  ))}
+                  {(() => {
+                    const base = (retirementPlan.baseEvolution as any[]).filter((e:any)=> e.isRetired).slice(0, 35);
+                    const baseInfl = parseFloat(retirementInflationRate)/100 || 0;
+                    return base.map((e:any, idx:number)=> {
+                      const delta = (e.earnings||0) - (e.netWithdrawal||0);
+                      const total = e.endBalance;
+                      const exp = retirementPlan.projectedExpensesAtStart * Math.pow(1+baseInfl, idx);
+                      const t1 = exp * retirementPlan.bucket1Years;
+                      const t2 = exp * retirementPlan.bucket2Years;
+                      let b1 = Math.min(total, t1);
+                      let rem = total - b1;
+                      let b2 = Math.min(rem, t2);
+                      rem -= b2;
+                      let b3 = Math.max(0, rem);
+                      if (total <= 0.01) { b1=0; b2=0; b3=0; }
+                      const depletes = total <= 0.01;
+                      return (
+                        <TableRow key={e.year} className={depletes ? "bg-red-50" : ""}>
+                          <TableCell className="text-xs font-bold">{e.year}</TableCell>
+                          <TableCell className="text-xs">{e.age}</TableCell>
+                          <TableCell className="text-right font-mono text-[11px] font-bold text-red-600">-{formatCurrency(e.netWithdrawal||0)}</TableCell>
+                          <TableCell className={`text-right font-mono text-[11px] ${(e.earnings||0)>=(e.netWithdrawal||0) ? "text-emerald-600" : "text-slate-500"}`}>+{formatCurrency(e.earnings||0)}</TableCell>
+                          <TableCell className={`text-right font-mono text-[11px] font-bold ${delta>=0 ? "text-emerald-600" : "text-red-600"}`}>{delta>=0 ? "+" : ""}{formatCurrency(delta)}</TableCell>
+                          <TableCell className="text-right font-mono text-[11px]">{formatCurrency(b1)}</TableCell>
+                          <TableCell className="text-right font-mono text-[11px]">{formatCurrency(b2)}</TableCell>
+                          <TableCell className="text-right font-mono text-[11px]">{formatCurrency(b3)}</TableCell>
+                          <TableCell className="text-right font-mono text-[11px] font-bold">{formatCurrency(total)}</TableCell>
+                        </TableRow>
+                      );
+                    });
+                  })()}
                 </TableBody>
               </Table>
-            </CardContent>
-          </Card>
+              <div className="text-[10px] text-slate-500 mt-2">Once-a-year paycheck: `gross` inflated from {formatCurrency(retirementPlan.projectedExpensesAtStart)}/y, minus SS (from {retirementPlan.ssStartAge}y), remainder taken from buckets. Refill runs at year-end in up years. Values projected at {((parseFloat(retirementReturnRate)||0).toFixed(1))}%/{((parseFloat(retirementInflationRate)||0).toFixed(1))}%.</div>
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
+
         </>
       )}
 

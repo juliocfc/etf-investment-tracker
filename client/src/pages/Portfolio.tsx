@@ -393,6 +393,17 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
     { enabled: !!selectedPortfolioId }
   );
 
+  // Keep summary in sync with latest brokerage bond prices - bondHoldings query auto-updates DB via getBondPriceFromBrokerage
+  React.useEffect(() => {
+    if (bondHoldings && summary) {
+      const summaryBondPrice = (summary as any)?.holdings?.find((h:any)=> /^[0-9A-Z]{9}$/.test(h.symbol))?.currentPrice;
+      const liveBondPrice = (bondHoldings as any[])?.find((b:any)=> /^[0-9A-Z]{9}$/.test(b.symbol))?.currentPrice;
+      if (liveBondPrice && summaryBondPrice && String(liveBondPrice) !== String(summaryBondPrice)) {
+        refetchSummary();
+      }
+    }
+  }, [bondHoldings, summary]);
+
   // Bond holdings summary (sorted) - bonds are shown together via summary.holdings but we keep dedicated sorted list for Bonds card
   const sortedBondHoldings = useMemo(() => {
     if (!bondHoldings) return [];
@@ -1570,6 +1581,10 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                                     </thead>
                                     <tbody className="divide-y divide-slate-100">
                                       {accDetails.assets?.map((asset: any) => {
+                                        const isBond = /^[0-9A-Z]{9}$/.test(asset.symbol || "");
+                                        const liveBond = isBond ? (bondHoldings as any[])?.find((b:any)=> b.symbol===asset.symbol && String(b.accountId)===String(account.id)) || (bondHoldings as any[])?.find((b:any)=> b.symbol===asset.symbol) : null;
+                                        const displayPrice = liveBond?.currentPrice ?? asset.currentPrice;
+                                        const displayValue = isBond && liveBond ? (parseFloat(asset.quantity) * parseFloat(displayPrice)).toFixed(2) : asset.currentValue;
                                         const isGain = parseFloat(asset.gain) >= 0;
                                         return (
                                           <tr key={`${account.id}-${asset.symbol}`} className="hover:bg-slate-50 transition-colors">
@@ -1582,8 +1597,8 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                                             <td className="text-right py-2.5 px-3 font-mono">{formatQty(asset.quantity, asset.symbol)}</td>
                                             <td className="text-right py-2.5 px-3 font-mono text-slate-500">{formatCurrency(truncateNumber(parseFloat(asset.averageCost)))}</td>
                                             <td className="text-right py-2.5 px-3 font-mono text-slate-500">{formatCurrency(truncateNumber(parseFloat(asset.totalCost)))}</td>
-                                            <td className="text-right py-2.5 px-3 font-mono text-slate-500">{formatCurrency(truncateNumber(parseFloat(asset.currentPrice)))}</td>
-                                            <td className="text-right py-2.5 px-3 font-mono font-bold text-slate-700">{formatCurrency(truncateNumber(parseFloat(asset.currentValue)))}</td>
+                                            <td className="text-right py-2.5 px-3 font-mono text-slate-500">{formatCurrency(truncateNumber(parseFloat(displayPrice)))}</td>
+                                            <td className="text-right py-2.5 px-3 font-mono font-bold text-slate-700">{formatCurrency(truncateNumber(parseFloat(displayValue)))}</td>
                                             <td className={`text-right py-2.5 px-3 font-mono font-bold ${isGain ? "text-green-600/80" : "text-red-600/80"}`}>
                                               <div>{isGain ? "+" : ""}{formatCurrency(truncateNumber(parseFloat(asset.gain)))}</div>
                                               <div className="text-[9px]">{isGain ? "+" : ""}{asset.gainPercent}%</div>
@@ -2036,7 +2051,11 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                     {sortedHoldings.map((holding: any) => {
                       const equityTotal = parseFloat((summary as any)?.equityInvestmentValue || summary?.investmentValue || "0");
                       const allocation = summary?.investmentAllocationBreakdown?.find((a: any) => a.symbol === holding.symbol);
-                      const equityAllocation = equityTotal > 0 ? ((parseFloat(holding.currentValue) / equityTotal) * 100).toFixed(2) : "0.00";
+                      const isBondHolding = /^[0-9A-Z]{9}$/.test(holding.symbol || "") || (holding as any).assetType==="bond";
+                      const liveBond = isBondHolding ? (bondHoldings as any[])?.find((b:any)=> b.symbol===holding.symbol) : null;
+                      const livePrice = liveBond?.currentPrice ?? holding.currentPrice;
+                      const liveValue = isBondHolding && liveBond ? (parseFloat(holding.quantity) * parseFloat(livePrice)).toFixed(2) : holding.currentValue;
+                      const equityAllocation = equityTotal > 0 ? ((parseFloat(liveValue) / equityTotal) * 100).toFixed(2) : "0.00";
                       const displayAllocation = { percentage: equityAllocation } as any;
                       const isGain = parseFloat(holding.gain) >= 0;
                       const isUnderWeight = parseFloat(displayAllocation.percentage || "0") < (parseFloat(holding.desiredAllocation) || 0);
@@ -2072,8 +2091,8 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                             <td className="text-right py-3 px-3 font-mono text-xs font-medium">{formatQty(holding.quantity, holding.symbol)}</td>
                             <td className="text-right py-3 px-3 font-mono text-xs text-slate-600">{formatCurrency(holding.averageCost)}</td>
                             <td className="text-right py-3 px-3 font-mono text-xs text-slate-600">{formatCurrency(holding.totalCost)}</td>
-                            <td className="text-right py-3 px-3 font-mono text-xs text-slate-600">{formatCurrency(holding.currentPrice)}</td>
-                            <td className="text-right py-3 px-3 font-mono text-xs font-bold">{formatCurrency(holding.currentValue)}</td>
+                            <td className="text-right py-3 px-3 font-mono text-xs text-slate-600">{formatCurrency(livePrice)}</td>
+                            <td className="text-right py-3 px-3 font-mono text-xs font-bold">{formatCurrency(liveValue)}</td>
                             <td className={`text-right py-3 px-3 font-mono text-xs font-bold ${isGain ? "text-green-600" : "text-red-600"}`}>
                               {isGain ? "+" : ""}{formatCurrency(holding.gain)}
                             </td>
@@ -2174,6 +2193,10 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
 
                           {/* Account Breakdown Rows */}
                           {isExpanded && holding.accountBreakdown?.map((breakdown: any) => {
+                            const isBdBond = /^[0-9A-Z]{9}$/.test(breakdown.symbol || holding.symbol || "");
+                            const liveBdBond = isBdBond ? (bondHoldings as any[])?.find((b:any)=> b.symbol=== (breakdown.symbol || holding.symbol)) : null;
+                            const bdPrice = liveBdBond?.currentPrice ?? breakdown.currentPrice;
+                            const bdValue = isBdBond && liveBdBond ? (parseFloat(breakdown.quantity) * parseFloat(bdPrice)).toFixed(2) : breakdown.currentValue;
                             const bdIsGain = parseFloat(breakdown.gain) >= 0;
                             return (
                               <tr key={breakdown.id} className="bg-slate-50/30 border-b border-slate-100 hover:bg-slate-50 transition-colors">
@@ -2189,8 +2212,8 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                                 <td className="text-right py-2 px-3 font-mono text-[10px] text-slate-500">{formatQty(breakdown.quantity, breakdown.symbol || holding.symbol)}</td>
                                 <td className="text-right py-2 px-3 font-mono text-[10px] text-slate-400">{formatCurrency(breakdown.averageCost)}</td>
                                 <td className="text-right py-2 px-3 font-mono text-[10px] text-slate-400">{formatCurrency(breakdown.totalCost)}</td>
-                                <td className="text-right py-2 px-3 font-mono text-[10px] text-slate-400">{formatCurrency(breakdown.currentPrice)}</td>
-                                <td className="text-right py-2 px-3 font-mono text-[10px] text-slate-600 font-bold">{formatCurrency(breakdown.currentValue)}</td>
+                                <td className="text-right py-2 px-3 font-mono text-[10px] text-slate-400">{formatCurrency(bdPrice)}</td>
+                                <td className="text-right py-2 px-3 font-mono text-[10px] text-slate-600 font-bold">{formatCurrency(bdValue)}</td>
                                 <td className={`text-right py-2 px-3 font-mono text-[10px] font-bold ${bdIsGain ? "text-green-600/80" : "text-red-600/80"}`}>
                                   {bdIsGain ? "+" : ""}{formatCurrency(breakdown.gain)}
                                 </td>
@@ -2492,6 +2515,15 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
                 </table>
               </div>
             </Card>
+
+            {/* Group Allocation — This Portfolio — right below Fixed Income */}
+            <PortfolioGroupAllocation
+              summary={summary}
+              holdings={holdings}
+              bondHoldings={bondHoldings}
+              accounts={accounts}
+              selectedPortfolioId={selectedPortfolioId}
+            />
 
             {/* Investment Assets Detail - Portfolio (mirrors All Investment Assets on dashboard) */}
             <Card className="bg-white shadow-sm border border-border overflow-hidden">
@@ -3054,13 +3086,6 @@ export default function Holdings({ selectedPortfolioId }: { selectedPortfolioId:
               </DialogContent>
             </Dialog>
           )}
-          <PortfolioGroupAllocation
-            summary={summary}
-            holdings={holdings}
-            bondHoldings={bondHoldings}
-            accounts={accounts}
-            selectedPortfolioId={selectedPortfolioId}
-          />
         </div>
       ) : activeSubTab === "activities" ? (
         <ErrorBoundary fallback={<div className="p-6 text-center text-slate-400">Failed to load Activities</div>}>
@@ -4707,8 +4732,9 @@ function PortfolioGroupAllocation({ summary, holdings, bondHoldings, accounts, s
   const toggleGroup = (id:number) => { const s=new Set(expandedGroups); if(s.has(id)) s.delete(id); else s.add(id); setExpandedGroups(s); };
   const portfolioTotal = parseFloat(summary?.totalValue||"0") || 1;
 
-  // Build asset universe for this portfolio: aggregated cash + holdings + bonds
-  const cashValue = (accounts||[]).reduce((s:number,a:any)=> s+parseFloat(a.cashValue||"0"), 0);
+  // Build asset universe for this portfolio: aggregated cash + holdings + bonds — cash from summary (accounts[].cashValue may be absent)
+  const cashValue = parseFloat((summary as any)?.cashBalance || "0") || (accounts||[]).reduce((s:number,a:any)=> s+parseFloat(a.cashValue||"0"), 0) ||
+    Object.values((summary as any)?.accountSummaries||{}).reduce((s:number, v:any)=> s+parseFloat(v?.cashValue||"0"),0);
   const cashAssets = cashValue>0.01 ? [{ assetType:"cash" as const, assetKey:"CASH", symbol:"CASH", name:"Cash", quantity:1, currentValue: cashValue, displayQty:"—" }] : [];
   const holdingAssets = (holdings||[]).map((h:any)=> {
     const sym=(h.symbol||"").toUpperCase();
@@ -4720,8 +4746,7 @@ function PortfolioGroupAllocation({ summary, holdings, bondHoldings, accounts, s
     const sym=(b.symbol||"").toUpperCase();
     const qty=parseFloat(b.quantity||"0");
     const price=parseFloat(b.currentPrice||"0");
-    // price per 100 par, so value = qty * price *10 (1000/100)
-    const val = qty * price * 10;
+    const val = qty * price;
     return { assetType:"bond" as const, assetKey:sym, symbol:b.symbol, name:b.name||b.symbol, quantity:qty, currentValue: val, displayQty: qty.toString() };
   });
   const allAssets = [...cashAssets, ...holdingAssets, ...bondAssets];
@@ -4764,18 +4789,20 @@ function PortfolioGroupAllocation({ summary, holdings, bondHoldings, accounts, s
   }, [groups, assetMap, overallValue, yieldMap]);
 
   const totalNext12 = useMemo(()=> {
-    let s=0; for(const a of allAssets){ const y=yieldMap.get(`${a.assetType}:${a.assetKey}`); if(y) s+= y.next12;
-      else if(a.assetType==="bond"){ // BONDS aggregated fallback
-        for(const b of bondAssets){ const yy=yieldMap.get(`bond:${b.assetKey}`); if(yy) s+=0; } // already counted via allAssets individual
-      }
-    }
-    // for portfolio, allAssets already includes individual bonds, so totalNext12 from yields covers all
-    return groupRows.reduce((sum,r)=> sum + r.groupNext12, 0) // only assigned groups, but for avg we want assigned only? Show assigned avg
-      || (()=>{
-        let t=0; for(const a of allAssets){ const y=yieldMap.get(`${a.assetType}:${a.assetKey}`); t+= y?.next12||0; } return t;
-      })();
-  }, [allAssets, yieldMap, groupRows]);
+    let t=0; for(const a of allAssets){ const y=yieldMap.get(`${a.assetType}:${a.assetKey}`); t+= y?.next12||0; } return t;
+  }, [allAssets, yieldMap]);
   const assignedTotal = groupRows.reduce((s,r)=>s+r.groupValue,0);
+  const assignedKeys = useMemo(()=> new Set((groups||[]).flatMap((g:any)=> (g.assets||[]).map((a:any)=> `${a.assetType}:${a.assetKey}`))), [groups]);
+  const isBondAggregated = assignedKeys.has("bond:BONDS");
+  const unassignedAssets = useMemo(()=> allAssets.filter((a:any)=> {
+    const key = `${a.assetType}:${a.assetKey}`;
+    if (assignedKeys.has(key)) return false;
+    if (a.assetType==="bond" && isBondAggregated) return false;
+    return true;
+  }), [allAssets, assignedKeys, isBondAggregated]);
+  const unassignedValue = useMemo(()=> unassignedAssets.reduce((s:number,a:any)=> s+(a.currentValue||0),0), [unassignedAssets]);
+  const unassignedNext12 = useMemo(()=> unassignedAssets.reduce((s:number,a:any)=> s + (yieldMap.get(`${a.assetType}:${a.assetKey}`)?.next12||0),0), [unassignedAssets, yieldMap]);
+  const unassignedYield = unassignedValue>0 ? unassignedNext12/unassignedValue : 0;
 
   // Always render so user sees the table even with 0 groups (dashboard creates groups)
   const hasGroups = groups && groups.length>0;
@@ -4843,9 +4870,19 @@ function PortfolioGroupAllocation({ summary, holdings, bondHoldings, accounts, s
                 </React.Fragment>
               );
             })}
+            {unassignedValue > 0.01 && (
+              <tr className="border-b bg-amber-50/60">
+                <td className="py-3 px-2 text-center"><span className="text-[10px] font-bold text-amber-700 px-1.5 py-0.5 rounded bg-amber-100">!</span></td>
+                <td className="py-3 px-3 font-bold text-amber-800">Unassigned<span className="ml-2 text-[10px] font-normal text-slate-500">({unassignedAssets.length} holding{unassignedAssets.length!==1?"s":""} — assign in dashboard)</span></td>
+                <td className="py-3 px-3 text-right font-mono font-bold text-amber-800">{formatCurrency(unassignedValue)}</td>
+                <td className="py-3 px-3 text-right font-mono text-xs font-bold text-amber-800">{overallValue>0?(unassignedValue/overallValue*100).toFixed(2):"0.00"}%</td>
+                <td className="py-3 px-3 text-right font-mono text-xs font-bold text-emerald-700">{(unassignedYield*100).toFixed(2)}%</td>
+                <td className="py-3 px-3 text-right font-mono text-xs font-bold text-slate-700">{formatCurrency(unassignedNext12)}</td>
+              </tr>
+            )}
           </tbody>
           <tfoot className="bg-slate-900 text-white font-bold">
-            <tr><td colSpan={2} className="py-3 px-3 text-[11px] uppercase tracking-widest">Portfolio Total</td><td className="py-3 px-3 text-right font-mono">{formatCurrency(overallValue)}</td><td className="py-3 px-3 text-right">100.00%</td><td className="py-3 px-3 text-right font-mono text-emerald-300">{(assignedTotal>0 && totalNext12>0 ? (totalNext12/assignedTotal*100).toFixed(2) : (overallValue>0 ? (totalNext12/overallValue*100).toFixed(2) : "0.00"))}%</td><td className="py-3 px-3 text-right font-mono text-emerald-300">{formatCurrency(totalNext12)}</td></tr>
+            <tr><td colSpan={2} className="py-3 px-3 text-[11px] uppercase tracking-widest">Portfolio Total</td><td className="py-3 px-3 text-right font-mono">{formatCurrency(overallValue)}</td><td className="py-3 px-3 text-right">100.00%</td><td className="py-3 px-3 text-right font-mono text-emerald-300">{overallValue>0 ? (totalNext12/overallValue*100).toFixed(2) : "0.00"}%</td><td className="py-3 px-3 text-right font-mono text-emerald-300">{formatCurrency(totalNext12)}</td></tr>
           </tfoot>
         </table>
       </div>

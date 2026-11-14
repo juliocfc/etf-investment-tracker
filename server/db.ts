@@ -822,7 +822,7 @@ export async function getBondPriceFromBrokerage(cusip: string): Promise<string |
   try {
     const db = await getDb();
     const up = cusip.toUpperCase().trim();
-    const rows = await db.select().from(brokerageHoldings);
+    const rows = await db.select().from(brokerageHoldings).orderBy(desc(brokerageHoldings.updatedAt));
     for (const r of rows) {
       try {
         const raw = r.symbol as unknown as string;
